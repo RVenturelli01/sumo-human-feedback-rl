@@ -1,0 +1,6 @@
+[submodule "sumo-rl-ego"]
+	path = sumo-rl-ego
+	url = https://github.com/RVenturelli01/sumo-rl-ego.git
+[submodule "human-feedback-rl"]
+	path = human-feedback-rl
+	url = https://github.com/andrea02polimi/human-feedback-rl.git
