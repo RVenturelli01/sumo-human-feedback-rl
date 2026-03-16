@@ -209,3 +209,7 @@ __marimo__/
 .idea/
 *.iml
 .vscode/settings.json
+
+# Weights & Biases
+wandb/
+
