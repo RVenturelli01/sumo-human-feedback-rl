@@ -56,6 +56,7 @@ def main(cfg: DictConfig) -> None:
             total_env_steps     = cfg.christiano.total_env_steps,
             rp_reload_interval  = cfg.christiano.rp_reload_interval,
             policy_save_interval= cfg.christiano.policy_save_interval,
+            torch_num_threads   = cfg.christiano.torch_num_threads,
             wandb_project       = cfg.wandb.project,
             wandb_entity        = cfg.wandb.get("entity") or None,
             wandb_tags          = list(cfg.wandb.get("tags", [])),

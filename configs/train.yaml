@@ -47,6 +47,12 @@ christiano:
   rp_reload_interval: 50
   policy_save_interval: 100
 
+  # Performance: max PyTorch intra-op threads per process.
+  # Prevents thread-pool contention when multiple processes share few CPU cores.
+  # Rule of thumb: floor(n_assigned_cores / n_processes).
+  # Example: 9 cores, 3 processes → 3. Conservative default: 2.
+  torch_num_threads: 2
+
 # ── Weights & Biases ─────────────────────────────────────────────────────────
 wandb:
   project: "sumo-rlhf"
