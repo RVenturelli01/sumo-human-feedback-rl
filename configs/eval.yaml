@@ -1,0 +1,15 @@
+run:
+  # Path to the training run directory (relative to project root output/)
+  dir: "output/christiano/2026-03-18_10-13-21"
+
+agent:
+  # Path to the policy checkpoint (relative to project root)
+  model: "output/christiano/2026-03-18_10-13-21/models/policy_christiano"
+
+eval:
+  episodes: 100
+
+hydra:
+  run:
+    dir: /tmp/hydra_eval/${now:%Y-%m-%d_%H-%M-%S}
+  output_subdir: null

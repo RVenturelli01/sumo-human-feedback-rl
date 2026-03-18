@@ -1,0 +1,60 @@
+# Entry point config for training RLHF algorithms.
+# All algorithm-specific params can be overridden from command line.
+
+algorithm: christiano
+
+expert_model: "highway_discrete_dqn_v2_1"
+seed: 0
+device: cpu
+
+# ── Christiano RLHF parameters ───────────────────────────────────────────────
+christiano:
+  oracle: "env_reward"         # env_reward | qnet | human
+  label_mode: "hard"           # hard | soft
+  use_demonstrations: false
+  use_demo_preferences: false
+  n_envs: 4
+
+  # Reward predictor
+  n_reward_predictors: 3
+  rp_lr: 2.0e-4
+  rp_val_interval: 50
+  demo_weight: 1.0
+  demo_margin: 1.0
+
+  # Policy (A2C)
+  policy_lr: 7.0e-4
+  gamma: 0.99
+  rollout_steps: 20
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_gradient_norm: 0.5
+
+  # Preference collection
+  initial_prefs: 500
+  segment_len: 25
+  max_segs: 1000
+  db_train_maxlen: 3000
+  db_val_maxlen: 750
+  seg_pipe_maxsize: 100
+  demo_seg_pipe_maxsize: 100
+  demo_db_maxlen: 1500
+  disagreement_candidates: 20
+  max_query_interval: 5.0
+
+  # Training
+  total_env_steps: 1000000
+  rp_reload_interval: 50
+  policy_save_interval: 100
+
+# ── Weights & Biases ─────────────────────────────────────────────────────────
+wandb:
+  project: "sumo-rlhf"
+  entity: null
+  tags: []
+
+# ── Hydra ────────────────────────────────────────────────────────────────────
+hydra:
+  run:
+    dir: output/${algorithm}/${now:%Y-%m-%d_%H-%M-%S}
+  output_subdir: null

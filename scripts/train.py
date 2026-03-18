@@ -1,0 +1,69 @@
+"""
+Entry point for RLHF training.
+
+Usage:
+    python scripts/train.py
+    python scripts/train.py christiano.oracle=qnet
+    python scripts/train.py christiano.use_demo_preferences=true christiano.db_train_maxlen=6000
+    python scripts/train.py christiano.label_mode=soft wandb.tags='[soft,env_reward]'
+"""
+import multiprocessing as mp
+
+import hydra
+from hydra.core.hydra_config import HydraConfig
+from omegaconf import DictConfig
+
+
+@hydra.main(version_base=None, config_path="../configs", config_name="train.yaml")
+def main(cfg: DictConfig) -> None:
+    mp.set_start_method("spawn", force=True)
+
+    output_dir = HydraConfig.get().runtime.output_dir
+
+    if cfg.algorithm == "christiano":
+        from human_feedback_rl.algorithms.christiano import ChristianoRLHF
+
+        algo = ChristianoRLHF(
+            expert_model_path   = cfg.expert_model,
+            seed                = cfg.seed,
+            n_envs              = cfg.christiano.n_envs,
+            device              = cfg.device,
+            oracle              = cfg.christiano.oracle,
+            label_mode          = cfg.christiano.label_mode,
+            use_demonstrations  = cfg.christiano.use_demonstrations,
+            use_demo_preferences= cfg.christiano.use_demo_preferences,
+            n_reward_predictors = cfg.christiano.n_reward_predictors,
+            rp_lr               = cfg.christiano.rp_lr,
+            rp_val_interval     = cfg.christiano.rp_val_interval,
+            demo_weight         = cfg.christiano.demo_weight,
+            demo_margin         = cfg.christiano.demo_margin,
+            policy_lr           = cfg.christiano.policy_lr,
+            gamma               = cfg.christiano.gamma,
+            rollout_steps       = cfg.christiano.rollout_steps,
+            entropy_coef        = cfg.christiano.entropy_coef,
+            value_coef          = cfg.christiano.value_coef,
+            max_gradient_norm   = cfg.christiano.max_gradient_norm,
+            initial_prefs       = cfg.christiano.initial_prefs,
+            segment_len         = cfg.christiano.segment_len,
+            max_segs            = cfg.christiano.max_segs,
+            db_train_maxlen     = cfg.christiano.db_train_maxlen,
+            db_val_maxlen       = cfg.christiano.db_val_maxlen,
+            seg_pipe_maxsize    = cfg.christiano.seg_pipe_maxsize,
+            demo_seg_pipe_maxsize = cfg.christiano.demo_seg_pipe_maxsize,
+            demo_db_maxlen      = cfg.christiano.demo_db_maxlen,
+            disagreement_candidates = cfg.christiano.disagreement_candidates,
+            max_query_interval  = cfg.christiano.max_query_interval,
+            total_env_steps     = cfg.christiano.total_env_steps,
+            rp_reload_interval  = cfg.christiano.rp_reload_interval,
+            policy_save_interval= cfg.christiano.policy_save_interval,
+            wandb_project       = cfg.wandb.project,
+            wandb_entity        = cfg.wandb.get("entity") or None,
+            wandb_tags          = list(cfg.wandb.get("tags", [])),
+        )
+        algo.train(output_dir=output_dir)
+    else:
+        raise ValueError(f"Unknown algorithm: {cfg.algorithm!r}")
+
+
+if __name__ == "__main__":
+    main()
