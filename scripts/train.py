@@ -8,6 +8,7 @@ Usage:
     python scripts/train.py christiano.label_mode=soft wandb.tags='[soft,env_reward]'
 """
 import multiprocessing as mp
+import sys
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -16,7 +17,11 @@ from omegaconf import DictConfig
 
 @hydra.main(version_base=None, config_path="../configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> None:
-    mp.set_start_method("spawn", force=True)
+    # On Linux use forkserver: faster startup than spawn (no full re-import),
+    # safer than fork (avoids deadlocks when the parent has active threads from
+    # wandb.init or PyTorch). On macOS spawn is required.
+    method = "forkserver" if sys.platform == "linux" else "spawn"
+    mp.set_start_method(method, force=True)
 
     output_dir = HydraConfig.get().runtime.output_dir
 
