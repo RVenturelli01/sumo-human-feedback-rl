@@ -3,7 +3,7 @@
 
 algorithm: christiano
 
-expert_model: "highway_discrete_dqn_v2_1"
+expert_model: "sumo-rl-ego/models/highway_e1_o2_rfast_dqn1"
 seed: 0
 device: cpu
 
