@@ -53,7 +53,7 @@ def main(cfg: DictConfig):
     obs, _ = env.reset()
     traci.gui.setSchema("View #0", "real world")
     traci.gui.trackVehicle("View #0", "ego")
-    traci.gui.setZoom("View #0", 1000)
+    traci.gui.setZoom("View #0", 1700)
 
     max_episodes = cfg.eval.get("episodes", None)   # None = run forever
     episode = 0

@@ -71,6 +71,9 @@ def _run_episodes(env, policy, episodes: int):
 
 def _save_plots(ep_rewards: list, ep_lengths: list, metrics_log: dict, plot_dir: Path) -> None:
     """Generate and save evaluation plots to plot_dir."""
+    import numpy as np
+    import matplotlib.pyplot as plt
+
     plot_dir.mkdir(parents=True, exist_ok=True)
 
     episodes = list(range(1, len(ep_rewards) + 1))
@@ -78,17 +81,16 @@ def _save_plots(ep_rewards: list, ep_lengths: list, metrics_log: dict, plot_dir:
 
     # ── Reward lineplot with moving average ──────────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(episodes, ep_rewards, alpha=0.4, color="steelblue", label="episode reward")
+    ax.plot(episodes, ep_rewards, alpha=0.4, label="episode reward")
     if len(ep_rewards) >= window:
         ma = np.convolve(ep_rewards, np.ones(window) / window, mode="valid")
         ax.plot(
             list(range(window, len(ep_rewards) + 1)),
             ma,
-            color="steelblue",
             lw=2,
             label=f"moving avg (w={window})",
         )
-    ax.axhline(np.mean(ep_rewards), color="red", ls="--", lw=1.0, label=f"mean={np.mean(ep_rewards):.2f}")
+    ax.axhline(np.mean(ep_rewards), ls="--", lw=1.0, label=f"mean={np.mean(ep_rewards):.2f}")
     ax.set_xlabel("Episode")
     ax.set_ylabel("Total reward")
     ax.set_title("Evaluation — reward per episode")
@@ -99,17 +101,16 @@ def _save_plots(ep_rewards: list, ep_lengths: list, metrics_log: dict, plot_dir:
 
     # ── Episode length lineplot ───────────────────────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(episodes, ep_lengths, alpha=0.4, color="darkorange", label="episode length")
+    ax.plot(episodes, ep_lengths, alpha=0.4, label="episode length")
     if len(ep_lengths) >= window:
         ma_len = np.convolve(ep_lengths, np.ones(window) / window, mode="valid")
         ax.plot(
             list(range(window, len(ep_lengths) + 1)),
             ma_len,
-            color="darkorange",
             lw=2,
             label=f"moving avg (w={window})",
         )
-    ax.axhline(np.mean(ep_lengths), color="red", ls="--", lw=1.0, label=f"mean={np.mean(ep_lengths):.1f}")
+    ax.axhline(np.mean(ep_lengths), ls="--", lw=1.0, label=f"mean={np.mean(ep_lengths):.1f}")
     ax.set_xlabel("Episode")
     ax.set_ylabel("Steps")
     ax.set_title("Evaluation — episode length")
@@ -123,17 +124,35 @@ def _save_plots(ep_rewards: list, ep_lengths: list, metrics_log: dict, plot_dir:
         flat = {}
         for key, value in metrics_log.items():
             if isinstance(value, (int, float)):
-                flat[key.replace("/", "\n")] = float(value)
+                flat[key] = float(value)
 
         if flat:
-            fig, ax = plt.subplots(figsize=(max(6, len(flat) * 0.8), 5))
-            keys = list(flat.keys())
-            vals = [flat[k] for k in keys]
-            bars = ax.bar(keys, vals, color="teal", alpha=0.75)
+            # opzionale: tieni solo le top-k metriche (evita grafici illeggibili)
+            TOP_K = None  # es. 12 per attivarlo
+            items = list(flat.items())
+            if TOP_K is not None and len(items) > TOP_K:
+                items = sorted(items, key=lambda x: abs(x[1]), reverse=True)[:TOP_K]
+
+            # pulizia + multiline label
+            def format_label(k: str) -> str:
+                k = k.replace("feat_", "").replace("events_", "").replace("action_", "")
+                return k.replace("_", "\n")
+
+            keys = [format_label(k) for k, _ in items]
+            vals = [v for _, v in items]
+
+            fig, ax = plt.subplots(figsize=(max(8, len(keys) * 1.0), 6))
+            bars = ax.bar(keys, vals, alpha=0.75)
+
             ax.bar_label(bars, fmt="%.3f", fontsize=8, padding=3)
             ax.set_title("Evaluation — aggregate metrics")
             ax.set_ylabel("Value")
-            ax.tick_params(axis="x", labelsize=8)
+
+            # evita sovrapposizione
+            ax.tick_params(axis="x", labelrotation=45)
+            for label in ax.get_xticklabels():
+                label.set_ha("right")
+
             fig.tight_layout()
             fig.savefig(str(plot_dir / "aggregate_metrics.png"), dpi=120)
             plt.close(fig)
