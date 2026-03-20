@@ -35,6 +35,7 @@ def main(cfg: DictConfig) -> None:
             device              = cfg.device,
             oracle              = cfg.christiano.oracle,
             label_mode          = cfg.christiano.label_mode,
+            oracle_temperature  = cfg.christiano.oracle_temperature,
             use_demonstrations  = cfg.christiano.use_demonstrations,
             use_demo_preferences= cfg.christiano.use_demo_preferences,
             n_reward_predictors = cfg.christiano.n_reward_predictors,

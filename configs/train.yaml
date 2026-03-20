@@ -3,14 +3,15 @@
 
 algorithm: christiano
 
-expert_model: "sumo-rl-ego/models/highway_e1_o2_rfast_dqn1"
+expert_model: "sumo-rl-ego/models"
 seed: 0
 device: cpu
 
 # ── Christiano RLHF parameters ───────────────────────────────────────────────
 christiano:
-  oracle: "env_reward"         # env_reward | qnet | human
+  oracle: "env_reward"         # env_reward | qnet | log_prob | human
   label_mode: "hard"           # hard | soft
+  oracle_temperature: 1.0      # Boltzmann τ for log_prob oracle (lower = sharper)
   use_demonstrations: false
   use_demo_preferences: false
   n_envs: 4
