@@ -9,7 +9,7 @@ device: cpu
 
 # ── Christiano RLHF parameters ───────────────────────────────────────────────
 christiano:
-  oracle: "env_reward"         # env_reward | qnet | log_prob | human
+  oracle: "env_reward"         # env_reward | qnet | q_action | log_prob | human
   label_mode: "hard"           # hard | soft
   oracle_temperature: 1.0      # Boltzmann τ for log_prob oracle (lower = sharper)
   use_demonstrations: false
@@ -32,7 +32,7 @@ christiano:
   max_gradient_norm: 0.5
 
   # Preference collection
-  initial_prefs: 500
+  initial_prefs: 2000
   segment_len: 25
   max_segs: 1000
   db_train_maxlen: 3000

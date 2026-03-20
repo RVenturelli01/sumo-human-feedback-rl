@@ -216,3 +216,4 @@ wandb/
 output/
 /run_experiments.sh
 /run_oracle_comparison.sh
+/tmp
