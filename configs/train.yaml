@@ -45,7 +45,7 @@ christiano:
 
   # Training
   total_env_steps: 1000000
-  rp_reload_interval: 200
+  rp_reload_interval: 50
   policy_save_interval: 100
 
   # Performance: max PyTorch intra-op threads per process.
