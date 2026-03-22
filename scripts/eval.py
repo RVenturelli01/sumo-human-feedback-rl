@@ -185,7 +185,7 @@ def main(cfg: DictConfig):
     print(f"[eval] Scenario     : {expert_cfg.env}")
 
     # ── Build single (non-vectorized) environment ─────────────────────────────
-    env = sre.make_env(expert_cfg.env, seed=train_cfg.seed)
+    env = sre.make_env(expert_cfg.env.id, seed=train_cfg.seed)
 
     # ── Load policy (SB3 A2C .zip format) ────────────────────────────────────
     agent_path = PROJECT_ROOT / cfg.agent.model
