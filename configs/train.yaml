@@ -54,6 +54,29 @@ christiano:
   # Example: 9 cores, 3 processes → 3. Conservative default: 2.
   torch_num_threads: 2
 
+# ── DQN baseline parameters (algorithm=dqn) ──────────────────────────────────
+# Exact hyperparameters from the expert model's training config
+# (sumo-rl-ego/models/.hydra/config.yaml) to reproduce the same training.
+dqn:
+  env_id: "HighwayEgo-v0"
+  n_envs: 16
+  learning_rate: 3.0e-4
+  buffer_size: 500000
+  learning_starts: 10000
+  batch_size: 128
+  tau: 1.0
+  gamma: 0.99
+  train_freq: 4
+  gradient_steps: 8
+  target_update_interval: 2000
+  exploration_fraction: 0.1
+  exploration_initial_eps: 1.0
+  exploration_final_eps: 0.02
+  max_grad_norm: 10
+  net_arch: [256, 256]
+  total_env_steps: 1000000
+  torch_num_threads: 4   # single process — can use more threads than RLHF workers
+
 # ── Weights & Biases ─────────────────────────────────────────────────────────
 wandb:
   project: "sumo-rlhf"

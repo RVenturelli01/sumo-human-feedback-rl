@@ -6,9 +6,11 @@ Usage:
     python scripts/train.py christiano.oracle=qnet
     python scripts/train.py christiano.use_demo_preferences=true christiano.db_train_maxlen=6000
     python scripts/train.py christiano.label_mode=soft wandb.tags='[soft,env_reward]'
+    python scripts/train.py algorithm=dqn
 """
 import multiprocessing as mp
 import sys
+from pathlib import Path
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -68,6 +70,66 @@ def main(cfg: DictConfig) -> None:
             wandb_tags          = list(cfg.wandb.get("tags", [])),
         )
         algo.train(output_dir=output_dir)
+
+    elif cfg.algorithm == "dqn":
+        import torch
+        import wandb
+        import sumo_rl_ego as sre
+        from stable_baselines3 import DQN
+        from stable_baselines3.common.vec_env import VecMonitor
+        from stable_baselines3.common.callbacks import BaseCallback
+
+        torch.set_num_threads(cfg.dqn.torch_num_threads)
+
+        class _WandbLogger(BaseCallback):
+            """Logs episode stats to wandb every ~10k env steps."""
+            def _on_step(self):
+                n = self.training_env.num_envs
+                if self.num_timesteps % 10000 < n:
+                    buf = self.model.ep_info_buffer
+                    if buf:
+                        wandb.log({
+                            "policy/mean_episode_length":       sum(e["l"] for e in buf) / len(buf),
+                            "policy/mean_episode_avg_true_rew": sum(e["r"] for e in buf) / len(buf),
+                        }, step=self.num_timesteps)
+                return True
+
+        wandb.init(
+            project=cfg.wandb.project,
+            entity=cfg.wandb.get("entity") or None,
+            tags=list(cfg.wandb.get("tags", [])),
+            config={**dict(cfg.dqn), "seed": cfg.seed},
+        )
+
+        env = sre.make_vec_env(cfg.dqn.env_id, n_envs=cfg.dqn.n_envs, base_seed=cfg.seed)
+        env = VecMonitor(env)
+
+        model = DQN(
+            "MlpPolicy",
+            env,
+            learning_rate=cfg.dqn.learning_rate,
+            buffer_size=cfg.dqn.buffer_size,
+            learning_starts=cfg.dqn.learning_starts,
+            batch_size=cfg.dqn.batch_size,
+            tau=cfg.dqn.tau,
+            gamma=cfg.dqn.gamma,
+            train_freq=cfg.dqn.train_freq,
+            gradient_steps=cfg.dqn.gradient_steps,
+            target_update_interval=cfg.dqn.target_update_interval,
+            exploration_fraction=cfg.dqn.exploration_fraction,
+            exploration_initial_eps=cfg.dqn.exploration_initial_eps,
+            exploration_final_eps=cfg.dqn.exploration_final_eps,
+            max_grad_norm=cfg.dqn.max_grad_norm,
+            policy_kwargs={"net_arch": list(cfg.dqn.net_arch)},
+            seed=cfg.seed,
+            verbose=0,
+        )
+        model.learn(total_timesteps=cfg.dqn.total_env_steps, callback=_WandbLogger())
+
+        Path(output_dir, "models").mkdir(parents=True, exist_ok=True)
+        model.save(str(Path(output_dir) / "models" / "dqn_baseline"))
+        wandb.finish()
+
     else:
         raise ValueError(f"Unknown algorithm: {cfg.algorithm!r}")
 
