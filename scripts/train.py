@@ -92,7 +92,8 @@ def main(cfg: DictConfig) -> None:
                         wandb.log({
                             "policy/mean_episode_length":       sum(e["l"] for e in buf) / len(buf),
                             "policy/mean_episode_avg_true_rew": sum(e["r"] for e in buf) / len(buf),
-                        }, step=self.num_timesteps)
+                            "a2c_step":                         self.num_timesteps,
+                        })
                 return True
 
         tags = list(cfg.wandb.get("tags", []))
@@ -103,6 +104,7 @@ def main(cfg: DictConfig) -> None:
             tags=tags,
             config={**dict(cfg.dqn), "seed": cfg.seed},
         )
+        wandb.define_metric("policy/*", step_metric="a2c_step")
 
         env = sre.make_vec_env(cfg.dqn.env_id, n_envs=cfg.dqn.n_envs, base_seed=cfg.seed)
         env = VecMonitor(env)
