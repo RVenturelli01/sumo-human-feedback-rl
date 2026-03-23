@@ -1,10 +1,10 @@
 run:
   # Path to the training run directory (relative to project root output/)
-  dir: "output/2026-03-21_23-25-29_q_action_nodemo_s0"
+  dir: "output/2026-03-22_17-04-17_env_reward_demo_s0"
 
 agent:
   # Path to the policy checkpoint (relative to project root)
-  model: "output/2026-03-21_23-25-29_q_action_nodemo_s0/models/policy_christiano"
+  model: "output/2026-03-22_17-04-17_env_reward_demo_s0/models/policy_christiano"
 
 eval:
   episodes: 100

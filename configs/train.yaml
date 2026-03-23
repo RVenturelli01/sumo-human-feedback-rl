@@ -46,6 +46,7 @@ christiano:
   # Training
   total_env_steps: 1000000
   rp_reload_interval: 50
+  rp_retrain_min_new_prefs: 50  # min new prefs before triggering RP retrain (independent of rp_val_interval)
   policy_save_interval: 100
 
   # Performance: max PyTorch intra-op threads per process.

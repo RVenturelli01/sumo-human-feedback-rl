@@ -63,6 +63,7 @@ def main(cfg: DictConfig) -> None:
             max_query_interval  = cfg.christiano.max_query_interval,
             total_env_steps     = cfg.christiano.total_env_steps,
             rp_reload_interval  = cfg.christiano.rp_reload_interval,
+            rp_retrain_min_new_prefs = cfg.christiano.rp_retrain_min_new_prefs,
             policy_save_interval= cfg.christiano.policy_save_interval,
             torch_num_threads   = cfg.christiano.torch_num_threads,
             wandb_project       = cfg.wandb.project,
@@ -94,10 +95,12 @@ def main(cfg: DictConfig) -> None:
                         }, step=self.num_timesteps)
                 return True
 
+        tags = list(cfg.wandb.get("tags", []))
         wandb.init(
             project=cfg.wandb.project,
             entity=cfg.wandb.get("entity") or None,
-            tags=list(cfg.wandb.get("tags", [])),
+            name=tags[0] if tags else None,
+            tags=tags,
             config={**dict(cfg.dqn), "seed": cfg.seed},
         )
 
