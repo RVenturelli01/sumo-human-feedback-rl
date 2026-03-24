@@ -42,6 +42,8 @@ christiano:
   demo_db_maxlen: 1500
   disagreement_candidates: 20
   max_query_interval: 5.0
+  ood_k: null        # z-score threshold for OOD filtering (null = disabled); e.g. 3.0
+  ood_warmup: 5000   # frames to observe before OOD filter activates
 
   # Training
   total_env_steps: 1000000
