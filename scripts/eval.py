@@ -177,9 +177,8 @@ def main(cfg: DictConfig):
     run_dir = PROJECT_ROOT / cfg.run.dir
     train_cfg = OmegaConf.load(run_dir / "config.yaml")
 
-    expert_cfg = OmegaConf.load(
-        PROJECT_ROOT / train_cfg.env.expert_model / ".hydra" / "config.yaml"
-    )
+    from human_feedback_rl.common.utils.env_setup import _load_policy_cfg
+    expert_cfg = _load_policy_cfg(train_cfg.env.expert_model)
 
     print(f"[eval] Training run : {run_dir}")
     print(f"[eval] Scenario     : {expert_cfg.env}")

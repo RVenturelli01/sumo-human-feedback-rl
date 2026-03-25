@@ -31,7 +31,7 @@ def main(cfg: DictConfig) -> None:
         from human_feedback_rl.algorithms.christiano import ChristianoRLHF
 
         algo = ChristianoRLHF(
-            expert_model_path   = cfg.expert_model,
+            expert_policy_id    = cfg.expert_model,
             seed                = cfg.seed,
             n_envs              = cfg.christiano.n_envs,
             device              = cfg.device,
@@ -61,8 +61,6 @@ def main(cfg: DictConfig) -> None:
             demo_db_maxlen      = cfg.christiano.demo_db_maxlen,
             disagreement_candidates = cfg.christiano.disagreement_candidates,
             max_query_interval  = cfg.christiano.max_query_interval,
-            ood_k               = cfg.christiano.get("ood_k", None),
-            ood_warmup          = cfg.christiano.get("ood_warmup", 5000),
             total_env_steps     = cfg.christiano.total_env_steps,
             rp_reload_interval  = cfg.christiano.rp_reload_interval,
             rp_retrain_min_new_prefs = cfg.christiano.rp_retrain_min_new_prefs,

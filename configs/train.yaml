@@ -3,13 +3,13 @@
 
 algorithm: christiano
 
-expert_model: "sumo-rl-ego/models"
+expert_model: "ppo-v0"
 seed: 0
 device: cpu
 
 # ── Christiano RLHF parameters ───────────────────────────────────────────────
 christiano:
-  oracle: "env_reward"         # env_reward | qnet | q_action | log_prob | human
+  oracle: "ppo_log_prob"         # env_reward | qnet | q_action | log_prob | human
   label_mode: "hard"           # hard | soft
   oracle_temperature: 1.0      # Boltzmann τ for log_prob oracle (lower = sharper)
   use_demonstrations: false
@@ -42,8 +42,6 @@ christiano:
   demo_db_maxlen: 1500
   disagreement_candidates: 20
   max_query_interval: 5.0
-  ood_k: null        # z-score threshold for OOD filtering (null = disabled); e.g. 3.0
-  ood_warmup: 5000   # frames to observe before OOD filter activates
 
   # Training
   total_env_steps: 1000000
@@ -59,7 +57,7 @@ christiano:
 
 # ── DQN baseline parameters (algorithm=dqn) ──────────────────────────────────
 # Exact hyperparameters from the expert model's training config
-# (sumo-rl-ego/models/.hydra/config.yaml) to reproduce the same training.
+# (sumo_rl_ego/policies/models/dqn_v0/config.yaml) to reproduce the same training.
 dqn:
   env_id: "HighwayEgo-v0"
   n_envs: 16
@@ -82,7 +80,7 @@ dqn:
 
 # ── Weights & Biases ─────────────────────────────────────────────────────────
 wandb:
-  project: "sumo-rlhf"
+  project: "ppo-test"
   entity: null
   tags: []
 

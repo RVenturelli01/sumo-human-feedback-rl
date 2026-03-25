@@ -36,14 +36,13 @@ def main(cfg: DictConfig):
     run_dir   = PROJECT_ROOT / cfg.run.dir
     train_cfg = OmegaConf.load(run_dir / "config.yaml")
 
-    expert_cfg = OmegaConf.load(
-        PROJECT_ROOT / train_cfg.env.expert_model / ".hydra" / "config.yaml"
-    )
+    from human_feedback_rl.common.utils.env_setup import _load_policy_cfg
+    expert_cfg = _load_policy_cfg(train_cfg.env.expert_model)
 
     print(f"[play] Scenario : {expert_cfg.env}")
     print(f"[play] Policy   : {cfg.agent.model}")
 
-    env = sre.make_env(expert_cfg.env, seed=train_cfg.seed, use_gui=True)
+    env = sre.make_env(expert_cfg.env.id, seed=train_cfg.seed, use_gui=True)
 
     # ── Load policy (SB3 A2C .zip format) ────────────────────────────────────
     agent_path = PROJECT_ROOT / cfg.agent.model
