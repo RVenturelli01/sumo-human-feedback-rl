@@ -1,13 +1,22 @@
 run:
-  # Path to the training run directory (relative to project root output/)
-  dir: "output/2026-03-24_11-32-45_christiano_orig_s0"
+  # Path to the training run directory (relative to project root).
+  # Used to load the training config and reproduce the exact environment.
+  dir: "output/christiano/2026-03-24_11-32-45_christiano_orig_s0"
+  seed: 0
+  n_episodes: 100
 
-agent:
-  # Path to the policy checkpoint (relative to project root)
-  model: "output/2026-03-24_11-32-45_christiano_orig_s0/models/policy_christiano"
+source:
+  # Path to the SB3 A2C checkpoint (relative to project root, without .zip).
+  model_path: "output/christiano/2026-03-24_11-32-45_christiano_orig_s0/models/policy_christiano"
+  model_id: null
+  policy_id: null
+  policy_class: null
 
-eval:
-  episodes: 100
+wandb:
+  enabled: false
+  kwargs:
+    project: "sumo-rlhf-eval"
+    entity: null
 
 hydra:
   run:

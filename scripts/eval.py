@@ -4,160 +4,141 @@ Evaluate a policy trained with scripts/train.py.
 Usage:
     python scripts/eval.py \
         run.dir=output/christiano/2026-03-18_10-13-21 \
-        agent.model=output/christiano/2026-03-18_10-13-21/models/policy_christiano
+        source.model_path=output/christiano/2026-03-18_10-13-21/models/policy_christiano
 
-    # override number of evaluation episodes
-    python scripts/eval.py run.dir=... eval.episodes=100
+    # override number of episodes or seed
+    python scripts/eval.py run.dir=... source.model_path=... run.n_episodes=200 run.seed=42
 """
 
-import hydra
-from tqdm import tqdm
-from omegaconf import DictConfig, OmegaConf
-from pathlib import Path
-
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
-
+import hydra
+import wandb
 import sumo_rl_ego as sre
+
+from collections import defaultdict
+from pathlib import Path
+from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import A2C as SB3A2C
+from sumo_gym_ego import EgoStatus
+
+from sumo_rl_ego.utils import (
+    init_wandb,
+    resolve_paths,
+    confirm_cfg,
+    check_source_cfg,
+)
+
+from human_feedback_rl.common.utils.env_setup import _load_policy_cfg, _env_kwargs
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Policy wrapper
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _DeterministicPolicy:
+    """
+    Wraps an SB3 model to match the sre.run_episode policy interface:
+        policy.reset()
+        policy.predict(obs) -> action
+    Uses deterministic=True so evaluation is reproducible.
+    """
+    def __init__(self, model):
+        self._model = model
+
+    def reset(self):
+        pass
+
+    def predict(self, obs):
+        action, _ = self._model.predict(obs, deterministic=True)
+        return action
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Metrics
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EvalMetrics:
+
+    def __init__(self):
+        self.data = defaultdict(list)
+
+    def add_episode(self, info):
+        ep = info.get("metrics", {}).get("episode", {})
+
+        for key, value in ep.items():
+            self.data[key].append(value)
+
+        ep_length   = info.get("step", 0)
+        ep_duration = info.get("sim_time", 0.0)
+        self.data["performance/ep_length"].append(float(ep_length))
+        self.data["performance/ep_duration"].append(float(ep_duration))
+
+        ego_status = info.get("ego_status", EgoStatus.RUNNING)
+        self.data["event_rate/collisions"].append(int(ego_status == EgoStatus.COLLIDED.value))
+        self.data["event_rate/off_road"].append(int(ego_status == EgoStatus.OFF_ROAD.value))
+        self.data["event_rate/timeouts"].append(int(ego_status == EgoStatus.TIMEOUT.value))
+        self.data["event_rate/successes"].append(int(ego_status == EgoStatus.ARRIVED.value))
+
+    def print_metrics(self):
+        current = ""
+        for key in sorted(self.data.keys()):
+            values = self.data[key]
+            if not values:
+                continue
+            mean = np.mean(values)
+            sec, name = key.split("/", 1)
+            if sec != current:
+                current = sec
+                print(f"\n=== {sec} ===")
+            print(f"  {name}: {mean:.3f}")
+
+    def log_metrics(self):
+        sre.utils.log_histogram(
+            data=self.data["performance/ep_duration"],
+            value="duration",
+            title="Duration over episodes")
+
+        sre.utils.log_histogram(
+            data=self.data["performance/ep_avg_speed"],
+            value="avg_speed",
+            title="Average Speed Distribution")
+
+        sre.utils.log_histogram(
+            data=self.data["rewards/ep_fast_return"],
+            value="fast_return",
+            title="Fast Return Distribution")
+
+        sre.utils.log_histogram(
+            data=self.data["rewards/ep_comfort_return"],
+            value="comfort_return",
+            title="Comfort Return Distribution")
+
+        sre.utils.log_bar_plot(
+            data=[
+                ["collisions", np.mean(self.data["event_rate/collisions"])],
+                ["off_road",   np.mean(self.data["event_rate/off_road"])],
+                ["timeouts",   np.mean(self.data["event_rate/timeouts"])],
+                ["successes",  np.mean(self.data["event_rate/successes"])],
+            ],
+            value="rate",
+            title="Event Rates",
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _print_metrics(log: dict):
-    """Pretty-print the environment's metric groups."""
-    groups: dict = {}
-    for key, value in log.items():
-        group, name = key.split("/", 1)
-        groups.setdefault(group, {})[name] = value
-
-    for group, items in groups.items():
-        print(f"[{group}]")
-        for name, value in items.items():
-            if isinstance(value, float):
-                value = round(value, 4)
-            print(f"  {name:26s}: {value}")
-        print()
-
-
-def _run_episodes(env, policy, episodes: int):
-    """Roll out `policy` for `episodes` episodes; return per-episode rewards and lengths."""
-    print(f"\n=== Evaluating — {episodes} episodes ===")
-
-    ep_rewards = []
-    ep_lengths = []
-
-    for _ in tqdm(range(episodes)):
-        obs, _ = env.reset()
-        terminated = truncated = False
-        ep_reward = 0.0
-        ep_len = 0
-
-        while not (terminated or truncated):
-            action, _ = policy.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, _ = env.step(action)
-            ep_reward += reward
-            ep_len += 1
-
-        ep_rewards.append(ep_reward)
-        ep_lengths.append(ep_len)
-
-    return ep_rewards, ep_lengths
-
-
-def _save_plots(ep_rewards: list, ep_lengths: list, metrics_log: dict, plot_dir: Path) -> None:
-    """Generate and save evaluation plots to plot_dir."""
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    plot_dir.mkdir(parents=True, exist_ok=True)
-
-    episodes = list(range(1, len(ep_rewards) + 1))
-    window = max(1, len(ep_rewards) // 10)
-
-    # ── Reward lineplot with moving average ──────────────────────────────────
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(episodes, ep_rewards, alpha=0.4, label="episode reward")
-    if len(ep_rewards) >= window:
-        ma = np.convolve(ep_rewards, np.ones(window) / window, mode="valid")
-        ax.plot(
-            list(range(window, len(ep_rewards) + 1)),
-            ma,
-            lw=2,
-            label=f"moving avg (w={window})",
-        )
-    ax.axhline(np.mean(ep_rewards), ls="--", lw=1.0, label=f"mean={np.mean(ep_rewards):.2f}")
-    ax.set_xlabel("Episode")
-    ax.set_ylabel("Total reward")
-    ax.set_title("Evaluation — reward per episode")
-    ax.legend(fontsize=9)
-    fig.tight_layout()
-    fig.savefig(str(plot_dir / "reward_per_episode.png"), dpi=120)
-    plt.close(fig)
-
-    # ── Episode length lineplot ───────────────────────────────────────────────
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(episodes, ep_lengths, alpha=0.4, label="episode length")
-    if len(ep_lengths) >= window:
-        ma_len = np.convolve(ep_lengths, np.ones(window) / window, mode="valid")
-        ax.plot(
-            list(range(window, len(ep_lengths) + 1)),
-            ma_len,
-            lw=2,
-            label=f"moving avg (w={window})",
-        )
-    ax.axhline(np.mean(ep_lengths), ls="--", lw=1.0, label=f"mean={np.mean(ep_lengths):.1f}")
-    ax.set_xlabel("Episode")
-    ax.set_ylabel("Steps")
-    ax.set_title("Evaluation — episode length")
-    ax.legend(fontsize=9)
-    fig.tight_layout()
-    fig.savefig(str(plot_dir / "episode_length.png"), dpi=120)
-    plt.close(fig)
-
-    # ── Aggregate metrics barplot ─────────────────────────────────────────────
-    if metrics_log:
-        flat = {}
-        for key, value in metrics_log.items():
-            if isinstance(value, (int, float)):
-                flat[key] = float(value)
-
-        if flat:
-            # opzionale: tieni solo le top-k metriche (evita grafici illeggibili)
-            TOP_K = None  # es. 12 per attivarlo
-            items = list(flat.items())
-            if TOP_K is not None and len(items) > TOP_K:
-                items = sorted(items, key=lambda x: abs(x[1]), reverse=True)[:TOP_K]
-
-            # pulizia + multiline label
-            def format_label(k: str) -> str:
-                k = k.replace("feat_", "").replace("events_", "").replace("action_", "")
-                return k.replace("_", "\n")
-
-            keys = [format_label(k) for k, _ in items]
-            vals = [v for _, v in items]
-
-            fig, ax = plt.subplots(figsize=(max(8, len(keys) * 1.0), 6))
-            bars = ax.bar(keys, vals, alpha=0.75)
-
-            ax.bar_label(bars, fmt="%.3f", fontsize=8, padding=3)
-            ax.set_title("Evaluation — aggregate metrics")
-            ax.set_ylabel("Value")
-
-            # evita sovrapposizione
-            ax.tick_params(axis="x", labelrotation=45)
-            for label in ax.get_xticklabels():
-                label.set_ha("right")
-
-            fig.tight_layout()
-            fig.savefig(str(plot_dir / "aggregate_metrics.png"), dpi=120)
-            plt.close(fig)
-
-    print(f"\n[eval] Plots saved to {plot_dir}")
+def _print_eval_cfg(cfg, env_id, env_kw):
+    print(f"\n========== EVAL CONFIG ==========\n")
+    print(OmegaConf.to_yaml(cfg, resolve=True))
+    print("================== Summary ==================\n")
+    print(f"Environment  : {env_id}")
+    print(f"Env kwargs   : {env_kw}")
+    print(f"Policy path  : {cfg.source.model_path}")
+    print(f"Episodes     : {cfg.run.n_episodes}")
+    print(f"Seed         : {cfg.run.seed}")
+    print("\n=============================================\n")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -166,47 +147,47 @@ def _save_plots(ep_rewards: list, ep_lengths: list, metrics_log: dict, plot_dir:
 
 @hydra.main(version_base=None, config_path="../configs", config_name="eval.yaml")
 def main(cfg: DictConfig):
+    resolve_paths(cfg)
+    check_source_cfg(cfg)
 
-    print("\nConfiguration:")
-    print(OmegaConf.to_yaml(cfg))
-
-    # PROJECT_ROOT = sumo-human-feedback-rl/ (root of the repo)
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-    # ── Load training config to reproduce the exact environment ──────────────
-    run_dir = PROJECT_ROOT / cfg.run.dir
-    train_cfg = OmegaConf.load(run_dir / "config.yaml")
-
-    from human_feedback_rl.common.utils.env_setup import _load_policy_cfg
+    # Load training config to reproduce the exact environment used during training.
+    run_dir    = PROJECT_ROOT / cfg.run.dir
+    train_cfg  = OmegaConf.load(run_dir / "config.yaml")
     expert_cfg = _load_policy_cfg(train_cfg.env.expert_model)
+    env_id     = expert_cfg.env.id
+    env_kw     = _env_kwargs(expert_cfg)
 
-    print(f"[eval] Training run : {run_dir}")
-    print(f"[eval] Scenario     : {expert_cfg.env}")
+    _print_eval_cfg(cfg, env_id, env_kw)
+    confirm_cfg()
 
-    # ── Build single (non-vectorized) environment ─────────────────────────────
-    env = sre.make_env(expert_cfg.env.id, seed=train_cfg.seed)
+    run = init_wandb(cfg)
+    env = None
 
-    # ── Load policy (SB3 A2C .zip format) ────────────────────────────────────
-    agent_path = PROJECT_ROOT / cfg.agent.model
-    print(f"[eval] Policy path  : {agent_path}")
+    try:
+        env = sre.make_env(env_id, seed=cfg.run.seed, **env_kw)
 
-    policy = SB3A2C.load(str(agent_path), device="cpu")
+        model  = SB3A2C.load(str(PROJECT_ROOT / cfg.source.model_path), device="cpu")
+        policy = _DeterministicPolicy(model)
 
-    # ── Run evaluation ────────────────────────────────────────────────────────
-    ep_rewards, ep_lengths = _run_episodes(env, policy, cfg.eval.episodes)
+        metrics = EvalMetrics()
 
-    # ── Print environment metrics ─────────────────────────────────────────────
-    log = env.metrics_tracker.get_log_metrics()
-    _print_metrics(log)
+        print(f"Running evaluation — {cfg.run.n_episodes} episodes…")
+        for _ in range(cfg.run.n_episodes):
+            info = sre.run_episode(env, policy, seed=cfg.run.seed)
+            metrics.add_episode(info)
 
-    # ── Save plots ────────────────────────────────────────────────────────────
-    plot_dir = run_dir / "eval_plots"
-    _save_plots(ep_rewards, ep_lengths, log, plot_dir)
+        if run is not None:
+            metrics.log_metrics()
 
-    print(f"\n[eval] Mean reward : {np.mean(ep_rewards):.3f} ± {np.std(ep_rewards):.3f}")
-    print(f"[eval] Mean length : {np.mean(ep_lengths):.1f}")
+        metrics.print_metrics()
 
-    env.close()
+    finally:
+        if env is not None:
+            env.close()
+        if run is not None:
+            run.finish()
 
 
 if __name__ == "__main__":

@@ -214,6 +214,7 @@ __marimo__/
 wandb/
 
 output/
-/run_experiments.sh
-/run_oracle_comparison.sh
+/random/run_experiments.sh
+/random/run_oracle_comparison.sh
 /tmp
+random/
