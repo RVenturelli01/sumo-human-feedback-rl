@@ -39,3 +39,5 @@ preferences:
   demo_db_maxlen: 1500
   disagreement_candidates: 20
   max_query_interval: 0.0
+model:
+  algo: A2C

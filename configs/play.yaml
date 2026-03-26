@@ -1,19 +1,27 @@
-run:
-  # Path to the training run directory (relative to project root output/)
-  dir: "output/2026-03-19_12-30-11_demo_pref"
+run: 
+  name: "play"
+  seed: 0
+  manual: true
+  output_dir: ${hydra:runtime.output_dir}
+  
 
-agent:
-  # Path to the policy checkpoint (relative to project root)
-  model: "output/2026-03-19_12-30-11_demo_pref/models/policy_christiano"
+# only one between: model_id | model_path | policy_id | policy_class 
+source:  
+  model_id: null 
+  model_path: null
+  policy_id: null
+  policy_class: 
+    __target__: null
 
-eval:
-  episodes: null          # null = run forever until Ctrl+C
 
-play:
-  step_delay: 0.05         # seconds between steps (0 = as fast as possible)
-  interactive: false      # true = press Enter before each step
+env:
+  id: "HighwayEgo-v0"
+  kwargs:
+    reward: "fast"
+    ego: "discrete"
+
 
 hydra:
   run:
-    dir: /tmp/hydra_play/${now:%Y-%m-%d_%H-%M-%S}
+    dir: .
   output_subdir: null

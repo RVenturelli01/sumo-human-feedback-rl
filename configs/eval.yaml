@@ -1,24 +1,39 @@
 run:
-  # Path to the training run directory (relative to project root).
-  # Used to load the training config and reproduce the exact environment.
-  dir: "output/christiano/2026-03-24_11-32-45_christiano_orig_s0"
-  seed: 0
+  name: "eval"
   n_episodes: 100
+  seed: 0
+  output_dir: 
 
-source:
-  # Path to the SB3 A2C checkpoint (relative to project root, without .zip).
-  model_path: "output/christiano/2026-03-24_11-32-45_christiano_orig_s0/models/policy_christiano"
-  model_id: null
+
+# only one between: model_id | model_path | policy_id | policy_class 
+source: 
+  model_id: null 
+  model_path: null
   policy_id: null
-  policy_class: null
+  policy_class:
+    __target__: null
+
 
 wandb:
   enabled: false
   kwargs:
-    project: "sumo-rlhf-eval"
-    entity: null
+    project: "sre-eval"
+    group: ${env.id}_${env.kwargs.reward}
+    name: ${run.name}
+    mode: "online"
+    dir: ${hydra:run.dir}/wandb
+    notes: null
+
+
+env:
+  id: "HighwayEgo-v0"
+  kwargs:
+    reward: "fast"
+    ego: "discrete"
+
 
 hydra:
+  job:
+    chdir: true
   run:
-    dir: /tmp/hydra_eval/${now:%Y-%m-%d_%H-%M-%S}
-  output_subdir: null
+    dir: ${run.output_dir}/eval/${now:%Y-%m-%d}_${now:%H-%M-%S}_${run.name}

@@ -1,91 +1,85 @@
-# Entry point config for training RLHF algorithms.
-# All algorithm-specific params can be overridden from command line.
+run:
+  name: ""
+  seed: 0
+  output_dir: null
 
-algorithm: christiano
 
-expert_model: "ppo-v0"
-seed: 0
-device: cpu
-
-# ── Christiano RLHF parameters ───────────────────────────────────────────────
-christiano:
-  oracle: "ppo_log_prob"         # env_reward | qnet | q_action | log_prob | human
-  label_mode: "hard"           # hard | soft
-  oracle_temperature: 1.0      # Boltzmann τ for log_prob oracle (lower = sharper)
-  use_demonstrations: false
-  use_demo_preferences: false
-  n_envs: 4
-
-  # Reward predictor
-  n_reward_predictors: 3
-  rp_lr: 2.0e-4
-  rp_val_interval: 50
-  demo_weight: 1.0
-  demo_margin: 1.0
-
-  # Policy (A2C)
-  policy_lr: 7.0e-4
-  gamma: 0.99
-  rollout_steps: 64
-  entropy_coef: 0.01
-  value_coef: 0.5
-  max_gradient_norm: 0.5
-
-  # Preference collection
-  initial_prefs: 2000
-  segment_len: 25
-  max_segs: 1000
-  db_train_maxlen: 3000
-  db_val_maxlen: 750
-  seg_pipe_maxsize: 100
-  demo_seg_pipe_maxsize: 100
-  demo_db_maxlen: 1500
-  disagreement_candidates: 20
-  max_query_interval: 5.0
-
-  # Training
-  total_env_steps: 1000000
-  rp_reload_interval: 50
-  rp_retrain_min_new_prefs: 50  # min new prefs before triggering RP retrain (independent of rp_val_interval)
-  policy_save_interval: 100
-
-  # Performance: max PyTorch intra-op threads per process.
-  # Prevents thread-pool contention when multiple processes share few CPU cores.
-  # Rule of thumb: floor(n_assigned_cores / n_processes).
-  # Example: 9 cores, 3 processes → 3. Conservative default: 2.
-  torch_num_threads: 2
-
-# ── DQN baseline parameters (algorithm=dqn) ──────────────────────────────────
-# Exact hyperparameters from the expert model's training config
-# (sumo_rl_ego/policies/models/dqn_v0/config.yaml) to reproduce the same training.
-dqn:
-  env_id: "HighwayEgo-v0"
-  n_envs: 16
-  learning_rate: 3.0e-4
-  buffer_size: 500000
-  learning_starts: 10000
-  batch_size: 128
-  tau: 1.0
-  gamma: 0.99
-  train_freq: 4
-  gradient_steps: 8
-  target_update_interval: 2000
-  exploration_fraction: 0.1
-  exploration_initial_eps: 1.0
-  exploration_final_eps: 0.02
-  max_grad_norm: 10
-  net_arch: [256, 256]
-  total_env_steps: 1000000
-  torch_num_threads: 4   # single process — can use more threads than RLHF workers
-
-# ── Weights & Biases ─────────────────────────────────────────────────────────
 wandb:
-  project: "ppo-test"
-  entity: null
-  tags: []
+  enabled: true
+  kwargs:
+    project: "sre-train"
+    group: ${env.id}_${env.kwargs.ego}_${env.kwargs.reward}
+    name: ${run.name}
+    mode: "online"
+    dir: ${hydra:runtime.cwd}/wandb
+    sync_tensorboard: true
+    notes: null
 
-# ── Hydra ────────────────────────────────────────────────────────────────────
+
+env:
+  id: "HighwayEgo-v0"
+  n_envs: 16
+  kwargs:
+    reward: "fast"
+    ego: "discrete"
+
+
+
+algorithm:
+  name: humlrn-v0
+  expert_id: ppo-v0
+
+  kwargs:
+    total_timesteps: 2e6
+    num_iterations: 10
+
+  learn:
+    kwargs:
+
+  agent:
+    algo: "DQN"
+    kwargs:
+      policy: MlpPolicy
+      learning_rate: 0.0001
+      buffer_size: 500000
+      learning_starts: 10000
+      batch_size: 512
+      tau: 1.0
+      gamma: 0.99
+      train_freq: 4
+      gradient_steps: 8
+      replay_buffer_class: null
+      replay_buffer_kwargs: null
+      optimize_memory_usage: false
+      n_steps: 1
+      target_update_interval: 1000
+      exploration_fraction: 0.3
+      exploration_initial_eps: 0.5
+      exploration_final_eps: 0.05
+      max_grad_norm: 10
+      stats_window_size: 100
+      policy_kwargs:
+        net_arch: [128, 128]
+      verbose: 1
+      seed: ${run.seed}
+      device: "cpu"
+      tensorboard_log: ${hydra:runtime.cwd}/tensorboard
+
+
+
+
+
+# algorithm:
+#   name: christiano
+#   kwargs:
+#     total_timesteps: 2e6
+#     num_iterations: 10
+
+
 hydra:
+  job:
+    chdir: true
   run:
-    dir: output/${algorithm}/${now:%Y-%m-%d_%H-%M-%S}
-  output_subdir: null
+    dir: ${run.output_dir}/train/${now:%Y-%m-%d}_${now:%H-%M-%S}_${run.name}
+
+
