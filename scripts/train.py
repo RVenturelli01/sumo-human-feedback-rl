@@ -4,6 +4,15 @@ import sumo_rl_ego as sre
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
+from human_feedback_rl.algorithms import ChristianoAlgorithm
+
+class DaggerAlgorithm:
+    def __init__():
+        pass
+
+class HumLrnAlgorithm_v0:
+    def __init__():
+        pass
 
 
 from sumo_rl_ego.utils import (
@@ -21,6 +30,17 @@ ALGO_REGISTRY = {
     "TD3": TD3,
 }
     
+
+    
+def print_train_cfg(cfg):
+    print(f"\n========== TRAIN CONFIG ==========\n")
+    print(OmegaConf.to_yaml(cfg, resolve=True))
+    print("================== Summary ==================\n")
+    print(f"Environment: {cfg.env.id} (x{cfg.env.n_envs} envs)")
+    print(f"Environment arguments: {cfg.env.kwargs}")
+    print(f"Algorithm: {cfg.algo.name}")
+    print("\n=============================================\n")
+
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="train.yaml")
@@ -46,7 +66,10 @@ def main(cfg: DictConfig) -> None:
         if cfg.algo.name == "christiano":
             print("Initializing agent...")
             algo_cls = ALGO_REGISTRY[cfg.algo.agent.algo]
-            agent = algo_cls(**cfg.algo.agent.kwargs)
+            agent = algo_cls(
+                env=env,
+                **cfg.algo.agent.kwargs
+            )
 
             print("Initializing algorithm...")
             algo = ChristianoAlgorithm(

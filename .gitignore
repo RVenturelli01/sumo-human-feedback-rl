@@ -213,9 +213,9 @@ __marimo__/
 # Weights & Biases
 wandb/
 
-output/
+outputs*
 /random/run_experiments.sh
 /random/run_oracle_comparison.sh
 /tmp
 
-launcher.sh
+# launcher.sh

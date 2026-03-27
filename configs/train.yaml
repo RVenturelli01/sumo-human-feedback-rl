@@ -1,5 +1,5 @@
 defaults:
-  - algo: christiano
+  - algo: null
   - _self_
 
 
@@ -12,18 +12,18 @@ run:
 wandb:
   enabled: true
   kwargs:
-    project: "sre-train"
+    project: "shfre-train"
     group: ${env.id}_${env.kwargs.ego}_${env.kwargs.reward}
     name: ${run.name}
     mode: "online"
-    dir: ${hydra:runtime.cwd}/wandb
-    sync_tensorboard: true
+    dir: ${hydra:run.dir}/wandb
+    sync_tensorboard: false
     notes: null
 
 
 env:
   id: "HighwayEgo-v0"
-  n_envs: 16
+  n_envs: 4
   kwargs:
     reward: "fast"
     ego: "discrete"
