@@ -1,0 +1,42 @@
+
+name: christiano
+
+
+kwargs:
+  total_timesteps: 2e6
+  num_iterations: 10
+
+
+train:
+  kwargs:
+
+
+agent:
+  algo: "PPO"
+  kwargs:
+    policy: "MlpPolicy"
+    learning_rate: 3e-4
+    n_steps: 1024  # 2048
+    batch_size: 256  # 64
+    n_epochs: 5
+    gamma: 0.995
+    gae_lambda: 0.95
+    clip_range: 0.2
+    clip_range_vf: null
+    normalize_advantage: true
+    ent_coef: 0.03
+    vf_coef: 0.8
+    max_grad_norm: 0.5
+    use_sde: false
+    sde_sample_freq: -1
+    rollout_buffer_class: null
+    rollout_buffer_kwargs: {}
+    target_kl: null
+    stats_window_size: 100
+    policy_kwargs: 
+      net_arch: [256, 128]
+    seed: ${run.seed}
+    device: "cpu"
+    tensorboard_log: ${hydra:runtime.cwd}/tensorboard
+    verbose: 1
+

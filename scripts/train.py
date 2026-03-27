@@ -43,37 +43,37 @@ def main(cfg: DictConfig) -> None:
             **cfg.env.kwargs
         )
 
-        if cfg.algorithm.name == "christiano":
+        if cfg.algo.name == "christiano":
             print("Initializing agent...")
-            algo_cls = ALGO_REGISTRY[cfg.algorithm.agent.algo]
-            agent = algo_cls(**cfg.algorithm.agent.kwargs)
+            algo_cls = ALGO_REGISTRY[cfg.algo.agent.algo]
+            agent = algo_cls(**cfg.algo.agent.kwargs)
 
             print("Initializing algorithm...")
             algo = ChristianoAlgorithm(
                 env=env,
                 agent=agent,
-                **cfg.algorithm.kwargs,
+                **cfg.algo.kwargs,
             )
 
         elif cfg.algorithm.name == "dagger":
             print("Initializing algorithm...")
-            algo = DaggerAlgorithm(env, **cfg.algorithm.kwargs)
+            algo = DaggerAlgorithm(env, **cfg.algo.kwargs)
 
-        elif cfg.algorithm.name == "humlrn-v0":
+        elif cfg.algo.name == "humlrn-v0":
             print("Initializing agent...")
-            algo_cls = ALGO_REGISTRY[cfg.algorithm.agent.algo]
-            agent = algo_cls(**cfg.algorithm.agent.kwargs)
+            algo_cls = ALGO_REGISTRY[cfg.algo.agent.algo]
+            agent = algo_cls(**cfg.algo.agent.kwargs)
 
-            print("Initializing algorithm...")
+            print("Initializing algo...")
             algo = HumLrnAlgorithm_v0(
                 env=env,
                 agent=agent,
-                **cfg.algorithm.kwargs,
+                **cfg.algo.kwargs,
             )
 
 
         print("Starting training...")
-        agent = algo.train(**cfg.algorithm.train.kwargs)
+        agent = algo.train(**cfg.algo.train.kwargs)
 
         
         print("\nTraining finished.")

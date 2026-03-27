@@ -1,3 +1,8 @@
+defaults:
+  - algo: christiano
+  - _self_
+
+
 run:
   name: ""
   seed: 0
@@ -22,58 +27,6 @@ env:
   kwargs:
     reward: "fast"
     ego: "discrete"
-
-
-
-algorithm:
-  name: humlrn-v0
-  expert_id: ppo-v0
-
-  kwargs:
-    total_timesteps: 2e6
-    num_iterations: 10
-
-  learn:
-    kwargs:
-
-  agent:
-    algo: "DQN"
-    kwargs:
-      policy: MlpPolicy
-      learning_rate: 0.0001
-      buffer_size: 500000
-      learning_starts: 10000
-      batch_size: 512
-      tau: 1.0
-      gamma: 0.99
-      train_freq: 4
-      gradient_steps: 8
-      replay_buffer_class: null
-      replay_buffer_kwargs: null
-      optimize_memory_usage: false
-      n_steps: 1
-      target_update_interval: 1000
-      exploration_fraction: 0.3
-      exploration_initial_eps: 0.5
-      exploration_final_eps: 0.05
-      max_grad_norm: 10
-      stats_window_size: 100
-      policy_kwargs:
-        net_arch: [128, 128]
-      verbose: 1
-      seed: ${run.seed}
-      device: "cpu"
-      tensorboard_log: ${hydra:runtime.cwd}/tensorboard
-
-
-
-
-
-# algorithm:
-#   name: christiano
-#   kwargs:
-#     total_timesteps: 2e6
-#     num_iterations: 10
 
 
 hydra:

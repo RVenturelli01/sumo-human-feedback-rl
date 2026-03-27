@@ -1,0 +1,13 @@
+
+name: dagger
+expert_id: ppo-v0
+
+
+kwargs:
+  total_timesteps: 2e6
+  num_iterations: 10
+
+
+train:
+  kwargs:
+
