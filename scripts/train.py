@@ -4,11 +4,8 @@ import sumo_rl_ego as sre
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
-from human_feedback_rl.algorithms import ChristianoAlgorithm
-
-class DaggerAlgorithm:
-    def __init__():
-        pass
+from human_feedback_rl.algorithms import ChristianoAlgorithm, DaggerAlgorithm
+from human_feedback_rl.common import BCPolicy
 
 class HumLrnAlgorithm_v0:
     def __init__():
@@ -78,9 +75,24 @@ def main(cfg: DictConfig) -> None:
                 **cfg.algo.kwargs,
             )
 
-        elif cfg.algorithm.name == "dagger":
+        elif cfg.algo.name == "dagger":
+            print("Initializing agent (BCPolicy)...")
+            agent = BCPolicy(
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                lr_schedule=lambda _: cfg.algo.kwargs.bc_lr,
+            )
+
+            print(f"Loading expert ({cfg.algo.expert_id})...")
+            expert = sre.load_policy(cfg.algo.expert_id)
+
             print("Initializing algorithm...")
-            algo = DaggerAlgorithm(env, **cfg.algo.kwargs)
+            algo = DaggerAlgorithm(
+                env=env,
+                agent=agent,
+                expert=expert,
+                **cfg.algo.kwargs,
+            )
 
         elif cfg.algo.name == "humlrn-v0":
             print("Initializing agent...")

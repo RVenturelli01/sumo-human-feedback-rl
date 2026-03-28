@@ -1,13 +1,15 @@
 
 name: dagger
-expert_id: ppo-v0
+expert_id: dqn-v0
 
 
 kwargs:
-  total_timesteps: 2e6
-  num_iterations: 10
-
+  bc_epochs: 10
+  bc_batch_size: 128
+  bc_lr: 3e-4
+  n_eval_episodes: 10
 
 train:
   kwargs:
-
+    n_rounds: 15
+    num_episodes: 10
