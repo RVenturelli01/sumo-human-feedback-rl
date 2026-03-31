@@ -2,14 +2,17 @@
 name: dagger
 expert_id: dqn-v0
 
+policy_kwargs:
+  net_arch: [64, 64]
 
 kwargs:
-  bc_epochs: 10
-  bc_batch_size: 128
-  bc_lr: 3e-4
-  n_eval_episodes: 10
+  bc_epochs: 50
+  bc_batch_size: 256
+  bc_lr: 1e-3
+  n_eval_episodes: 50
+  beta_decay: 0.7
 
 train:
   kwargs:
-    n_rounds: 15
-    num_episodes: 10
+    n_rounds: 80
+    num_episodes: 50

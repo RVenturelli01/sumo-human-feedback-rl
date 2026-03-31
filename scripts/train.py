@@ -2,14 +2,11 @@ import hydra
 import sumo_rl_ego as sre
 
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
 from human_feedback_rl.algorithms import ChristianoAlgorithm, DaggerAlgorithm
+from human_feedback_rl.algorithms.humlrn import HumLrnAlgorithm
 from human_feedback_rl.common import BCPolicy
-
-class HumLrnAlgorithm_v0:
-    def __init__():
-        pass
 
 
 from sumo_rl_ego.utils import (
@@ -74,6 +71,8 @@ def main(cfg: DictConfig) -> None:
                 agent=agent,
                 **cfg.algo.kwargs,
             )
+            with open_dict(cfg):
+                cfg.model = {"algo": cfg.algo.agent.algo}
 
         elif cfg.algo.name == "dagger":
             print("Initializing agent (BCPolicy)...")
@@ -81,6 +80,7 @@ def main(cfg: DictConfig) -> None:
                 observation_space=env.observation_space,
                 action_space=env.action_space,
                 lr_schedule=lambda _: cfg.algo.kwargs.bc_lr,
+                **OmegaConf.to_container(cfg.algo.policy_kwargs, resolve=True),
             )
 
             print(f"Loading expert ({cfg.algo.expert_id})...")
@@ -97,14 +97,23 @@ def main(cfg: DictConfig) -> None:
         elif cfg.algo.name == "humlrn-v0":
             print("Initializing agent...")
             algo_cls = ALGO_REGISTRY[cfg.algo.agent.algo]
-            agent = algo_cls(**cfg.algo.agent.kwargs)
+            agent = algo_cls(
+                env=env,
+                **cfg.algo.agent.kwargs,
+            )
 
-            print("Initializing algo...")
-            algo = HumLrnAlgorithm_v0(
+            print(f"Loading expert ({cfg.algo.expert_id})...")
+            expert = sre.load_policy(cfg.algo.expert_id)
+
+            print("Initializing algorithm...")
+            algo = HumLrnAlgorithm(
                 env=env,
                 agent=agent,
+                expert=expert,
                 **cfg.algo.kwargs,
             )
+            with open_dict(cfg):
+                cfg.model = {"algo": cfg.algo.agent.algo}
 
 
         print("Starting training...")

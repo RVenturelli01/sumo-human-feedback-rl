@@ -1,15 +1,31 @@
-
 name: humlrn-v0
 expert_id: ppo-v0
 
 
 kwargs:
-  total_timesteps: 2e6
-  num_iterations: 10
+  # reward model
+  n_ensembles: 5
+  segment_length: 25
+  device: cpu
+  lr_reward_model: 1e-5
+  max_dataset_size: 10000
+  reward_model_batch_size: 32
+  reward_training_epochs: 5
+  # preference schedule
+  num_pairs_initial: 250
+  num_pairs_final: 0
+  decay_pairs_schedule: 1.0
+  # demonstrations
+  use_demonstrations: false
+  num_demo_episodes_per_iter: 10
+  lambda_demo: 1.0
+  demo_margin: 1.0
 
 
 train:
   kwargs:
+    total_timesteps: 5e5
+    num_iterations: 20
 
 
 agent:
@@ -17,8 +33,8 @@ agent:
   kwargs:
     policy: "MlpPolicy"
     learning_rate: 3e-4
-    n_steps: 1024  # 2048
-    batch_size: 256  # 64
+    n_steps: 1024
+    batch_size: 256
     n_epochs: 5
     gamma: 0.995
     gae_lambda: 0.95
@@ -34,7 +50,7 @@ agent:
     rollout_buffer_kwargs: {}
     target_kl: null
     stats_window_size: 100
-    policy_kwargs: 
+    policy_kwargs:
       net_arch: [256, 128]
     seed: ${run.seed}
     device: "cpu"

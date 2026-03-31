@@ -1,57 +1,83 @@
-
 name: christiano
 
 
 kwargs:
-  n_ensembles: 5
-  segment_length: 20
+  n_ensembles: 7
+  segment_length: 25
   device: cpu
-  lr_reward_model: 1e-4
-  max_dataset_size: 1e10
+  lr_reward_model: 0.0003
+  max_dataset_size: 5000
   # reward trainer parameters
-  reward_model_batch_size: 32
-  reward_training_epochs: 10
+  reward_model_batch_size: 64
+  reward_training_epochs: 3
   # rollout parameters
-  num_pairs_initial: 40
-  num_pairs_final: 0
-  decay_pairs_schedule: 10.0
+  num_pairs_initial: 200
+  num_pairs_final: 20
+  decay_pairs_schedule: 5.0
 
 
 train:
   kwargs:
     # training general parameters
-    num_iterations: 20
+    num_iterations: 40
     # agent learning parameters
-    total_timesteps: 1e5
+    total_timesteps: 200000
 
+
+#agent:
+#  algo: DQN
+#  kwargs:
+#    policy: MlpPolicy
+#    learning_rate: 5.0e-05
+#    buffer_size: 200000
+#    learning_starts: 5000
+#    batch_size: 128
+#    tau: 1.0
+#    gamma: 0.99
+#    train_freq: 4
+#    gradient_steps: 4
+#    replay_buffer_class: null
+#    replay_buffer_kwargs: null
+#    optimize_memory_usage: false
+#    n_steps: 1
+#    target_update_interval: 500
+#    exploration_fraction: 0.2
+#    exploration_initial_eps: 1.0
+#    exploration_final_eps: 0.02
+#    max_grad_norm: 10
+#    stats_window_size: 100
+#    policy_kwargs:
+#      net_arch: [256, 256]
+#    verbose: 1
+#    seed: ${run.seed}
+#    device: "cpu"
+#    tensorboard_log: ${hydra:run.dir}/tensorboard
 
 agent:
-  algo: "DQN"
+  algo: "PPO"
   kwargs:
-    policy: MlpPolicy
-    learning_rate: 0.0001
-    buffer_size: 500000
-    learning_starts: 10000
-    batch_size: 512
-    tau: 1.0
-    gamma: 0.99
-    train_freq: 4
-    gradient_steps: 8
-    replay_buffer_class: null
-    replay_buffer_kwargs: null
-    optimize_memory_usage: false
-    n_steps: 1
-    target_update_interval: 1000
-    exploration_fraction: 0.3
-    exploration_initial_eps: 0.5
-    exploration_final_eps: 0.05
-    max_grad_norm: 10
+    policy: "MlpPolicy"
+    learning_rate: 3e-4
+    n_steps: 1024
+    batch_size: 256
+    n_epochs: 5
+    gamma: 0.995
+    gae_lambda: 0.95
+    clip_range: 0.2
+    clip_range_vf: null
+    normalize_advantage: true
+    ent_coef: 0.03
+    vf_coef: 0.8
+    max_grad_norm: 0.5
+    use_sde: false
+    sde_sample_freq: -1
+    rollout_buffer_class: null
+    rollout_buffer_kwargs: {}
+    target_kl: null
     stats_window_size: 100
     policy_kwargs:
-      net_arch: [128, 128]
-    verbose: 1
+      net_arch: [256, 128]
     seed: ${run.seed}
     device: "cpu"
-    tensorboard_log: ${hydra:run.dir}/tensorboard
-
-
+    tensorboard_log: ${hydra:runtime.cwd}/tensorboard
+    verbose: 1
