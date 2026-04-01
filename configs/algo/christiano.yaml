@@ -2,63 +2,39 @@ name: christiano
 
 
 kwargs:
-  n_ensembles: 7
-  segment_length: 25
   device: cpu
+  # rollout parameters
+  segment_length: 20
+  num_pairs_initial: 100
+  num_pairs_final: 10
+  decay_pairs_schedule: 5.0
+  # reward model and trainer parameters
+  reward_model_batch_size: 64
   lr_reward_model: 0.0003
   max_dataset_size: 5000
-  # reward trainer parameters
-  reward_model_batch_size: 64
-  reward_training_epochs: 3
-  # rollout parameters
-  num_pairs_initial: 200
-  num_pairs_final: 20
-  decay_pairs_schedule: 5.0
+  n_ensembles: 5
 
 
 train:
   kwargs:
+    # rollout parameters
+    segments_oversample_factor: 3
     # training general parameters
-    num_iterations: 40
+    pretrain_iterations: 3
+    total_iterations: 10
     # agent learning parameters
-    total_timesteps: 200000
+    agent_timesteps_per_it: 500000
+    agent_log_interval: 1   # how many rollouts between logging agent training progress
+    # reward model training parameters
+    reward_model_epochs_per_it: 10
 
-
-#agent:
-#  algo: DQN
-#  kwargs:
-#    policy: MlpPolicy
-#    learning_rate: 5.0e-05
-#    buffer_size: 200000
-#    learning_starts: 5000
-#    batch_size: 128
-#    tau: 1.0
-#    gamma: 0.99
-#    train_freq: 4
-#    gradient_steps: 4
-#    replay_buffer_class: null
-#    replay_buffer_kwargs: null
-#    optimize_memory_usage: false
-#    n_steps: 1
-#    target_update_interval: 500
-#    exploration_fraction: 0.2
-#    exploration_initial_eps: 1.0
-#    exploration_final_eps: 0.02
-#    max_grad_norm: 10
-#    stats_window_size: 100
-#    policy_kwargs:
-#      net_arch: [256, 256]
-#    verbose: 1
-#    seed: ${run.seed}
-#    device: "cpu"
-#    tensorboard_log: ${hydra:run.dir}/tensorboard
 
 agent:
   algo: "PPO"
   kwargs:
     policy: "MlpPolicy"
     learning_rate: 3e-4
-    n_steps: 1024
+    n_steps: 256
     batch_size: 256
     n_epochs: 5
     gamma: 0.995
@@ -81,3 +57,33 @@ agent:
     device: "cpu"
     tensorboard_log: ${hydra:runtime.cwd}/tensorboard
     verbose: 1
+
+# agent:
+#  algo: DQN
+#  kwargs:
+#    policy: MlpPolicy
+#    learning_rate: 5.0e-05
+#    buffer_size: 200000
+#    learning_starts: 1000
+#    batch_size: 128
+#    tau: 1.0
+#    gamma: 0.99
+#    train_freq: 4
+#    gradient_steps: 4
+#    replay_buffer_class: null
+#    replay_buffer_kwargs: null
+#    optimize_memory_usage: false
+#    n_steps: 1
+#    target_update_interval: 500
+#    exploration_fraction: 0.2
+#    exploration_initial_eps: 1.0
+#    exploration_final_eps: 0.02
+#    max_grad_norm: 10
+#    stats_window_size: 100
+#    policy_kwargs:
+#      net_arch: [256, 256]
+#    verbose: 1
+#    seed: ${run.seed}
+#    device: "cpu"
+#    tensorboard_log: ${hydra:run.dir}/tensorboard
+
