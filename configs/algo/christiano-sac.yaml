@@ -1,0 +1,77 @@
+name: christiano-sac
+
+
+kwargs:
+  device: cpu
+  # rollout parameters
+  segment_length: 30
+  num_pairs_initial: 250
+  num_pairs_final: 100
+  decay_pairs_schedule: 3.0
+  # reward model and trainer parameters
+  reward_model_batch_size: 64
+  lr_reward_model: 1e-4
+  max_dataset_size: 50000
+  n_ensembles: 4
+
+
+train:
+  kwargs:
+    # rollout parameters
+    segments_oversample_factor: 2
+    # training general parameters
+    pretrain_iterations: 5
+    total_timesteps: 1000000
+    # steps collected per outer iteration — also sets RM update frequency;
+    # smaller = fresher on-policy data for the RM, more overhead per step
+    n_rollout_steps: 200
+    # SAC gradient updates per outer iteration (only when agent_update_due);
+    # -1 = same as n_rollout_steps * agent_update_every_n
+    gradient_steps: 1000
+    # minimum replay buffer transitions before SAC training begins
+    learning_starts: 5000
+    agent_log_interval: 1
+    # reward model training parameters
+    reward_model_epochs_per_it: 7
+    # K: buffer holds this many outer iterations of transitions
+    # buffer_size = replay_buffer_iterations * n_rollout_steps (overrides agent.buffer_size)
+    # None = use agent.buffer_size as-is
+    replay_buffer_iterations: 20
+    # rewrite all buffer rewards with the updated RM after each RM training step
+    # cost = one RM forward pass over buffer_size transitions (cheap when K is small)
+    relabel_replay_buffer: true
+    # RM is updated every iteration; agent is updated only every N iterations.
+    # effective agent step frequency = n_rollout_steps * agent_update_every_n
+    # example: n_rollout_steps=200, agent_update_every_n=5 → agent updates every 1000 steps
+    agent_update_every_n: 5
+    # save best model (by smoothed avg_true_reward) overwriting previous best
+    # None = disabled
+    checkpoint_path: ${hydra:runtime.output_dir}/best_model
+    checkpoint_window: 10
+
+
+agent:
+  algo: "SAC"
+  kwargs:
+    policy: "MlpPolicy"
+    learning_rate: 3e-4
+    buffer_size: 20000
+    learning_starts: 5000
+    batch_size: 256
+    tau: 0.005
+    gamma: 0.99
+    # train_freq and gradient_steps below are set to satisfy SB3 constructor
+    # requirements but are NOT used by ChristianoSACAlgorithm's outer loop,
+    # which controls collection and updates directly.
+    train_freq: 1
+    gradient_steps: 1
+    ent_coef: "auto"
+    target_update_interval: 1
+    use_sde: false
+    stats_window_size: 100
+    policy_kwargs:
+      net_arch: [256, 256]
+    seed: ${run.seed}
+    device: "cpu"
+    tensorboard_log: ${hydra:runtime.cwd}/tensorboard
+    verbose: 1

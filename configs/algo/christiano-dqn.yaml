@@ -1,0 +1,45 @@
+name: christiano
+
+
+kwargs:
+  n_ensembles: 7
+  segment_length: 25
+  device: cpu
+  lr_reward_model: 0.0003
+  max_dataset_size: 5000
+  reward_model_batch_size: 64
+  reward_training_epochs: 3
+  num_pairs_initial: 200
+  num_pairs_final: 20
+  decay_pairs_schedule: 5.0
+
+
+train:
+  kwargs:
+    num_iterations: 40
+    total_timesteps: 200000
+
+
+agent:
+  algo: "DQN"
+  kwargs:
+    policy: "MlpPolicy"
+    learning_rate: 5.0e-05
+    buffer_size: 200000
+    learning_starts: 5000
+    batch_size: 128
+    tau: 1.0
+    gamma: 0.99
+    train_freq: 4
+    gradient_steps: 4
+    target_update_interval: 500
+    exploration_fraction: 0.2
+    exploration_initial_eps: 1.0
+    exploration_final_eps: 0.02
+    max_grad_norm: 10
+    policy_kwargs:
+      net_arch: [256, 256]
+    verbose: 1
+    seed: ${run.seed}
+    device: "cpu"
+    tensorboard_log: ${hydra:runtime.cwd}/tensorboard

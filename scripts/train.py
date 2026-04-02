@@ -4,7 +4,7 @@ import sumo_rl_ego as sre
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf, open_dict
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
-from human_feedback_rl.algorithms import ChristianoAlgorithm, DaggerAlgorithm
+from human_feedback_rl.algorithms import ChristianoAlgorithm, ChristianoSACAlgorithm, DaggerAlgorithm
 from human_feedback_rl.algorithms.humlrn import HumLrnAlgorithm
 from human_feedback_rl.common import BCPolicy
 
@@ -67,6 +67,23 @@ def main(cfg: DictConfig) -> None:
 
             print("Initializing algorithm...")
             algo = ChristianoAlgorithm(
+                env=env,
+                agent=agent,
+                **cfg.algo.kwargs,
+            )
+            with open_dict(cfg):
+                cfg.model = {"algo": cfg.algo.agent.algo}
+
+        elif cfg.algo.name == "christiano-sac":
+            print("Initializing agent...")
+            algo_cls = ALGO_REGISTRY[cfg.algo.agent.algo]
+            agent = algo_cls(
+                env=env,
+                **OmegaConf.to_container(cfg.algo.agent.kwargs, resolve=True)
+            )
+
+            print("Initializing algorithm...")
+            algo = ChristianoSACAlgorithm(
                 env=env,
                 agent=agent,
                 **cfg.algo.kwargs,
