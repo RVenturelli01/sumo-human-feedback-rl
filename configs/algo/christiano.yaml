@@ -1,37 +1,38 @@
 name: christiano
 
-
 kwargs:
   device: cpu
-  # segment & ensemble
-  segment_length: 10
+  # reward model ensemble
   n_ensembles: 3
-  # num_iterations: number of *main* agent+reward iterations (mirrors imitation's num_iterations).
-  # Total loop runs num_iterations + 1 times (first iteration = reward-model warm-up only).
-  num_iterations: 20
-  # reward model
+  hidden_dim: 256
   lr_reward_model: 0.0003
-  comparison_queue_size: 3000        # max comparisons kept (FIFO); was max_dataset_size
-  # reward trainer (mirrors BasicRewardTrainer / EnsembleTrainer kwargs)
-  reward_trainer_epochs: 4          # base epochs per iteration; scaled by initial_epoch_multiplier on iter 0
+  # fragments & query schedule  (mirrors imitation's PreferenceComparisons)
+  fragment_length: 10            # timesteps per fragment (was: segment_length)
+  comparison_queue_size: null     # keep all comparisons (total=2000 < 3000, FIFO never triggers)
+  transition_oversampling: 3.0   # collect 3× needed transitions before fragmenting
+  initial_comparison_frac: 0.15  # fraction of total_comparisons used in warm-up
+  initial_epoch_multiplier: 50.0 # reward trainer epoch multiplier on iteration 0 → 4×50=200 effective epochs
+  query_schedule: "hyperbolic"   # constant | hyperbolic | inverse_quadratic
+  num_iterations: 20             # number of (reward-train → agent-train) cycles
+  # reward trainer  (EnsembleTrainer with bagging)
+  reward_trainer_epochs: 4       # base epochs per call; scaled by epoch_multiplier
   reward_model_batch_size: 64
-  # comparison / query schedule
-  initial_comparison_frac: 0.15      # fraction of total_comparisons used in the warm-up iteration
-  initial_epoch_multiplier: 20.0    # × reward_trainer_epochs on iteration 0 → 200 epochs
-  transition_oversampling: 3.0      # collect 3× the needed segments for active selection
-  query_schedule: "hyperbolic"      # constant | hyperbolic | inverse_quadratic
-  # SyntheticGatherer parameters (mirrors imitation's SyntheticGatherer defaults)
-  preference_temperature: 1.0       # 0 = deterministic argmax; 1 = Boltzmann sampling
-  preference_sample: true           # sample hard 0/1 label from Bernoulli(P)
-  preference_discount_factor: 1.0   # undiscounted sums (as in DRLHP paper)
-  preference_threshold: 50.0        # logit-diff clipping threshold
+  # synthetic gatherer  (SyntheticGatherer, mirrors imitation defaults)
+  preference_temperature: 1.0    # 0 = deterministic argmax; 1 = Boltzmann
+  preference_sample: true        # sample hard 0/1 label from Bernoulli(p)
+  preference_discount_factor: 1.0
+  preference_threshold: 50.0     # logit-diff clipping threshold
+  # pessimism / OOD penalty  (AddSTDRewardWrapper, alpha = -pessimism)
+  pessimism: 0.0                 # 0 = disabled; > 0 subtracts pessimism*std
 
 
 train:
   kwargs:
-    # total_timesteps = num_iterations × agent_timesteps_per_it (e.g. 20 × 500k = 10M)
+    # total_timesteps = num_iterations × (timesteps/iter), e.g. 20 × 50k = 1M
     total_timesteps: 1_000_000
-    total_comparisons: 2000          # 200 initial (10%) + 1800 distributed via schedule
+    # total_comparisons: initial_comparison_frac × total split to warm-up,
+    #   remainder distributed across num_iterations via query_schedule
+    total_comparisons: 2000
     checkpoint_dir: ${hydra:run.dir}/checkpoints
 
 
@@ -42,7 +43,7 @@ agent:
     learning_rate: 3e-4
     n_steps: 256
     batch_size: 256
-    n_epochs: 2
+    n_epochs: 4
     gamma: 0.995
     gae_lambda: 0.95
     clip_range: 0.2
