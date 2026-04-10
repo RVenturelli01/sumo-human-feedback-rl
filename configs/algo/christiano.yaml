@@ -3,30 +3,36 @@ name: christiano
 
 kwargs:
   device: cpu
-  # rollout parameters
-  segment_length: 20
-  num_pairs_initial: 100
-  num_pairs_final: 10
-  decay_pairs_schedule: 5.0
-  # reward model and trainer parameters
-  reward_model_batch_size: 64
+  # segment & ensemble
+  segment_length: 10
+  n_ensembles: 3
+  # num_iterations: number of *main* agent+reward iterations (mirrors imitation's num_iterations).
+  # Total loop runs num_iterations + 1 times (first iteration = reward-model warm-up only).
+  num_iterations: 20
+  # reward model
   lr_reward_model: 0.0003
-  max_dataset_size: 5000
-  n_ensembles: 5
+  comparison_queue_size: 3000        # max comparisons kept (FIFO); was max_dataset_size
+  # reward trainer (mirrors BasicRewardTrainer / EnsembleTrainer kwargs)
+  reward_trainer_epochs: 4          # base epochs per iteration; scaled by initial_epoch_multiplier on iter 0
+  reward_model_batch_size: 64
+  # comparison / query schedule
+  initial_comparison_frac: 0.15      # fraction of total_comparisons used in the warm-up iteration
+  initial_epoch_multiplier: 20.0    # × reward_trainer_epochs on iteration 0 → 200 epochs
+  transition_oversampling: 3.0      # collect 3× the needed segments for active selection
+  query_schedule: "hyperbolic"      # constant | hyperbolic | inverse_quadratic
+  # SyntheticGatherer parameters (mirrors imitation's SyntheticGatherer defaults)
+  preference_temperature: 1.0       # 0 = deterministic argmax; 1 = Boltzmann sampling
+  preference_sample: true           # sample hard 0/1 label from Bernoulli(P)
+  preference_discount_factor: 1.0   # undiscounted sums (as in DRLHP paper)
+  preference_threshold: 50.0        # logit-diff clipping threshold
 
 
 train:
   kwargs:
-    # rollout parameters
-    segments_oversample_factor: 3
-    # training general parameters
-    pretrain_iterations: 3
-    total_iterations: 10
-    # agent learning parameters
-    agent_timesteps_per_it: 500000
-    agent_log_interval: 1   # how many rollouts between logging agent training progress
-    # reward model training parameters
-    reward_model_epochs_per_it: 10
+    # total_timesteps = num_iterations × agent_timesteps_per_it (e.g. 20 × 500k = 10M)
+    total_timesteps: 1_000_000
+    total_comparisons: 2000          # 200 initial (10%) + 1800 distributed via schedule
+    checkpoint_dir: ${hydra:run.dir}/checkpoints
 
 
 agent:
@@ -36,13 +42,13 @@ agent:
     learning_rate: 3e-4
     n_steps: 256
     batch_size: 256
-    n_epochs: 5
+    n_epochs: 2
     gamma: 0.995
     gae_lambda: 0.95
     clip_range: 0.2
     clip_range_vf: null
     normalize_advantage: true
-    ent_coef: 0.03
+    ent_coef: 0.02
     vf_coef: 0.8
     max_grad_norm: 0.5
     use_sde: false
@@ -57,33 +63,3 @@ agent:
     device: "cpu"
     tensorboard_log: ${hydra:runtime.cwd}/tensorboard
     verbose: 1
-
-# agent:
-#  algo: DQN
-#  kwargs:
-#    policy: MlpPolicy
-#    learning_rate: 5.0e-05
-#    buffer_size: 200000
-#    learning_starts: 1000
-#    batch_size: 128
-#    tau: 1.0
-#    gamma: 0.99
-#    train_freq: 4
-#    gradient_steps: 4
-#    replay_buffer_class: null
-#    replay_buffer_kwargs: null
-#    optimize_memory_usage: false
-#    n_steps: 1
-#    target_update_interval: 500
-#    exploration_fraction: 0.2
-#    exploration_initial_eps: 1.0
-#    exploration_final_eps: 0.02
-#    max_grad_norm: 10
-#    stats_window_size: 100
-#    policy_kwargs:
-#      net_arch: [256, 256]
-#    verbose: 1
-#    seed: ${run.seed}
-#    device: "cpu"
-#    tensorboard_log: ${hydra:run.dir}/tensorboard
-

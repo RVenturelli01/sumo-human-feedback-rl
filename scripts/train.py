@@ -1,4 +1,5 @@
 import hydra
+import numpy as np
 import sumo_rl_ego as sre
 
 from hydra.core.hydra_config import HydraConfig
@@ -69,6 +70,7 @@ def main(cfg: DictConfig) -> None:
             algo = ChristianoAlgorithm(
                 env=env,
                 agent=agent,
+                rng=np.random.default_rng(cfg.run.seed),
                 **cfg.algo.kwargs,
             )
             with open_dict(cfg):
@@ -132,9 +134,69 @@ def main(cfg: DictConfig) -> None:
             with open_dict(cfg):
                 cfg.model = {"algo": cfg.algo.agent.algo}
 
+        elif cfg.algo.name == "imitation-preference":
+            print("Initializing agent...")
+            algo_cls = ALGO_REGISTRY[cfg.algo.agent.algo]
+
+            agent = algo_cls(
+                env=env,
+                **cfg.algo.agent.kwargs,
+            )
+
+            print("Importing imitation modules...")
+            from imitation.algorithms.preference_comparisons import PreferenceComparisons
+            from imitation.rewards.reward_nets import BasicRewardNet
+            from imitation.util.networks import RunningNorm
+            from imitation.data.wrappers import RolloutInfoWrapper
+            from imitation.algorithms.preference_comparisons import (
+                SyntheticGatherer,
+                RandomFragmenter,
+            )
+
+            print("Wrapping environment...")
+            env_wrapper = RolloutInfoWrapper(env)
+
+            print("Initializing reward model...")
+            reward_net = BasicRewardNet(
+                observation_space=env.observation_space,
+                action_space=env.action_space
+            )
+
+            from imitation.algorithms.preference_comparisons import AgentTrainer
+
+            trajectory_generator = AgentTrainer(
+                algorithm=agent,
+                reward_fn=reward_net,
+                venv=env_wrapper,
+                rng=np.random.default_rng(cfg.run.seed),
+            )
+
+            print("Initializing preference components...")
+            fragmenter = RandomFragmenter(rng=np.random.default_rng(cfg.run.seed),)
+            preference_gatherer = SyntheticGatherer(rng=np.random.default_rng(cfg.run.seed),)
+
+            print("Initializing preference comparisons...")
+            algo = PreferenceComparisons(
+                trajectory_generator=trajectory_generator,
+                reward_model=reward_net,
+                num_iterations=cfg.algo.kwargs.num_iterations,
+                fragmenter=fragmenter,
+                preference_gatherer=preference_gatherer,
+                fragment_length=cfg.algo.kwargs.fragment_length,
+                transition_oversampling=cfg.algo.kwargs.transition_oversampling,
+                initial_comparison_frac=cfg.algo.kwargs.initial_comparison_frac,
+                initial_epoch_multiplier=cfg.algo.kwargs.initial_epoch_multiplier,
+                query_schedule=cfg.algo.kwargs.query_schedule,
+                rng=np.random.default_rng(cfg.run.seed),
+                allow_variable_horizon=True,
+            )
+
+            with open_dict(cfg):
+                cfg.model = {"algo": cfg.algo.agent.algo}
+
 
         print("Starting training...")
-        agent = algo.train(**cfg.algo.train.kwargs)
+        algo.train(**OmegaConf.to_container(cfg.algo.train.kwargs, resolve=True))
 
         
         print("\nTraining finished.")

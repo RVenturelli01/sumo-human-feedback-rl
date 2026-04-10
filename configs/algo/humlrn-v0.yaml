@@ -18,14 +18,14 @@ kwargs:
   # demonstrations
   use_demonstrations: false
   num_demo_episodes_per_iter: 10
-  lambda_demo: 1.0
-  demo_margin: 1.0
+  lambda_demo: 0.1
+  demo_margin: 0.5
 
 
 train:
   kwargs:
     total_timesteps: 5e5
-    num_iterations: 20
+    num_iterations: 10
 
 
 agent:

@@ -4,15 +4,20 @@ name: christiano-sac
 kwargs:
   device: cpu
   # rollout parameters
-  segment_length: 30
-  num_pairs_initial: 250
-  num_pairs_final: 100
+  segment_length: 20
+  num_pairs_initial: 200
+  num_pairs_final: 200
   decay_pairs_schedule: 3.0
   # reward model and trainer parameters
   reward_model_batch_size: 64
   lr_reward_model: 1e-4
+  # sliding window: discard pairs older than ~N iterations.
+  # 2500 (~100 iter) caused plateau at cap: RM loses early-phase memory,
+  # over-specializes on current distribution → ens_std grows → instability.
+  # 50000 = effectively no cap (keep all pairs).
   max_dataset_size: 50000
-  n_ensembles: 4
+  n_ensembles: 8
+  pessimism: 0.5
 
 
 train:
@@ -24,10 +29,10 @@ train:
     total_timesteps: 1000000
     # steps collected per outer iteration — also sets RM update frequency;
     # smaller = fresher on-policy data for the RM, more overhead per step
-    n_rollout_steps: 200
+    n_rollout_steps: 2000
     # SAC gradient updates per outer iteration (only when agent_update_due);
     # -1 = same as n_rollout_steps * agent_update_every_n
-    gradient_steps: 1000
+    gradient_steps: 500
     # minimum replay buffer transitions before SAC training begins
     learning_starts: 5000
     agent_log_interval: 1
@@ -36,18 +41,21 @@ train:
     # K: buffer holds this many outer iterations of transitions
     # buffer_size = replay_buffer_iterations * n_rollout_steps (overrides agent.buffer_size)
     # None = use agent.buffer_size as-is
-    replay_buffer_iterations: 20
+    replay_buffer_iterations: 1
     # rewrite all buffer rewards with the updated RM after each RM training step
     # cost = one RM forward pass over buffer_size transitions (cheap when K is small)
     relabel_replay_buffer: true
     # RM is updated every iteration; agent is updated only every N iterations.
     # effective agent step frequency = n_rollout_steps * agent_update_every_n
     # example: n_rollout_steps=200, agent_update_every_n=5 → agent updates every 1000 steps
-    agent_update_every_n: 5
+    agent_update_every_n: 2
     # save best model (by smoothed avg_true_reward) overwriting previous best
     # None = disabled
     checkpoint_path: ${hydra:runtime.output_dir}/best_model
     checkpoint_window: 10
+    # PEBBLE-style unsupervised pretraining: agent explores with k-NN intrinsic reward
+    # before any RM training. 0 = disabled. Recommended: 5000-10000 (≤ buffer_size/n_envs).
+    unsupervised_pretrain_steps: 5000
 
 
 agent:

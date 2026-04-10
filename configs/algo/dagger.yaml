@@ -14,5 +14,5 @@ kwargs:
 
 train:
   kwargs:
-    n_rounds: 80
+    n_rounds: 10
     num_episodes: 50
