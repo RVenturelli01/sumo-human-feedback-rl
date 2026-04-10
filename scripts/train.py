@@ -39,6 +39,7 @@ def print_train_cfg(cfg):
 
 @hydra.main(version_base=None, config_path="../configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> None:
+    # test
     _ = HydraConfig.get().runtime.output_dir
 
     print_train_cfg(cfg)
