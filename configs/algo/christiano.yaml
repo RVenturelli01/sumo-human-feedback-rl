@@ -1,66 +1,41 @@
 name: christiano
 
+# ── RL policy (SB3 algorithm used as the learning agent) ──────────────────
+agent:
+  algo: SAC
+  kwargs:
+    policy: MlpPolicy
+    learning_rate: 3.0e-4
+    buffer_size: 100_000
+    batch_size: 256
+    tau: 0.005
+    gamma: 0.99
+    verbose: 0
+
+# ── ChristianoAlgorithm constructor arguments ─────────────────────────────
 kwargs:
+  # Reward model
+  reward_model_n_networks: 3
+  reward_model_hidden_size: 256
+  reward_model_lr: 3.0e-4
+  reward_model_l2: 1.0e-4
+  # Preferences / segments
+  segment_length: 50
+  preference_dataset_max_size: 3000
+  query_schedule: constant    # "constant" | "inverse"
+  # Compute
   device: cpu
-  # reward model ensemble
-  n_ensembles: 3
-  hidden_dim: 256
-  lr_reward_model: 0.0003
-  # fragments & query schedule  (mirrors imitation's PreferenceComparisons)
-  fragment_length: 10            # timesteps per fragment (was: segment_length)
-  comparison_queue_size: null     # keep all comparisons (total=2000 < 3000, FIFO never triggers)
-  transition_oversampling: 3.0   # collect 3× needed transitions before fragmenting
-  initial_comparison_frac: 0.15  # fraction of total_comparisons used in warm-up
-  initial_epoch_multiplier: 50.0 # reward trainer epoch multiplier on iteration 0 → 4×50=200 effective epochs
-  query_schedule: "hyperbolic"   # constant | hyperbolic | inverse_quadratic
-  num_iterations: 20             # number of (reward-train → agent-train) cycles
-  # reward trainer  (EnsembleTrainer with bagging)
-  reward_trainer_epochs: 4       # base epochs per call; scaled by epoch_multiplier
-  reward_model_batch_size: 64
-  # synthetic gatherer  (SyntheticGatherer, mirrors imitation defaults)
-  preference_temperature: 1.0    # 0 = deterministic argmax; 1 = Boltzmann
-  preference_sample: true        # sample hard 0/1 label from Bernoulli(p)
-  preference_discount_factor: 1.0
-  preference_threshold: 50.0     # logit-diff clipping threshold
-  # pessimism / OOD penalty  (AddSTDRewardWrapper, alpha = -pessimism)
-  pessimism: 0.0                 # 0 = disabled; > 0 subtracts pessimism*std
 
-
+# ── ChristianoAlgorithm.train() arguments ────────────────────────────────
 train:
   kwargs:
-    # total_timesteps = num_iterations × (timesteps/iter), e.g. 20 × 50k = 1M
     total_timesteps: 1_000_000
-    # total_comparisons: initial_comparison_frac × total split to warm-up,
-    #   remainder distributed across num_iterations via query_schedule
-    total_comparisons: 2000
-    checkpoint_dir: ${hydra:run.dir}/checkpoints
-
-
-agent:
-  algo: "PPO"
-  kwargs:
-    policy: "MlpPolicy"
-    learning_rate: 3e-4
-    n_steps: 256
-    batch_size: 256
-    n_epochs: 4
-    gamma: 0.995
-    gae_lambda: 0.95
-    clip_range: 0.2
-    clip_range_vf: null
-    normalize_advantage: true
-    ent_coef: 0.02
-    vf_coef: 0.8
-    max_grad_norm: 0.5
-    use_sde: false
-    sde_sample_freq: -1
-    rollout_buffer_class: null
-    rollout_buffer_kwargs: {}
-    target_kl: null
-    stats_window_size: 100
-    policy_kwargs:
-      net_arch: [256, 128]
-    seed: ${run.seed}
-    device: "cpu"
-    tensorboard_log: ${hydra:runtime.cwd}/tensorboard
-    verbose: 1
+    # Pre-training phase: number of synthetic preferences for initial reward model training
+    n_initial_queries: 200
+    # Main loop
+    n_rollout_steps: 2000         # steps per env per iteration
+    n_queries_per_iter: 10        # preference queries per iteration
+    reward_model_train_steps: 200 # gradient steps on reward model per iteration
+    reward_model_batch_size: 64
+    n_policy_train_steps: 1000    # gradient steps on policy per iteration
+    log_interval: 1
