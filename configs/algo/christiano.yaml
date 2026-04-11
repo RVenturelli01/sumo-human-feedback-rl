@@ -38,4 +38,3 @@ train:
     reward_model_train_steps: 200 # gradient steps on reward model per iteration
     reward_model_batch_size: 64
     n_policy_train_steps: 1000    # gradient steps on policy per iteration
-    log_interval: 1
