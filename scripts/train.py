@@ -5,7 +5,7 @@ import sumo_rl_ego as sre
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf, open_dict
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
-from human_feedback_rl.algorithms import ChristianoAlgorithm
+from human_feedback_rl.algorithms import ChristianoAlgorithm, ChristianoPPOAlgorithm
 
 from sumo_rl_ego.utils import (
     init_wandb,
@@ -69,6 +69,23 @@ def main(cfg: DictConfig) -> None:
             )
             with open_dict(cfg):
                 cfg.model = {"algo": cfg.algo.agent.algo}
+
+        elif cfg.algo.name == "christiano_ppo":
+            print("Initializing agent...")
+            agent = PPO(
+                env=env,
+                **OmegaConf.to_container(cfg.algo.agent.kwargs, resolve=True),
+            )
+
+            print("Initializing algorithm...")
+            algo = ChristianoPPOAlgorithm(
+                env=env,
+                agent=agent,
+                rng=np.random.default_rng(cfg.run.seed),
+                **OmegaConf.to_container(cfg.algo.kwargs, resolve=True),
+            )
+            with open_dict(cfg):
+                cfg.model = {"algo": "PPO"}
 
         else:
             raise ValueError(f"Unknown algorithm: {cfg.algo.name!r}")
