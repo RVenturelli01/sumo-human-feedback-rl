@@ -1,5 +1,8 @@
+import random
+
 import hydra
 import numpy as np
+import torch
 import sumo_rl_ego as sre
 
 from hydra.core.hydra_config import HydraConfig
@@ -23,6 +26,14 @@ ALGO_REGISTRY = {
 }
 
 
+def set_global_seeds(seed: int) -> None:
+    """Set all global RNG seeds for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
 def print_train_cfg(cfg):
     print(f"\n========== TRAIN CONFIG ==========\n")
     print(OmegaConf.to_yaml(cfg, resolve=True))
@@ -37,6 +48,7 @@ def print_train_cfg(cfg):
 def main(cfg: DictConfig) -> None:
     _ = HydraConfig.get().runtime.output_dir
 
+    set_global_seeds(cfg.run.seed)
     print_train_cfg(cfg)
     confirm_cfg()
 
@@ -57,6 +69,7 @@ def main(cfg: DictConfig) -> None:
             algo_cls = ALGO_REGISTRY[cfg.algo.agent.algo]
             agent = algo_cls(
                 env=env,
+                seed=cfg.run.seed,
                 **OmegaConf.to_container(cfg.algo.agent.kwargs, resolve=True),
             )
 
@@ -74,6 +87,7 @@ def main(cfg: DictConfig) -> None:
             print("Initializing agent...")
             agent = PPO(
                 env=env,
+                seed=cfg.run.seed,
                 **OmegaConf.to_container(cfg.algo.agent.kwargs, resolve=True),
             )
 
