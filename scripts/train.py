@@ -9,6 +9,7 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf, open_dict
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
 from human_feedback_rl.algorithms import ChristianoAlgorithm, ChristianoPPOAlgorithm
+from scripts.eval import EvalMetrics
 
 from sumo_rl_ego.utils import (
     init_wandb,
@@ -110,6 +111,36 @@ def main(cfg: DictConfig) -> None:
         print("\nTraining finished.")
         save_outputs(cfg, agent)
         print("Run completed successfully.\n")
+
+        # eval
+        print("Loading environment for evaluation...")
+        eval_env = sre.make_env(
+            cfg.env.id,
+            seed=cfg.run.seed,
+            **cfg.env.kwargs
+        )
+
+        try:
+            policy = sre.ModelPolicy(agent)
+
+            metrics = EvalMetrics()
+
+            print("Running evaluation...")
+            for _ in range(cfg.run.n_episodes_eval):
+                info = sre.run_episode(
+                    eval_env,
+                    policy,
+                    seed=cfg.run.seed,
+                )
+
+                metrics.add_episode(info)
+
+            if run is not None:
+                metrics.log_metrics()
+
+            metrics.print_metrics()
+        finally:
+            eval_env.close()
 
     finally:
         if env is not None:

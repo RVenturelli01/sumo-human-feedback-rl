@@ -4,9 +4,10 @@ defaults:
 
 
 run:
-  name: "imitation-christiano"
+  name: "christiano-SAC"
   seed: 0
   output_dir: outputs
+  n_episodes_eval: 100
 
 
 wandb:
