@@ -11,7 +11,7 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf, open_dict
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
 
-from core.ego_status import EgoStatus
+from sumo_gym_ego import EgoStatus
 from human_feedback_rl.algorithms import ChristianoAlgorithm, ChristianoPPOAlgorithm
 
 from sumo_rl_ego.utils import (
