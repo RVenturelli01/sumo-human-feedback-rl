@@ -1,0 +1,13 @@
+name: SAC
+
+# ── RL policy (SB3 algorithm used as the learning agent) ──────────────────
+algo: SAC
+kwargs:
+  policy: MlpPolicy
+  learning_rate: 3.0e-4
+  buffer_size: 100_000
+  learning_starts: 100
+  batch_size: 256
+  gradient_steps: 1000
+  # total steps collected per iteration (across all envs); used by ChristianoAlgorithm
+  train_freq: 1000
