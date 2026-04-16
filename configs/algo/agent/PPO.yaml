@@ -7,4 +7,4 @@ kwargs:
   learning_rate: 3.0e-4
   batch_size: 64
   n_epochs: 10            # gradient epochs per PPO update
-  n_steps: 2048           # MUST be equal to n_rollout_steps
+  n_steps: 2048           # n_rollout_steps
