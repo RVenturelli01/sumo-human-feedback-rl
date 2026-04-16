@@ -24,6 +24,7 @@ kwargs:
   reward_model_l2: 1.0e-4
   # Preferences / segments
   segment_length: 25
+  episode_length_estimate: 200
   preference_dataset_max_size: 3000
   query_schedule: constant    # "constant" | "inverse"
   # Compute
