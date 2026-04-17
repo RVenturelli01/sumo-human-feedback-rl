@@ -17,7 +17,7 @@ conda activate "$CONDA_ENV"
 # ---------------------------------------------------------------------------
 COMMON=(
     run.output_dir="$OUTPUT_DIR"
-    wandb.kwargs.project=fis-training-new
+    wandb.kwargs.project=experiments
     wandb.kwargs.sync_tensorboard=false
     env.kwargs.ego=continuous
     env.kwargs.reward=fast
@@ -211,7 +211,94 @@ run_exp() {
 
 # New
 
-run_exp christiano_SAC_traj_len_withNormalization \
+#run_exp christiano_SAC_traj_len_withNormalization \
+#    "${COMMON[@]}" \
+#    algo/agent=SAC \
+#    algo.train.kwargs.total_timesteps=1000000 \
+#    algo.train.kwargs.n_initial_queries=200 \
+#    algo.train.kwargs.n_queries_per_iter=10 \
+#    algo.train.kwargs.reward_model_train_steps=200 \
+#    algo.train.kwargs.reward_model_batch_size=64 \
+#    algo.kwargs.reward_model_n_networks=3 \
+#    algo.kwargs.reward_model_hidden_size=256 \
+#    algo.kwargs.reward_model_lr=0.0003 \
+#    algo.kwargs.reward_model_l2=0.0001 \
+#    algo.kwargs.segment_length=None \
+#    algo.kwargs.episode_length_estimate=10 \
+#    algo.kwargs.preference_dataset_max_size=3000 \
+#    algo.kwargs.query_schedule=constant \
+#    algo.agent.kwargs.learning_rate=0.0003 \
+#    algo.agent.kwargs.buffer_size=100000 \
+#    algo.agent.kwargs.learning_starts=100 \
+#    algo.agent.kwargs.batch_size=256 \
+#    algo.agent.kwargs.gradient_steps=1000 \
+#    algo.agent.kwargs.train_freq=8000
+#
+#run_exp christiano_PPO_traj_len_withNormalization \
+#    "${COMMON[@]}" \
+#    algo/agent=PPO \
+#    algo.train.kwargs.total_timesteps=1000000 \
+#    algo.train.kwargs.n_initial_queries=200 \
+#    algo.train.kwargs.n_queries_per_iter=10 \
+#    algo.train.kwargs.reward_model_train_steps=200 \
+#    algo.train.kwargs.reward_model_batch_size=64 \
+#    algo.kwargs.reward_model_n_networks=3 \
+#    algo.kwargs.reward_model_hidden_size=256 \
+#    algo.kwargs.reward_model_lr=0.0003 \
+#    algo.kwargs.reward_model_l2=0.0001 \
+#    algo.kwargs.segment_length=None \
+#    algo.kwargs.episode_length_estimate=10 \
+#    algo.kwargs.preference_dataset_max_size=3000 \
+#    algo.kwargs.query_schedule=constant \
+#    algo.agent.kwargs.learning_rate=0.0003 \
+#    algo.agent.kwargs.batch_size=64 \
+#    algo.agent.kwargs.n_epochs=10 \
+#    algo.agent.kwargs.n_steps=1000
+#
+#
+#run_exp christiano_SAC_shortSeg \
+#    "${COMMON[@]}" \
+#    algo/agent=SAC \
+#    algo.train.kwargs.total_timesteps=1000000 \
+#    algo.train.kwargs.n_initial_queries=200 \
+#    algo.train.kwargs.n_queries_per_iter=10 \
+#    algo.train.kwargs.reward_model_train_steps=200 \
+#    algo.train.kwargs.reward_model_batch_size=64 \
+#    algo.kwargs.reward_model_n_networks=3 \
+#    algo.kwargs.reward_model_hidden_size=256 \
+#    algo.kwargs.reward_model_lr=0.0003 \
+#    algo.kwargs.reward_model_l2=0.0001 \
+#    algo.kwargs.segment_length=1 \
+#    algo.kwargs.preference_dataset_max_size=3000 \
+#    algo.kwargs.query_schedule=constant \
+#    algo.agent.kwargs.learning_rate=0.0003 \
+#    algo.agent.kwargs.buffer_size=100000 \
+#    algo.agent.kwargs.learning_starts=100 \
+#    algo.agent.kwargs.batch_size=256 \
+#    algo.agent.kwargs.gradient_steps=1000 \
+#    algo.agent.kwargs.train_freq=8000
+#
+#run_exp christiano_PPO_shortSeg \
+#    "${COMMON[@]}" \
+#    algo/agent=PPO \
+#    algo.train.kwargs.total_timesteps=1000000 \
+#    algo.train.kwargs.n_initial_queries=200 \
+#    algo.train.kwargs.n_queries_per_iter=10 \
+#    algo.train.kwargs.reward_model_train_steps=200 \
+#    algo.train.kwargs.reward_model_batch_size=64 \
+#    algo.kwargs.reward_model_n_networks=3 \
+#    algo.kwargs.reward_model_hidden_size=256 \
+#    algo.kwargs.reward_model_lr=0.0003 \
+#    algo.kwargs.reward_model_l2=0.0001 \
+#    algo.kwargs.segment_length=1 \
+#    algo.kwargs.preference_dataset_max_size=3000 \
+#    algo.kwargs.query_schedule=constant \
+#    algo.agent.kwargs.learning_rate=0.0003 \
+#    algo.agent.kwargs.batch_size=64 \
+#    algo.agent.kwargs.n_epochs=10 \
+#    algo.agent.kwargs.n_steps=1000
+
+run_exp christiano_SAC_seg_len1 \
     "${COMMON[@]}" \
     algo/agent=SAC \
     algo.train.kwargs.total_timesteps=1000000 \
@@ -221,20 +308,65 @@ run_exp christiano_SAC_traj_len_withNormalization \
     algo.train.kwargs.reward_model_batch_size=64 \
     algo.kwargs.reward_model_n_networks=3 \
     algo.kwargs.reward_model_hidden_size=256 \
-    algo.kwargs.reward_model_lr=0.0003 \
-    algo.kwargs.reward_model_l2=0.0001 \
-    algo.kwargs.segment_length=None \
-    algo.kwargs.episode_length_estimate=10 \
+    algo.kwargs.reward_model_lr=3.0e-4 \
+    algo.kwargs.reward_model_l2=1.0e-4 \
+    algo.kwargs.segment_length=1 \
+    algo.kwargs.episode_length_estimate=None \
     algo.kwargs.preference_dataset_max_size=3000 \
     algo.kwargs.query_schedule=constant \
-    algo.agent.kwargs.learning_rate=0.0003 \
+    algo.agent.kwargs.learning_rate=3.0e-4 \
     algo.agent.kwargs.buffer_size=100000 \
     algo.agent.kwargs.learning_starts=100 \
     algo.agent.kwargs.batch_size=256 \
     algo.agent.kwargs.gradient_steps=1000 \
     algo.agent.kwargs.train_freq=8000
 
-run_exp christiano_PPO_traj_len_withNormalization \
+run_exp SAC_trajLen_est1 \
+    "${COMMON[@]}" \
+    algo/agent=SAC \
+    algo.train.kwargs.total_timesteps=1000000 \
+    algo.train.kwargs.n_initial_queries=200 \
+    algo.train.kwargs.n_queries_per_iter=10 \
+    algo.train.kwargs.reward_model_train_steps=200 \
+    algo.train.kwargs.reward_model_batch_size=64 \
+    algo.kwargs.reward_model_n_networks=3 \
+    algo.kwargs.reward_model_hidden_size=256 \
+    algo.kwargs.reward_model_lr=3e-4 \
+    algo.kwargs.reward_model_l2=1e-4 \
+    algo.kwargs.segment_length=None \
+    algo.kwargs.episode_length_estimate=1 \
+    algo.kwargs.preference_dataset_max_size=3000 \
+    algo.kwargs.query_schedule=constant \
+    algo.agent.kwargs.learning_rate=3e-4 \
+    algo.agent.kwargs.buffer_size=100000 \
+    algo.agent.kwargs.learning_starts=100 \
+    algo.agent.kwargs.batch_size=256 \
+    algo.agent.kwargs.gradient_steps=1000 \
+    algo.agent.kwargs.train_freq=8000
+
+run_exp SAC_seg10 \
+    "${COMMON[@]}" \
+    algo/agent=SAC \
+    algo.train.kwargs.total_timesteps=1000000 \
+    algo.train.kwargs.n_initial_queries=200 \
+    algo.train.kwargs.n_queries_per_iter=10 \
+    algo.train.kwargs.reward_model_train_steps=200 \
+    algo.train.kwargs.reward_model_batch_size=64 \
+    algo.kwargs.reward_model_n_networks=3 \
+    algo.kwargs.reward_model_hidden_size=256 \
+    algo.kwargs.reward_model_lr=3e-4 \
+    algo.kwargs.reward_model_l2=1e-4 \
+    algo.kwargs.segment_length=10 \
+    algo.kwargs.preference_dataset_max_size=3000 \
+    algo.kwargs.query_schedule=constant \
+    algo.agent.kwargs.learning_rate=3e-4 \
+    algo.agent.kwargs.buffer_size=100000 \
+    algo.agent.kwargs.learning_starts=100 \
+    algo.agent.kwargs.batch_size=256 \
+    algo.agent.kwargs.gradient_steps=1000 \
+    algo.agent.kwargs.train_freq=8000
+
+run_exp PPO_seg1 \
     "${COMMON[@]}" \
     algo/agent=PPO \
     algo.train.kwargs.total_timesteps=1000000 \
@@ -244,41 +376,17 @@ run_exp christiano_PPO_traj_len_withNormalization \
     algo.train.kwargs.reward_model_batch_size=64 \
     algo.kwargs.reward_model_n_networks=3 \
     algo.kwargs.reward_model_hidden_size=256 \
-    algo.kwargs.reward_model_lr=0.0003 \
-    algo.kwargs.reward_model_l2=0.0001 \
-    algo.kwargs.segment_length=None \
-    algo.kwargs.episode_length_estimate=10 \
+    algo.kwargs.reward_model_lr=3e-4 \
+    algo.kwargs.reward_model_l2=1e-4 \
+    algo.kwargs.segment_length=1 \
     algo.kwargs.preference_dataset_max_size=3000 \
     algo.kwargs.query_schedule=constant \
-    algo.agent.kwargs.learning_rate=0.0003 \
+    algo.agent.kwargs.learning_rate=3e-4 \
     algo.agent.kwargs.batch_size=64 \
     algo.agent.kwargs.n_epochs=10 \
     algo.agent.kwargs.n_steps=1000
 
-
-run_exp christiano_SAC_shortSeg \
-    "${COMMON[@]}" \
-    algo/agent=SAC \
-    algo.train.kwargs.total_timesteps=1000000 \
-    algo.train.kwargs.n_initial_queries=200 \
-    algo.train.kwargs.n_queries_per_iter=10 \
-    algo.train.kwargs.reward_model_train_steps=200 \
-    algo.train.kwargs.reward_model_batch_size=64 \
-    algo.kwargs.reward_model_n_networks=3 \
-    algo.kwargs.reward_model_hidden_size=256 \
-    algo.kwargs.reward_model_lr=0.0003 \
-    algo.kwargs.reward_model_l2=0.0001 \
-    algo.kwargs.segment_length=1 \
-    algo.kwargs.preference_dataset_max_size=3000 \
-    algo.kwargs.query_schedule=constant \
-    algo.agent.kwargs.learning_rate=0.0003 \
-    algo.agent.kwargs.buffer_size=100000 \
-    algo.agent.kwargs.learning_starts=100 \
-    algo.agent.kwargs.batch_size=256 \
-    algo.agent.kwargs.gradient_steps=1000 \
-    algo.agent.kwargs.train_freq=8000
-
-run_exp christiano_PPO_shortSeg \
+run_exp PPO_seg10 \
     "${COMMON[@]}" \
     algo/agent=PPO \
     algo.train.kwargs.total_timesteps=1000000 \
@@ -288,12 +396,33 @@ run_exp christiano_PPO_shortSeg \
     algo.train.kwargs.reward_model_batch_size=64 \
     algo.kwargs.reward_model_n_networks=3 \
     algo.kwargs.reward_model_hidden_size=256 \
-    algo.kwargs.reward_model_lr=0.0003 \
-    algo.kwargs.reward_model_l2=0.0001 \
-    algo.kwargs.segment_length=1 \
+    algo.kwargs.reward_model_lr=3e-4 \
+    algo.kwargs.reward_model_l2=1e-4 \
+    algo.kwargs.segment_length=10 \
     algo.kwargs.preference_dataset_max_size=3000 \
     algo.kwargs.query_schedule=constant \
-    algo.agent.kwargs.learning_rate=0.0003 \
+    algo.agent.kwargs.learning_rate=3e-4 \
+    algo.agent.kwargs.batch_size=64 \
+    algo.agent.kwargs.n_epochs=10 \
+    algo.agent.kwargs.n_steps=1000
+
+run_exp PPO_trajLen_est1 \
+    "${COMMON[@]}" \
+    algo/agent=PPO \
+    algo.train.kwargs.total_timesteps=1000000 \
+    algo.train.kwargs.n_initial_queries=200 \
+    algo.train.kwargs.n_queries_per_iter=10 \
+    algo.train.kwargs.reward_model_train_steps=200 \
+    algo.train.kwargs.reward_model_batch_size=64 \
+    algo.kwargs.reward_model_n_networks=3 \
+    algo.kwargs.reward_model_hidden_size=256 \
+    algo.kwargs.reward_model_lr=3e-4 \
+    algo.kwargs.reward_model_l2=1e-4 \
+    algo.kwargs.segment_length=None \
+    algo.kwargs.episode_length_estimate=1 \
+    algo.kwargs.preference_dataset_max_size=3000 \
+    algo.kwargs.query_schedule=constant \
+    algo.agent.kwargs.learning_rate=3e-4 \
     algo.agent.kwargs.batch_size=64 \
     algo.agent.kwargs.n_epochs=10 \
     algo.agent.kwargs.n_steps=1000
