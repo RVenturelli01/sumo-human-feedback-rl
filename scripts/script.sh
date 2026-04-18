@@ -431,7 +431,7 @@ run_exp() {
 
 run_exp demo_PPO_short_seg \
     "${COMMON[@]}" \
-    algo=christiano-demo \
+    algo=christiano_demo \
     algo/agent=PPO \
     algo.train.kwargs.total_timesteps=1000000 \
     algo.train.kwargs.n_initial_queries=200 \
@@ -458,6 +458,7 @@ run_exp demo_PPO_short_seg \
 
 run_exp demo_SAC_short_seg \
     "${COMMON[@]}" \
+    algo=christiano_demo \
     algo/agent=SAC \
     algo.train.kwargs.total_timesteps=1000000 \
     algo.train.kwargs.n_initial_queries=200 \
@@ -486,7 +487,7 @@ run_exp demo_SAC_short_seg \
 
 run_exp demo_PPO_full_traj \
     "${COMMON[@]}" \
-    algo=christiano-demo \
+    algo=christiano_demo \
     algo/agent=PPO \
     algo.train.kwargs.total_timesteps=1000000 \
     algo.train.kwargs.n_initial_queries=200 \
@@ -513,6 +514,7 @@ run_exp demo_PPO_full_traj \
 
 run_exp demo_SAC_full_traj \
     "${COMMON[@]}" \
+    algo=christiano_demo \
     algo/agent=SAC \
     algo.train.kwargs.total_timesteps=1000000 \
     algo.train.kwargs.n_initial_queries=200 \
@@ -541,7 +543,7 @@ run_exp demo_SAC_full_traj \
 
 run_exp PPO_only_SFTdemo_short_seg \
     "${COMMON[@]}" \
-    algo=christiano-demo \
+    algo=christiano_demo \
     algo/agent=PPO \
     algo.train.kwargs.total_timesteps=1000000 \
     algo.train.kwargs.n_initial_queries=200 \
@@ -568,6 +570,7 @@ run_exp PPO_only_SFTdemo_short_seg \
 
 run_exp SAC_only_SFTdemo_short_seg \
     "${COMMON[@]}" \
+    algo=christiano_demo \
     algo/agent=SAC \
     algo.train.kwargs.total_timesteps=1000000 \
     algo.train.kwargs.n_initial_queries=200 \
@@ -596,7 +599,7 @@ run_exp SAC_only_SFTdemo_short_seg \
 
 run_exp PPO_only_SFTdemo_long_seg \
     "${COMMON[@]}" \
-    algo=christiano-demo \
+    algo=christiano_demo \
     algo/agent=PPO \
     algo.train.kwargs.total_timesteps=1000000 \
     algo.train.kwargs.n_initial_queries=200 \
@@ -623,6 +626,7 @@ run_exp PPO_only_SFTdemo_long_seg \
 
 run_exp SAC_only_SFTdemo_long_seg \
     "${COMMON[@]}" \
+    algo=christiano_demo \
     algo/agent=SAC \
     algo.train.kwargs.total_timesteps=1000000 \
     algo.train.kwargs.n_initial_queries=200 \
