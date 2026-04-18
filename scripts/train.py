@@ -7,10 +7,14 @@ import numpy as np
 import torch
 import sumo_rl_ego as sre
 
+from pathlib import Path
+
 from hydra.core.hydra_config import HydraConfig
+from hydra.utils import get_original_cwd
 from omegaconf import DictConfig, OmegaConf, open_dict
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
 
+from human_feedback_rl.algorithms.christiano.christiano_demo_algorithm import ChristianoDemoAlgorithm
 from sumo_gym_ego import EgoStatus
 from human_feedback_rl.algorithms import ChristianoAlgorithm
 
@@ -162,6 +166,29 @@ def main(cfg: DictConfig) -> None:
             )
             with open_dict(cfg):
                 cfg.model = {"algo": cfg.algo.agent.algo}
+        if cfg.algo.name == "christiano-demo":
+            print("Initializing agent...")
+            algo_cls = ALGO_REGISTRY[cfg.algo.agent.algo]
+            agent = algo_cls(
+                env=env,
+                seed=cfg.run.seed,
+                **OmegaConf.to_container(cfg.algo.agent.kwargs, resolve=True),
+            )
+
+            print(f"Loading expert ({cfg.algo.expert_id})...")
+            expert = sre.load_policy(cfg.algo.expert_id)
+
+            print("Initializing algorithm...")
+            algo = ChristianoDemoAlgorithm(
+                env=env,
+                agent=agent,
+                rng=np.random.default_rng(cfg.run.seed),
+                expert_policy=expert,
+                **OmegaConf.to_container(cfg.algo.kwargs, resolve=True),
+            )
+            with open_dict(cfg):
+                cfg.model = {"algo": cfg.algo.agent.algo}
+
         else:
             raise ValueError(f"Unknown algorithm: {cfg.algo.name!r}")
 

@@ -4,6 +4,8 @@ defaults:
 
 name: christiano
 
+expert_id: ppo-v0
+
 # ── ChristianoAlgorithm.train() arguments ────────────────────────────────
 train:
   kwargs:

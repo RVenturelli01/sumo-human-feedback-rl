@@ -1,0 +1,38 @@
+defaults:
+  - agent: SAC
+  - _self_
+
+name: christiano-demo
+
+expert_id: ppo-v0
+
+# ── ChristianoDemoAlgorithm.train() arguments ────────────────────────────────
+train:
+  kwargs:
+    total_timesteps: 1_000_000
+    n_initial_queries: 200
+    n_queries_per_iter: 10
+    reward_model_train_steps: 200
+    reward_model_batch_size: 64
+    # SFT pre-training
+    n_sft_steps: 500
+    sft_batch_size: 32
+
+# ── ChristianoDemoAlgorithm constructor arguments ─────────────────────────────
+kwargs:
+  # Reward model
+  reward_model_n_networks: 3
+  reward_model_hidden_size: 256
+  reward_model_lr: 3.0e-4
+  reward_model_l2: 1.0e-4
+  # Preferences / segments
+  segment_length: 25
+  episode_length_estimate: 200
+  preference_dataset_max_size: 3000
+  query_schedule: constant
+  # Demo loss
+  demo_loss_weight: 0.1
+  expert_batch_size: 32
+  expert_dataset_max_size: 5000
+  # Compute
+  device: cpu
