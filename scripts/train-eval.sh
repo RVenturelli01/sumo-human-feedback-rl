@@ -41,8 +41,6 @@ run_exp exp_01_christiano-rew_model-pref-SAC-seg_len_1 \
     algo.train.kwargs.n_queries_per_iter=10 \
     algo.train.kwargs.reward_model_train_steps=200 \
     algo.train.kwargs.reward_model_batch_size=64 \
-    algo.train.kwargs.n_sft_steps=200 \
-    algo.train.kwargs.sft_batch_size=200 \
     algo.kwargs.reward_model_n_networks=2 \
     algo.kwargs.reward_model_hidden_size=256 \
     algo.kwargs.reward_model_lr=3e-4 \
@@ -67,8 +65,6 @@ run_exp exp_02_christiano-rew_model-pref-PPO-seg_len_1 \
     algo.train.kwargs.n_queries_per_iter=10 \
     algo.train.kwargs.reward_model_train_steps=200 \
     algo.train.kwargs.reward_model_batch_size=64 \
-    algo.train.kwargs.n_sft_steps=200 \
-    algo.train.kwargs.sft_batch_size=200 \
     algo.kwargs.reward_model_n_networks=2 \
     algo.kwargs.reward_model_hidden_size=256 \
     algo.kwargs.reward_model_lr=3e-4 \
