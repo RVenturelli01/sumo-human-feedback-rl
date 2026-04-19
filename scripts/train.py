@@ -14,15 +14,31 @@ from hydra.utils import get_original_cwd
 from omegaconf import DictConfig, OmegaConf, open_dict
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
 
+from human_feedback_rl.common import BCPolicy
+
 from human_feedback_rl.algorithms.christiano.christiano_demo_algorithm import ChristianoDemoAlgorithm
 from sumo_gym_ego import EgoStatus
-from human_feedback_rl.algorithms import ChristianoAlgorithm
+from human_feedback_rl.algorithms import ChristianoAlgorithm, DaggerAlgorithm
 
 from sumo_rl_ego.utils import (
     init_wandb,
     confirm_cfg,
     save_outputs,
+    CustomLoggingCallback,
 )
+
+class _BCPolicyAdapter:
+    """Wraps BCPolicy to match the sre.Policy interface expected by run_episode."""
+
+    def __init__(self, bc_policy: BCPolicy):
+        self._policy = bc_policy
+
+    def reset(self):
+        pass
+
+    def predict(self, obs):
+        action, _ = self._policy.predict(obs, deterministic=True)
+        return action
 
 
 class EvalMetrics:
@@ -188,7 +204,25 @@ def main(cfg: DictConfig) -> None:
             )
             with open_dict(cfg):
                 cfg.model = {"algo": cfg.algo.agent.algo}
+        elif cfg.algo.name == "dagger":
+            print("Initializing agent (BCPolicy)...")
+            agent = BCPolicy(
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                lr_schedule=lambda _: cfg.algo.kwargs.bc_lr,
+                **OmegaConf.to_container(cfg.algo.policy_kwargs, resolve=True),
+            )
 
+            print(f"Loading expert ({cfg.algo.expert_id})...")
+            expert = sre.load_policy(cfg.algo.expert_id)
+
+            print("Initializing algorithm...")
+            algo = DaggerAlgorithm(
+                env=env,
+                agent=agent,
+                expert=expert,
+                **cfg.algo.kwargs,
+            )
         else:
             raise ValueError(f"Unknown algorithm: {cfg.algo.name!r}")
 
@@ -208,7 +242,10 @@ def main(cfg: DictConfig) -> None:
         )
 
         try:
-            policy = sre.ModelPolicy(agent)
+            if cfg.algo.name == "dagger":
+                policy = _BCPolicyAdapter(agent)
+            else:
+                policy = sre.ModelPolicy(agent)
 
             metrics = EvalMetrics()
 
