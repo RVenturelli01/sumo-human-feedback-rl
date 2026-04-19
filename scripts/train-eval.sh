@@ -32,7 +32,7 @@ run_exp() {
         "$@"
 }
 
-run_exp exp_01_christiano-rew_model-pref-SAC-seg_len=1 \
+run_exp exp_01_christiano-rew_model-pref-SAC-seg_len_1 \
     "${COMMON[@]}" \
     algo=christiano \
     algo/agent=SAC \
@@ -58,7 +58,7 @@ run_exp exp_01_christiano-rew_model-pref-SAC-seg_len=1 \
     algo.agent.kwargs.gradient_steps=1000 \
     algo.agent.kwargs.train_freq=8000
 
-run_exp exp_02_christiano-rew_model-pref-PPO-seg_len=1 \
+run_exp exp_02_christiano-rew_model-pref-PPO-seg_len_1 \
     "${COMMON[@]}" \
     algo=christiano \
     algo/agent=PPO \
