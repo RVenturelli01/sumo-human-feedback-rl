@@ -166,7 +166,7 @@ def main(cfg: DictConfig) -> None:
             )
             with open_dict(cfg):
                 cfg.model = {"algo": cfg.algo.agent.algo}
-        if cfg.algo.name == "christiano-demo":
+        elif cfg.algo.name == "christiano-demo":
             print("Initializing agent...")
             algo_cls = ALGO_REGISTRY[cfg.algo.agent.algo]
             agent = algo_cls(

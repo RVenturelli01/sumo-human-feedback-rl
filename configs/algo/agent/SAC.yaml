@@ -11,3 +11,4 @@ kwargs:
   gradient_steps: 1000
   # total steps collected per iteration (across all envs); used by ChristianoAlgorithm
   train_freq: 1000
+  device: cpu
