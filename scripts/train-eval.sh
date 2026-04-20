@@ -32,34 +32,30 @@ run_exp() {
         "$@"
 }
 
-run_exp exp_08_christiano-rew_model-pref-demo-PPO-seg_len_full \
+run_exp exp_12_christiano-rew_model-pref-SAC-seg_len_1 \
     "${COMMON[@]}" \
-    algo=christiano_demo \
-    algo/agent=PPO \
+    algo=christiano \
+    algo/agent=SAC \
     algo.train.kwargs.total_timesteps=1000000 \
     algo.train.kwargs.n_initial_queries=200 \
     algo.train.kwargs.n_queries_per_iter=10 \
     algo.train.kwargs.reward_model_train_steps=200 \
     algo.train.kwargs.reward_model_batch_size=64 \
-    algo.train.kwargs.n_sft_steps=200 \
-    algo.train.kwargs.sft_batch_size=200 \
-    algo.kwargs.reward_model_n_networks=2 \
+    algo.kwargs.reward_model_n_networks=3 \
     algo.kwargs.reward_model_hidden_size=256 \
     algo.kwargs.reward_model_lr=3e-4 \
     algo.kwargs.reward_model_l2=1e-4 \
-    algo.kwargs.segment_length=None \
-    algo.kwargs.episode_length_estimate=10 \
+    algo.kwargs.segment_length=1 \
     algo.kwargs.preference_dataset_max_size=3000 \
-    algo.kwargs.query_schedule=constant \
-    algo.kwargs.demo_loss_weight=0.5 \
-    algo.kwargs.expert_batch_size=64 \
-    algo.kwargs.expert_dataset_max_size=3000 \
+    algo.kwargs.query_schedule=inverse \
     algo.agent.kwargs.learning_rate=3e-4 \
-    algo.agent.kwargs.batch_size=64 \
-    algo.agent.kwargs.n_epochs=10 \
-    algo.agent.kwargs.n_steps=1000
+    algo.agent.kwargs.buffer_size=100000 \
+    algo.agent.kwargs.learning_starts=100 \
+    algo.agent.kwargs.batch_size=256 \
+    algo.agent.kwargs.gradient_steps=1000 \
+    algo.agent.kwargs.train_freq=8000
 
-run_exp exp_09_christiano-rew_model-pref-PPO-seg_len_1_ens3 \
+run_exp exp_13_christiano-rew_model-pref-PPO-seg_len_1 \
     "${COMMON[@]}" \
     algo=christiano \
     algo/agent=PPO \
@@ -73,9 +69,8 @@ run_exp exp_09_christiano-rew_model-pref-PPO-seg_len_1_ens3 \
     algo.kwargs.reward_model_lr=3e-4 \
     algo.kwargs.reward_model_l2=1e-4 \
     algo.kwargs.segment_length=1 \
-    algo.kwargs.episode_length_estimate=None \
     algo.kwargs.preference_dataset_max_size=3000 \
-    algo.kwargs.query_schedule=constant \
+    algo.kwargs.query_schedule=inverse \
     algo.agent.kwargs.learning_rate=3e-4 \
     algo.agent.kwargs.batch_size=64 \
     algo.agent.kwargs.n_epochs=10 \
