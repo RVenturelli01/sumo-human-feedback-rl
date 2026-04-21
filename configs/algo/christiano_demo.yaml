@@ -4,7 +4,7 @@ defaults:
 
 name: christiano-demo
 
-expert_id: ppo-v0
+expert_id: ppo-fast
 
 # ── ChristianoDemoAlgorithm.train() arguments ────────────────────────────────
 train:
