@@ -32,6 +32,7 @@ kwargs:
   query_schedule: constant
   # Demo loss
   demo_loss_weight: 0.1
+  demo_loss_type: logsigmoid  # "logsigmoid" | "constant_grad"
   expert_batch_size: 32
   expert_dataset_max_size: 5000
   # Compute
