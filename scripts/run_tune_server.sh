@@ -26,10 +26,10 @@ STORAGE="sqlite:///${OUTPUT_DIR}/optuna.db"
 STUDY_NAME="christiano-optuna"
 
 N_TRIALS=50
-TOTAL_TIMESTEPS=30000
+TOTAL_TIMESTEPS=300000
 TOTAL_COMPARISONS=200
-N_ITERATIONS=5
-N_EVAL_EPISODES=20
+N_ITERATIONS=10
+N_EVAL_EPISODES=30
 SEED=0
 
 # ── attiva conda ───────────────────────────────────────────────────────────────
@@ -62,5 +62,4 @@ taskset -c 36-47 python scripts/tune_christiano.py \
     --total-comparisons "$TOTAL_COMPARISONS"  \
     --n-iterations      "$N_ITERATIONS"       \
     --n-eval-episodes   "$N_EVAL_EPISODES"    \
-    --seed              "$SEED"               \
-    --wandb
+    --seed              "$SEED"
