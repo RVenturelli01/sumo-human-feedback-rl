@@ -7,12 +7,13 @@ run:
   name: ""
   seed: 0
   output_dir: null
+  n_episodes_eval: 50
 
 
 wandb:
   enabled: true
   kwargs:
-    project: "shfre-train"
+    project: "training-experiments"
     group: ${env.id}_${env.kwargs.ego}_${env.kwargs.reward}
     name: ${run.name}
     mode: "online"
