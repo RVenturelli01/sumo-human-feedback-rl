@@ -3,6 +3,7 @@ import sumo_rl_ego as sre
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
 from human_feedback_rl.algorithms import ChristianoAlgorithm
 import wandb
+
     
 wandb.init(
     project="temp",
@@ -42,7 +43,7 @@ algo = ChristianoAlgorithm(
 
 print("Starting training...")
 agent = algo.train(
-    total_comparisons=100,
-    total_timesteps=10_000,
+    total_comparisons=20_000,
+    total_timesteps=200_000,
 )
 
