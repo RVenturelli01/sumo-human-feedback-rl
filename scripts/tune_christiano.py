@@ -90,8 +90,8 @@ def evaluate(agent, n_episodes: int, seed: int) -> tuple[float, float, float]:
 # ── callback: salva Pareto front dopo ogni trial ──────────────────────────────
 
 def make_checkpoint_callback(output_dir: Path, log: logging.Logger):
-    pareto_path = output_dir / "pareto_front.json"
-    trials_path = output_dir / "all_trials.json"
+    pareto_path = output_dir / "pareto_front2.json"
+    trials_path = output_dir / "all_trials2.json"
 
     def callback(study: optuna.Study, trial: optuna.trial.FrozenTrial):
         completed = [
@@ -145,8 +145,8 @@ def make_objective(args, log: logging.Logger):
 
         # ── suggest hyperparameters ──────────────────────────────────────────
         lr_rew          = trial.suggest_float("lr_rew",          1e-5, 1e-2, log=True)
-        batch_size_rew  = trial.suggest_categorical("batch_size_rew",  [32, 64, 128, 256])
-        n_ephochs_rew   = trial.suggest_int("n_ephochs_rew",     3, 10, 20)
+        batch_size_rew  = trial.suggest_categorical("batch_size_rew",  [64, 128, 256])
+        n_ephochs_rew   = trial.suggest_int("n_ephochs_rew",   20, 100, 200)
         n_ensembles_rew = trial.suggest_int("n_ensembles_rew",   2, 3, 5)
         fragment_length = trial.suggest_categorical("fragment_length", [1, 10, 25, 50])
         query_schedule  = trial.suggest_categorical("query_schedule",
@@ -199,6 +199,9 @@ def make_objective(args, log: logging.Logger):
                 fragment_length=fragment_length,
                 query_schedule=query_schedule,
                 n_iterations=args.n_iterations,
+                train_comparison_frac=0.2,
+                initial_comparison_frac=0.1,
+                initial_epoch_multiplier=2.0,
                 rng=np.random.default_rng(args.seed),
             )
 

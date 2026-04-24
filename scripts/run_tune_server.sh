@@ -23,14 +23,14 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONDA_ENV="sumo-rlhf"
 OUTPUT_DIR="/storage/fis3/christiano-optuna"
 STORAGE="sqlite:///${OUTPUT_DIR}/optuna.db"
-STUDY_NAME="christiano-optuna-mo"
+STUDY_NAME="christiano-optuna-mo2"
 POPULATION_SIZE=30
 
 N_TRIALS=60
 TOTAL_TIMESTEPS=300000
-TOTAL_COMPARISONS=200
-N_ITERATIONS=10
-N_EVAL_EPISODES=60
+TOTAL_COMPARISONS=2000
+N_ITERATIONS=50
+N_EVAL_EPISODES=100
 SEED=0
 
 # ── attiva conda ───────────────────────────────────────────────────────────────
