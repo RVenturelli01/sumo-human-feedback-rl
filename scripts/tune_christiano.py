@@ -90,8 +90,8 @@ def evaluate(agent, n_episodes: int, seed: int) -> tuple[float, float, float]:
 # ── callback: salva Pareto front dopo ogni trial ──────────────────────────────
 
 def make_checkpoint_callback(output_dir: Path, log: logging.Logger):
-    pareto_path = output_dir / "pareto_front2.json"
-    trials_path = output_dir / "all_trials2.json"
+    pareto_path = output_dir / "pareto_front3.json"
+    trials_path = output_dir / "all_trials3.json"
 
     def callback(study: optuna.Study, trial: optuna.trial.FrozenTrial):
         completed = [
@@ -179,9 +179,9 @@ def make_objective(args, log: logging.Logger):
                 policy="MlpPolicy",
                 env=env,
                 learning_rate=lr_agent,
-                n_steps=256,
-                batch_size=256,
-                n_epochs=5,
+                n_steps=2048,
+                batch_size=64,
+                n_epochs=10,
                 gamma=0.995,
                 ent_coef=ent_coef,
                 seed=args.seed,

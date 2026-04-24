@@ -4,22 +4,7 @@ algo: "PPO"
 kwargs:
   policy: "MlpPolicy"
   learning_rate: 3e-4
-  n_steps: 256
-  batch_size: 256
-  n_epochs: 5
-  gamma: 0.995
-  gae_lambda: 0.95
-  clip_range: 0.2
-  clip_range_vf: null
-  normalize_advantage: true
-  ent_coef: 0.03
-  vf_coef: 0.8
-  max_grad_norm: 0.5
-  use_sde: false
-  stats_window_size: 100
-  policy_kwargs:
-    net_arch: [256, 128]
-  seed: ${run.seed}
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
   device: "cpu"
-  tensorboard_log: ${hydra:runtime.cwd}/tensorboard
-  verbose: 1

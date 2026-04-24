@@ -7,7 +7,7 @@ run:
   name: ""
   seed: 0
   output_dir: null
-  n_episodes_eval: 50
+  n_episodes_eval: 100
 
 
 wandb:
