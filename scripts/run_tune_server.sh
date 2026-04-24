@@ -12,7 +12,7 @@
 # Output prodotti:
 #   /storage/fis3/christiano-optuna/
 #     optuna.db          → DB SQLite con tutti i trial (fonte di verità)
-#     best_params.json   → parametri ottimi aggiornati dopo ogni trial
+#     pareto_front.json  → Pareto front ordinata per fast_return (aggiornata dopo ogni trial)
 #     all_trials.json    → tutti i trial completati con value e params
 #     tune_<ts>.log      → log completo stdout+stderr
 
@@ -23,13 +23,14 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONDA_ENV="sumo-rlhf"
 OUTPUT_DIR="/storage/fis3/christiano-optuna"
 STORAGE="sqlite:///${OUTPUT_DIR}/optuna.db"
-STUDY_NAME="christiano-optuna"
+STUDY_NAME="christiano-optuna-mo"
+POPULATION_SIZE=30
 
-N_TRIALS=50
+N_TRIALS=60
 TOTAL_TIMESTEPS=300000
 TOTAL_COMPARISONS=200
 N_ITERATIONS=10
-N_EVAL_EPISODES=30
+N_EVAL_EPISODES=60
 SEED=0
 
 # ── attiva conda ───────────────────────────────────────────────────────────────
@@ -58,6 +59,7 @@ taskset -c 36-47 python scripts/tune_christiano.py \
     --storage           "$STORAGE"            \
     --output-dir        "$OUTPUT_DIR"         \
     --n-trials          "$N_TRIALS"           \
+    --population-size   "$POPULATION_SIZE"    \
     --total-timesteps   "$TOTAL_TIMESTEPS"    \
     --total-comparisons "$TOTAL_COMPARISONS"  \
     --n-iterations      "$N_ITERATIONS"       \
