@@ -144,15 +144,20 @@ def make_objective(args, log: logging.Logger):
     def objective(trial: optuna.Trial) -> tuple[float, float, float]:
 
         # ── suggest hyperparameters ──────────────────────────────────────────
-        lr_rew          = trial.suggest_float("lr_rew",          1e-5, 1e-2, log=True)
-        batch_size_rew  = trial.suggest_categorical("batch_size_rew",  [64, 128, 256])
-        n_ephochs_rew   = trial.suggest_int("n_ephochs_rew",   20, 100, 200)
-        n_ensembles_rew = trial.suggest_int("n_ensembles_rew",   2, 3, 5)
-        fragment_length = trial.suggest_categorical("fragment_length", [1, 10, 25, 50])
-        query_schedule  = trial.suggest_categorical("query_schedule",
-                              ["constant", "hyperbolic", "inverse_quadratic"])
-        lr_agent        = trial.suggest_float("lr_agent",        1e-4, 1e-3, log=True)
-        ent_coef        = trial.suggest_float("ent_coef",        0.0,  0.1)
+        lr_rew                  = trial.suggest_float("lr_rew",                  1e-5, 1e-2, log=True)
+        batch_size_rew          = trial.suggest_categorical("batch_size_rew",          [64, 128, 256])
+        n_ephochs_rew           = trial.suggest_int("n_ephochs_rew",           5, 50)
+        n_ensembles_rew         = trial.suggest_int("n_ensembles_rew",         2, 5)
+        fragment_length         = trial.suggest_categorical("fragment_length",         [1, 10, 25, 50])
+        query_schedule          = trial.suggest_categorical("query_schedule",
+                                      ["constant", "hyperbolic", "inverse_quadratic"])
+        lr_agent                = trial.suggest_float("lr_agent",                1e-4, 1e-3, log=True)
+        ent_coef                = trial.suggest_float("ent_coef",                0.0,  0.1)
+        total_comparisons       = trial.suggest_categorical("total_comparisons",       [500, 1000, 2000, 5000, 10000, 20000])
+        n_iterations            = trial.suggest_categorical("n_iterations",            [5, 10, 20, 40, 50, 100])
+        train_comparison_frac   = trial.suggest_float("train_comparison_frac",   0.1,  0.8)
+        initial_comparison_frac = trial.suggest_float("initial_comparison_frac", 0.05, 0.3)
+        initial_epoch_multiplier = trial.suggest_float("initial_epoch_multiplier", 1.0, 10.0)
 
         log.info(f"Trial {trial.number} start — {dict(trial.params)}")
 
@@ -198,16 +203,16 @@ def make_objective(args, log: logging.Logger):
                 n_ensembles_rew=n_ensembles_rew,
                 fragment_length=fragment_length,
                 query_schedule=query_schedule,
-                n_iterations=args.n_iterations,
-                train_comparison_frac=0.2,
-                initial_comparison_frac=0.1,
-                initial_epoch_multiplier=2.0,
+                n_iterations=n_iterations,
+                train_comparison_frac=train_comparison_frac,
+                initial_comparison_frac=initial_comparison_frac,
+                initial_epoch_multiplier=initial_epoch_multiplier,
                 rng=np.random.default_rng(args.seed),
             )
 
             algo.train(
                 total_timesteps=args.total_timesteps,
-                total_comparisons=args.total_comparisons,
+                total_comparisons=total_comparisons,
             )
 
             trained_agent = algo.trajectory_generator.agent
@@ -254,9 +259,7 @@ def main():
     parser.add_argument("--output-dir",        type=str,  default="outputs/optuna",
                         help="Directory per log, pareto_front.json, all_trials.json")
     parser.add_argument("--seed",              type=int,  default=0)
-    parser.add_argument("--n-iterations",      type=int,  default=10)
     parser.add_argument("--total-timesteps",   type=int,  default=200_000)
-    parser.add_argument("--total-comparisons", type=int,  default=200)
     parser.add_argument("--n-eval-episodes",   type=int,  default=20)
     parser.add_argument("--no-wandb",          action="store_true")
     args = parser.parse_args()
@@ -275,8 +278,8 @@ def main():
     log.info(f"Output dir   : {output_dir}")
     log.info(f"Objectives   : fast_return (1°) | true_mean_rew (2°) | success_rate (3°)")
     log.info(f"Trials       : {args.n_trials}  |  population_size={args.population_size}")
-    log.info(f"Budget/trial : {args.total_timesteps} ts / {args.total_comparisons} cmp / "
-             f"{args.n_eval_episodes} eval ep")
+    log.info(f"Budget/trial : {args.total_timesteps} ts / {args.n_eval_episodes} eval ep"
+             f"  (total_comparisons e n_iterations sono tunati da Optuna)")
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 

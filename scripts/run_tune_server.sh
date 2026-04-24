@@ -28,8 +28,6 @@ POPULATION_SIZE=30
 
 N_TRIALS=60
 TOTAL_TIMESTEPS=1000000
-TOTAL_COMPARISONS=20000
-N_ITERATIONS=100
 N_EVAL_EPISODES=100
 SEED=0
 
@@ -50,18 +48,16 @@ echo "  Christiano HPO — server bernstein"
 echo "  Study  : $STUDY_NAME"
 echo "  Storage: $STORAGE"
 echo "  Output : $OUTPUT_DIR"
-echo "  Trials : $N_TRIALS × ${TOTAL_TIMESTEPS} ts / ${TOTAL_COMPARISONS} cmp"
+echo "  Trials : $N_TRIALS × ${TOTAL_TIMESTEPS} ts"
 echo "========================================"
 
 # ── lancia il tuning (CPU pinned ai core 36-47) ────────────────────────────────
-taskset -c 36-47 python scripts/tune_christiano.py \
+taskset -c 42-47 python scripts/tune_christiano.py \
     --study-name        "$STUDY_NAME"         \
     --storage           "$STORAGE"            \
     --output-dir        "$OUTPUT_DIR"         \
     --n-trials          "$N_TRIALS"           \
     --population-size   "$POPULATION_SIZE"    \
     --total-timesteps   "$TOTAL_TIMESTEPS"    \
-    --total-comparisons "$TOTAL_COMPARISONS"  \
-    --n-iterations      "$N_ITERATIONS"       \
     --n-eval-episodes   "$N_EVAL_EPISODES"    \
     --seed              "$SEED"
