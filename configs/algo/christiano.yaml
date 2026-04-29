@@ -9,13 +9,13 @@ kwargs:
   n_ensembles_rew: 3
   lr_rew: 3e-4
   batch_size_rew: 32
-  n_ephochs_rew: 10
+  n_steps_rew: 200
   n_iterations: 10
   train_comparison_frac: 0.1
   fragment_length: 25
   transition_oversampling: 1.0
   initial_comparison_frac: 0.1
-  initial_epoch_multiplier: 200.0
+  initial_step_multiplier: 1.0
   query_schedule: "hyperbolic"
   comparison_queue_size: null
 
