@@ -1,0 +1,25 @@
+defaults:
+  - agent: PPO
+  - _self_
+
+name: christiano_demo
+
+expert_id: sac-fast   # policy ID passed to sre.load_policy()
+
+kwargs:
+  n_ensembles_rew: 3
+  lr_rew: 3e-4
+  batch_size_rew: 256
+  n_epochs_rew: 10
+  n_iterations: 50
+  fragment_length: 1
+  query_schedule: "constant"
+  use_reward_reg: true
+  reward_mean_reg: 0.5
+  demo_train_frac: 0.8
+  demo_queue_size: 1000000
+
+train:
+  kwargs:
+    total_timesteps: 100000
+    total_demonstrations: 1000

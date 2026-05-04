@@ -1,7 +1,10 @@
 from collections import defaultdict
+import pickle
+from pathlib import Path
 
 import hydra
 import numpy as np
+import wandb
 
 import sumo_rl_ego as sre
 
@@ -9,6 +12,7 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf, open_dict
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
 from human_feedback_rl.algorithms import ChristianoAlgorithm, DaggerAlgorithm
+from human_feedback_rl.algorithms.christiano.christiano_algorithm_demo import ChristianoAlgorithmDemo
 from human_feedback_rl.common import BCPolicy
 
 from sumo_gym_ego import EgoStatus
@@ -170,6 +174,24 @@ def main(cfg: DictConfig) -> None:
             with open_dict(cfg):
                 cfg.model = {"algo": cfg.algo.agent.algo}
 
+        if cfg.algo.name == "christiano_demo":
+            print("Initializing agent...")
+            algo_cls = ALGO_REGISTRY[cfg.algo.agent.algo]
+            agent = algo_cls(
+                env=env,
+                **cfg.algo.agent.kwargs
+            )
+
+            print(f"Loading expert ({cfg.algo.expert_id})...")
+            expert = sre.load_policy(cfg.algo.expert_id)
+
+            print("Initializing algorithm...")
+            algo = ChristianoAlgorithmDemo(
+                env=env,
+                agent=agent,
+                expert_policy=expert,
+                **cfg.algo.kwargs,
+            )
         elif cfg.algo.name == "dagger":
             print("Initializing agent (BCPolicy)...")
             agent = BCPolicy(
@@ -196,6 +218,22 @@ def main(cfg: DictConfig) -> None:
         
         print("\nTraining finished.")
         save_outputs(cfg, agent)
+
+        if cfg.algo.name == "christiano" or  cfg.algo.name == "christiano_demo":
+            _output_dir = Path(HydraConfig.get().runtime.output_dir)
+
+            rm_path = _output_dir / "reward_model.pt"
+            algo.save_reward_model(rm_path)
+            if cfg.wandb.enabled and wandb.run is not None:
+                wandb.save(str(rm_path))
+
+            print("Collecting debug trajectories...")
+            debug_data = algo.collect_debug_data(n_steps=cfg.run.get("n_steps_debug", 2000))
+            debug_path = _output_dir / "debug_data.pkl"
+            with open(debug_path, "wb") as _f:
+                pickle.dump(debug_data, _f)
+            print(f"Saved debug data → {debug_path}  ({len(debug_data['trajectories'])} episodes)")
+
         print("Run completed successfully.\n")
 
         # -------------- eval -----------------------
