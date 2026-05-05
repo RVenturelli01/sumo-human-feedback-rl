@@ -16,7 +16,7 @@ mkdir -p "$OUTPUT_DIR"
 
 # Definiamo le griglie di iperparametri
 SEG_LENS=(1)
-USE_REGS=("true" "false")
+USE_REGS=("true")
 
 echo "Avvio della suite di esperimenti sul server..."
 echo "Lunghezze segmento: ${SEG_LENS[*]}"
@@ -44,7 +44,7 @@ for SEG_LEN in "${SEG_LENS[@]}"; do
         echo "===================================================="
 
         # 3. Esecuzione (mantenendo taskset e i parametri specifici del server)
-        echo "y" | taskset -c 36-47 python scripts/train.py \
+        echo "y" | taskset -c 39-47 python scripts/train.py \
             algo=christiano \
             algo/agent=PPO \
             env.kwargs.ego=continuous \
@@ -56,15 +56,15 @@ for SEG_LEN in "${SEG_LENS[@]}"; do
             algo.kwargs.n_ensembles_rew=3 \
             algo.kwargs.lr_rew=3e-4 \
             algo.kwargs.batch_size_rew=64 \
-            algo.kwargs.n_ephochs_rew=1 \
+            algo.kwargs.n_ephochs_rew=3 \
             algo.kwargs.n_iterations=50 \
             algo.kwargs.train_comparison_frac=0.8 \
             algo.kwargs.fragment_length="$SEG_LEN" \
-            algo.kwargs.transition_oversampling=10.0 \
+            algo.kwargs.transition_oversampling=1.0 \
             algo.kwargs.initial_comparison_frac=0.1 \
             algo.kwargs.initial_epoch_multiplier=1.0 \
             algo.kwargs.use_reward_reg="$USE_REG" \
-            algo.kwargs.reward_mean_reg=0.7 \
+            algo.kwargs.reward_mean_reg=0.5 \
             algo.kwargs.query_schedule="constant" \
             algo.train.kwargs.total_timesteps=1000000 \
             algo.train.kwargs.total_comparisons=2500
