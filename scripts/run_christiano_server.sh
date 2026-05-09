@@ -15,8 +15,8 @@ cd "$REPO_ROOT"
 mkdir -p "$OUTPUT_DIR"
 
 # Definiamo le griglie di iperparametri
-SEG_LENS=(1)
-USE_REGS=("true")
+SEG_LENS=(1 2 10 20 50 100)
+USE_REGS=("true" "false")
 
 echo "Avvio della suite di esperimenti sul server..."
 echo "Lunghezze segmento: ${SEG_LENS[*]}"
@@ -34,7 +34,7 @@ for SEG_LEN in "${SEG_LENS[@]}"; do
             REG_LABEL="reg_OFF"
         fi
 
-        RUN_NAME="seg_${SEG_LEN}_${REG_LABEL}_0.7"
+        RUN_NAME="seg_${SEG_LEN}_${REG_LABEL}"
 
         # 2. Logging per il terminale
         echo "===================================================="
@@ -55,19 +55,20 @@ for SEG_LEN in "${SEG_LENS[@]}"; do
             wandb.kwargs.project="debug-new-server" \
             algo.kwargs.n_ensembles_rew=3 \
             algo.kwargs.lr_rew=3e-4 \
-            algo.kwargs.batch_size_rew=64 \
-            algo.kwargs.n_ephochs_rew=3 \
-            algo.kwargs.n_iterations=50 \
+            algo.kwargs.batch_size_rew=128 \
+            algo.kwargs.n_ephochs_rew=1 \
+            algo.kwargs.n_iterations=20 \
             algo.kwargs.train_comparison_frac=0.8 \
             algo.kwargs.fragment_length="$SEG_LEN" \
             algo.kwargs.transition_oversampling=1.0 \
             algo.kwargs.initial_comparison_frac=0.1 \
             algo.kwargs.initial_epoch_multiplier=1.0 \
             algo.kwargs.use_reward_reg="$USE_REG" \
-            algo.kwargs.reward_mean_reg=0.5 \
+            algo.kwargs.reward_mean_reg=0.0001 \
+            algo.kwargs.label_smoothing=0.1 \
             algo.kwargs.query_schedule="constant" \
-            algo.train.kwargs.total_timesteps=1000000 \
-            algo.train.kwargs.total_comparisons=2500
+            algo.train.kwargs.total_timesteps=400000 \
+            algo.train.kwargs.total_comparisons=46000
 
     done
 done
