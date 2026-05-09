@@ -48,7 +48,7 @@ for SEG_LEN in "${SEG_LENS[@]}"; do
         echo "===================================================="
 
         # 3. Esecuzione (mantenendo taskset e i parametri specifici del server)
-        echo "y" | taskset -c 39-47 python scripts/train.py \
+        echo "y" | taskset -c 36-47 python scripts/train.py \
             algo=christiano \
             algo/agent="$AGENT" \
             env.kwargs.ego=continuous \
