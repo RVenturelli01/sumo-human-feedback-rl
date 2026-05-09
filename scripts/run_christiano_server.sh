@@ -15,15 +15,18 @@ cd "$REPO_ROOT"
 mkdir -p "$OUTPUT_DIR"
 
 # Definiamo le griglie di iperparametri
+AGENTS=(PPO SAC)
 SEG_LENS=(1 2 10 20 50 100)
 USE_REGS=("true" "false")
 
 echo "Avvio della suite di esperimenti sul server..."
+echo "Agenti: ${AGENTS[*]}"
 echo "Lunghezze segmento: ${SEG_LENS[*]}"
 echo "Regolarizzazione: ${USE_REGS[*]}"
 echo "Output Directory: $OUTPUT_DIR"
 
 # Ciclo nidificato per esplorare tutte le combinazioni
+for AGENT in "${AGENTS[@]}"; do
 for SEG_LEN in "${SEG_LENS[@]}"; do
     for USE_REG in "${USE_REGS[@]}"; do
 
@@ -34,11 +37,12 @@ for SEG_LEN in "${SEG_LENS[@]}"; do
             REG_LABEL="reg_OFF"
         fi
 
-        RUN_NAME="seg_${SEG_LEN}_${REG_LABEL}"
+        RUN_NAME="${AGENT}_seg_${SEG_LEN}_${REG_LABEL}"
 
         # 2. Logging per il terminale
         echo "===================================================="
         echo "Inizio Esperimento: $RUN_NAME"
+        echo " - Agent: $AGENT"
         echo " - Fragment Length: $SEG_LEN"
         echo " - Reward Regularization: $USE_REG"
         echo "===================================================="
@@ -46,7 +50,7 @@ for SEG_LEN in "${SEG_LENS[@]}"; do
         # 3. Esecuzione (mantenendo taskset e i parametri specifici del server)
         echo "y" | taskset -c 39-47 python scripts/train.py \
             algo=christiano \
-            algo/agent=PPO \
+            algo/agent="$AGENT" \
             env.kwargs.ego=continuous \
             run.name="$RUN_NAME" \
             run.seed=0 \
@@ -71,6 +75,7 @@ for SEG_LEN in "${SEG_LENS[@]}"; do
             algo.train.kwargs.total_comparisons=46000
 
     done
+done
 done
 
 echo "===================================================="
