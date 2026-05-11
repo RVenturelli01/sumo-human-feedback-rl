@@ -46,15 +46,15 @@ config = {
         "comparison_queue_size": 10_000,
     },
     "train": {
-        "n_iterations": 1000,
         "comparisons_per_iteration": 100,
-        "timesteps_per_iteration": 1024,
+        "timesteps_per_iteration": 16 * 1024,
+        "total_timesteps": 128,
     },
 }
 
 
 def get_name(config):
-    n_iterations = config["train"]["n_iterations"]
+    total_timesteps = config["train"]["total_timesteps"]
     timesteps_per_it = config["train"]["timesteps_per_iteration"]
     n_envs = config["env"]["kwargs"]["n_envs"]
     n_steps = config["agent"]["n_steps"]
@@ -62,7 +62,7 @@ def get_name(config):
     base = (
         f"SAC"
         f" {n_envs}x{n_steps}={n_envs * n_steps}"
-        f" n_it={n_iterations}"
+        f" tot_steps={total_timesteps}"
         f" steps_per_it={timesteps_per_it}"
     )
 
@@ -80,9 +80,10 @@ def print_summary(config):
     agent = config["agent"]
     env = config["env"]["kwargs"]
 
-    n_it = train["n_iterations"]
     steps_per_it = train["timesteps_per_iteration"]
+    tot_steps = train["total_timesteps"]
     rollout_len = env["n_envs"] * agent["n_steps"]
+    n_it = int(tot_steps / steps_per_it)
 
     print("=" * 60)
     print(f"  {get_name(config)}")
