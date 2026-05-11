@@ -4,106 +4,63 @@ set -e
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-#python scripts/train.py \
-#  algo=christiano_demo \
-#  wandb.kwargs.project=christiano_demo \
-#  algo/agent=PPO \
-#  env.kwargs.ego=continuous \
-#  run.name=testDemo1 \
-#  run.output_dir="$REPO_ROOT/outputs" \
-#  wandb.enabled=true \
+# Definiamo le griglie di iperparametri
+SEG_LENS=(1)
+USE_REGS=("true")
 
+echo "Avvio della suite di esperimenti..."
+echo "Lunghezze segmento: ${SEG_LENS[*]}"
+echo "Regolarizzazione: ${USE_REGS[*]}"
 
-#python scripts/train.py \
-#    algo=christiano \
-#    wandb.kwargs.project=regularization_analysis \
-#    algo/agent=PPO \
-#    env.kwargs.ego=continuous \
-#    run.name=segLen15-withRegularization0.5-PPO \
-#    run.seed=0 \
-#    run.output_dir="$REPO_ROOT/outputs" \
-#    wandb.enabled=true \
-#    algo.kwargs.n_ensembles_rew=3 \
-#    algo.kwargs.lr_rew=3e-4 \
-#    algo.kwargs.batch_size_rew=64 \
-#    algo.kwargs.n_ephochs_rew=3 \
-#    algo.kwargs.n_iterations=50 \
-#    algo.kwargs.train_comparison_frac=0.8 \
-#    algo.kwargs.fragment_length=15 \
-#    algo.kwargs.transition_oversampling=2.0 \
-#    algo.kwargs.initial_comparison_frac=0.1 \
-#    algo.kwargs.initial_epoch_multiplier=1.0 \
-#    algo.kwargs.query_schedule=constant \
-#    algo.kwargs.use_reward_reg=true \
-#    algo.kwargs.reward_mean_reg=0.5 \
-#    algo.train.kwargs.total_timesteps=1000000 \
-#    algo.train.kwargs.total_comparisons=2500
-
-#COMP=(2500 2000 1500 1000 500 100 50)
-#
-#for COMP in "${COMP[@]}"; do
-#    RUN_NAME="TOTAL_COMPARISONS_${COMP}"
-#
-#    echo "===================================================="
-#    echo "Running experiment: $RUN_NAME"
-#    echo "TOTAL_COMPARISONS_=$COMP"
-#    echo "===================================================="
-#
-#    echo "y" | python scripts/train.py \
-#        algo=christiano \
-#        algo/agent=PPO \
-#        env.kwargs.ego=continuous \
-#        run.name="$RUN_NAME" \
-#        run.seed=0 \
-#        run.output_dir="$REPO_ROOT/outputs" \
-#        wandb.enabled=true \
-#        algo.kwargs.n_ensembles_rew=1 \
-#        algo.kwargs.lr_rew=3e-4 \
-#        algo.kwargs.batch_size_rew=64 \
-#        algo.kwargs.n_ephochs_rew=20 \
-#        algo.kwargs.n_iterations=50 \
-#        algo.kwargs.train_comparison_frac=0.8 \
-#        algo.kwargs.fragment_length=1 \
-#        algo.kwargs.transition_oversampling=10.0 \
-#        algo.kwargs.initial_comparison_frac=0.1 \
-#        algo.kwargs.initial_epoch_multiplier=10.0 \
-#        algo.kwargs.query_schedule=constant \
-#        algo.train.kwargs.total_timesteps=1000000 \
-#        algo.train.kwargs.total_comparisons="$COMP"
-#done
-
-SEG_LENS=(1 2 10 20 50)
-
+# Ciclo nidificato per esplorare tutte le combinazioni
 for SEG_LEN in "${SEG_LENS[@]}"; do
-    RUN_NAME="with_regularization_debug_seg_${SEG_LEN}"
+    for USE_REG in "${USE_REGS[@]}"; do
 
-    echo "===================================================="
-    echo "Running experiment: $RUN_NAME"
-    echo "fragment_length=$SEG_LEN"
-    echo "===================================================="
+        # 1. Generazione di un nome dinamico e significativo
+        if [ "$USE_REG" = "true" ]; then
+            REG_LABEL="reg_ON"
+        else
+            REG_LABEL="reg_OFF"
+        fi
 
-    echo "y" | python scripts/train.py \
-        algo=christiano \
-        algo/agent=PPO \
-        env.kwargs.ego=continuous \
-        run.name="$RUN_NAME" \
-        run.seed=0 \
-        run.output_dir="$REPO_ROOT/outputs" \
-        wandb.enabled=true \
-        wandb.kwargs.project=debug \
-        algo.kwargs.n_ensembles_rew=3 \
-        algo.kwargs.lr_rew=3e-4 \
-        algo.kwargs.batch_size_rew=64 \
-        algo.kwargs.n_ephochs_rew=3 \
-        algo.kwargs.n_iterations=50 \
-        algo.kwargs.train_comparison_frac=0.8 \
-        algo.kwargs.fragment_length="$SEG_LEN" \
-        algo.kwargs.transition_oversampling=1.0 \
-        algo.kwargs.initial_comparison_frac=0.1 \
-        algo.kwargs.initial_epoch_multiplier=1.0 \
-        algo.kwargs.use_reward_reg=true \
-        algo.kwargs.reward_mean_reg=0.5 \
-        algo.kwargs.query_schedule=constant \
-        algo.train.kwargs.total_timesteps=1000000 \
-        algo.train.kwargs.total_comparisons=2500
+        RUN_NAME="seg_${SEG_LEN}_${REG_LABEL}"
+
+        # 2. Logging per il terminale
+        echo "===================================================="
+        echo "Inizio Esperimento: $RUN_NAME"
+        echo " - Fragment Length: $SEG_LEN"
+        echo " - Reward Regularization: $USE_REG"
+        echo "===================================================="
+
+        # 3. Esecuzione (mantenendo i parametri Hydra invariati)
+        echo "y" | python scripts/train.py \
+            algo=christiano \
+            algo/agent=PPO \
+            env.kwargs.ego=continuous \
+            run.name="$RUN_NAME" \
+            run.seed=0 \
+            run.output_dir="$REPO_ROOT/outputs" \
+            wandb.enabled=true \
+            wandb.kwargs.project="debug-new-server" \
+            algo.kwargs.n_ensembles_rew=3 \
+            algo.kwargs.lr_rew=3e-4 \
+            algo.kwargs.batch_size_rew=128 \
+            algo.kwargs.n_ephochs_rew=1 \
+            algo.kwargs.n_iterations=20 \
+            algo.kwargs.train_comparison_frac=0.8 \
+            algo.kwargs.fragment_length="$SEG_LEN" \
+            algo.kwargs.transition_oversampling=1.0 \
+            algo.kwargs.initial_comparison_frac=0.1 \
+            algo.kwargs.initial_epoch_multiplier=1.0 \
+            algo.kwargs.use_reward_reg="$USE_REG" \
+            algo.kwargs.reward_mean_reg=0.0001 \
+            algo.kwargs.query_schedule="constant" \
+            algo.train.kwargs.total_timesteps=400000 \
+            algo.train.kwargs.total_comparisons=46000
+
+    done
 done
+
+echo "===================================================="
+echo "Tutti gli esperimenti sono terminati con successo!"
+echo "===================================================="

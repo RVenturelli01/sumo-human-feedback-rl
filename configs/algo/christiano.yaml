@@ -20,7 +20,6 @@ kwargs:
   comparison_queue_size: null
   use_reward_reg: false
   reward_mean_reg: 0.1
-  label_smoothing: 0.0
 
 
 train:
