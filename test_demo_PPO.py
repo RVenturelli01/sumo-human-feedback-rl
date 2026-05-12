@@ -6,13 +6,23 @@ from pathlib import Path
 
 import sumo_rl_ego as sre
 from stable_baselines3 import PPO
-from human_feedback_rl.algorithms import ChristianoAlgorithm
+from human_feedback_rl.algorithms.demo_rew import ZhangAlgorithm
 from sumo_rl_ego.utils import CustomLoggingCallback
 import wandb
 
 from human_feedback_rl.common.loggers import WandbWriter, PrefixedLogger
 from stable_baselines3.common.logger import Logger
 from stable_baselines3.common.vec_env import VecMonitor
+
+
+class ExpertPredictor:
+    """Wraps an SB3 model so predict() returns only the actions array."""
+    def __init__(self, model):
+        self.model = model
+
+    def predict(self, obs):
+        actions, _ = self.model.predict(obs, deterministic=True)
+        return actions
 
 
 def get_name(cfg):
@@ -33,8 +43,9 @@ def get_name(cfg):
 
     comparisons_per_it = cfg.train.kwargs.comparisons_per_iteration
     segment_length = cfg.algo.kwargs.fragment_length
+    query_schedule = cfg.algo.kwargs.query_schedule
 
-    return base + f" comp_per_it={comparisons_per_it} seg_len={segment_length} (Christiano synch)"
+    return base + f" comp_per_it={comparisons_per_it} seg_len={segment_length} sched={query_schedule} (Zhang)"
 
 
 def print_summary(cfg):
@@ -60,17 +71,20 @@ def print_summary(cfg):
         seg_len = algo.fragment_length
         print(f"  Comparisons:      {comp_per_it:>4} / it    total: {comp_per_it * n_it:>10}")
         print(f"  Segment length:   {seg_len}")
+        print(f"  Expert path:      {cfg.expert.path}")
         print("-" * 60)
         print("  Reward model:")
         print(f"    lr:                    {algo.lr_rew}")
-        print(f"    n_epochs:        {algo.n_epochs_rew}")
+        print(f"    n_epochs:              {algo.n_epochs_rew}")
         print(f"    batch size:            {algo.batch_size_rew}")
+        print(f"    decay_rew:             {algo.decay_rew}")
+        print(f"    query_schedule:        {algo.query_schedule}")
         print(f"    comparison_queue_size: {algo.comparison_queue_size}")
 
     print("=" * 60)
 
 
-@hydra.main(version_base=None, config_path=".", config_name="config")
+@hydra.main(version_base=None, config_path=".", config_name="config_demo_rew")
 def main(cfg: DictConfig) -> None:
     run_dir = Path(HydraConfig.get().runtime.output_dir)
 
@@ -101,8 +115,11 @@ def main(cfg: DictConfig) -> None:
         )
 
     else:
+        print(f"Loading expert from {cfg.expert.path}...")
+        expert = ExpertPredictor(PPO.load(cfg.expert.path, env=env))
+
         print("Initializing algorithm...")
-        algo = ChristianoAlgorithm(env=env, agent=agent, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
+        algo = ZhangAlgorithm(env=env, agent=agent, expert=expert, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
 
         print("Starting training...")
         train_kwargs = OmegaConf.to_container(cfg.train.kwargs, resolve=True)
