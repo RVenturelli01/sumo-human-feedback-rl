@@ -116,6 +116,7 @@ if __name__ == '__main__':
         entity="rventurelli-politecnico-di-milano",
         config=config,
         name=get_name(config),
+        group=
     )
 
     print_summary(config)
