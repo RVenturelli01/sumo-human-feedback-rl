@@ -1,0 +1,50 @@
+baseline: false
+
+output_dir: "./outputs"
+
+env:
+  id: "HighwayEgo-v0"
+  kwargs:
+    n_envs: 4
+    base_seed: 0
+    ego: "continuous"
+    reward: "fast"
+
+agent:
+  policy: "MlpPolicy"
+  n_steps: 1000
+  n_epochs: 10
+  learning_rate: 0.0003
+  batch_size: 64
+  ent_coef: 0.01
+  gae_lambda: 0.95
+  gamma: 0.995
+  policy_kwargs:
+    net_arch: [64, 64]
+  device: "cpu"
+  seed: 0
+
+algo:
+  lr_rew: 0.0003
+  n_epochs_rew: 1
+  batch_size_rew: 128
+  l2_rew: 0.0001
+  fragment_length: 1
+  transition_oversampling: 1
+  initial_comparisons: 0
+  initial_epoch_multiplier: 1
+  comparison_queue_size: 5000
+  n_ensembles_rew: 3
+  train_comparison_frac: 0.8
+
+train:
+  total_timesteps: 1000000
+  comparisons_per_iteration: 100
+  timesteps_per_iteration: 4000
+  checkpoint_interval: 10
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: ${output_dir}/${now:%Y-%m-%d_%H-%M-%S}
