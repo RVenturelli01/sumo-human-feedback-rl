@@ -9,7 +9,7 @@ set -euo pipefail
 PYTHON="python"
 SCRIPT="test_demo_seg_length.py"
 LOG_DIR="/storage/fis3/logs_demo_seg_length"
-EXPERT_PATH="/storage/fis3/pretrained/ppo_pretrained_ppo-fast.zip"   # ← modifica se necessario
+EXPERT_PATH="/sumo-rl-ego/sumo_rl_ego/policies/models/ppo-fast/model"   # ← modifica se necessario
 
 mkdir -p "$LOG_DIR"
 
