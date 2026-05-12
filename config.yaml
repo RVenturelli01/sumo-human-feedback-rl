@@ -36,11 +36,12 @@ algo:
   comparison_queue_size: 5000
   n_ensembles_rew: 3
   train_comparison_frac: 0.8
+  net_arch_rew: [128, 128]
 
 train:
   total_timesteps: 1000000
-  comparisons_per_iteration: 100
-  timesteps_per_iteration: 4000
+  comparisons_per_iteration: 500
+  timesteps_per_iteration: 20000
   checkpoint_interval: 10
 
 hydra:

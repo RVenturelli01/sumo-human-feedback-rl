@@ -76,7 +76,7 @@ def main(cfg: DictConfig) -> None:
 
     wandb.init(
         project="temp",
-        entity="rventurelli-politecnico-di-milano",
+        entity="andrea02polimi-politecnico-di-milano",
         config=OmegaConf.to_container(cfg, resolve=True),
         name=get_name(cfg),
         dir=str(run_dir),
