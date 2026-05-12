@@ -22,21 +22,10 @@ COMPS_FOR_SEG = {
 }
 
 
-class ExpertPredictor:
-    """Wraps an SB3 model so predict() returns only the actions array."""
-    def __init__(self, model):
-        self.model = model
-
-    def predict(self, obs):
-        actions, _ = self.model.predict(obs, deterministic=True)
-        return actions
-
-
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--seg",         type=int,  required=True, choices=list(COMPS_FOR_SEG))
-    parser.add_argument("--seed",        type=int,  required=True)
-    parser.add_argument("--expert-path", type=str,  required=True, help="Path to the SB3 PPO expert model (.zip)")
+    parser.add_argument("--seg",  type=int, required=True, choices=list(COMPS_FOR_SEG))
+    parser.add_argument("--seed", type=int, required=True)
     return parser.parse_args()
 
 
@@ -73,7 +62,7 @@ if __name__ == "__main__":
             "n_ensembles_rew":         3,
             "timesteps_per_iteration": 20_000,
             "total_timesteps":         1_000_000,
-            "expert_path":             args.expert_path,
+            "expert":                  "ppo-fast",
             "seed":                    args.seed,
         },
     )
@@ -105,8 +94,8 @@ if __name__ == "__main__":
         seed=args.seed,
     )
 
-    print(f"Loading expert from {args.expert_path}...")
-    expert = ExpertPredictor(PPO.load(args.expert_path, env=env))
+    print("Loading expert ppo-fast via sre.load_policy...")
+    expert = sre.load_policy("ppo-fast", env=env)
 
     algo = ZhangAlgorithm(
         env=env,

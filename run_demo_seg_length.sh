@@ -9,7 +9,6 @@ set -euo pipefail
 PYTHON="python"
 SCRIPT="test_demo_seg_length.py"
 LOG_DIR="/storage/fis3/logs_demo_seg_length"
-EXPERT_PATH="/sumo-rl-ego/sumo_rl_ego/policies/models/ppo-fast/model"   # ← modifica se necessario
 
 mkdir -p "$LOG_DIR"
 
@@ -42,7 +41,7 @@ done
 TOTAL=${#COMBOS[@]}
 echo "Total runs: $TOTAL  (${#SEGS[@]} seg × ${#SEEDS[@]} seed)"
 echo "Parallel slots: $N_SLOTS (core groups: ${CORE_GROUPS[*]})"
-echo "Expert: $EXPERT_PATH"
+echo "Expert: ppo-fast (sre.load_policy)"
 echo "------------------------------------------------------"
 
 get_free_slot() {
@@ -71,9 +70,8 @@ for combo in "${COMBOS[@]}"; do
     echo "[$(date '+%H:%M:%S')] ($launched/$TOTAL) slot=$slot cores=$cores | seg=$seg comps=$comps seed=$seed"
 
     taskset -c "$cores" $PYTHON $SCRIPT \
-        --seg         "$seg"         \
-        --seed        "$seed"        \
-        --expert-path "$EXPERT_PATH" \
+        --seg  "$seg"  \
+        --seed "$seed" \
         > "$logfile" 2>&1 &
 
     SLOT_PIDS[$slot]=$!
