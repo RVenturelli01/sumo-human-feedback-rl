@@ -16,7 +16,8 @@ for i in $(seq 0 $((N_SLOTS - 1))); do SLOT_PIDS[$i]=-1; done
 COMBOS=()
 for seg in 1 2 3 10 20 50 200; do
     for net in "64,64" "128,128" "256,256"; do
-        for seed in 0 1 2 3 4; do
+        for seed in 0 1 2; do
+            COMBOS+=("$seg $net 20000 500  $seed")
             COMBOS+=("$seg $net 20000 500  $seed")
             COMBOS+=("$seg $net 20000 2000 $seed")
             COMBOS+=("$seg $net 4000  100  $seed")
