@@ -1,8 +1,10 @@
 import argparse
+import os
 import random
 
 import numpy as np
 import torch
+from omegaconf import OmegaConf
 import sumo_rl_ego as sre
 from stable_baselines3 import PPO
 from human_feedback_rl.algorithms import ChristianoAlgorithm
@@ -112,6 +114,31 @@ if __name__ == "__main__":
     )
 
     checkpoint_dir = f"/storage/fis3/checkpoints/seg-length-study/seg{args.seg}_comps{comps_per_iter}_seed{args.seed}"
+
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    cfg = OmegaConf.create({
+        "run":   {"seed": args.seed},
+        "env":   {"id": "HighwayEgo-v0", "n_envs": 4, "kwargs": {"ego": "continuous", "reward": "fast"}},
+        "agent": {"kwargs": {
+            "policy": "MlpPolicy", "n_steps": 1000, "n_epochs": 10,
+            "learning_rate": 3e-4, "batch_size": 64, "ent_coef": 0.01,
+            "gae_lambda": 0.95, "gamma": 0.995,
+            "policy_kwargs": {"net_arch": [64, 64]}, "device": "cpu", "seed": args.seed,
+        }},
+        "algo":  {"kwargs": {
+            "lr_rew": 3e-4, "n_epochs_rew": 1, "batch_size_rew": 128, "l2_rew": 1e-4,
+            "fragment_length": args.seg, "transition_oversampling": 1,
+            "initial_comparisons": initial_comparisons, "initial_epoch_multiplier": 1,
+            "comparison_queue_size": 50_000, "n_ensembles_rew": 3,
+            "train_comparison_frac": 0.8, "net_arch_rew": [128, 128],
+        }},
+        "train": {"kwargs": {
+            "total_timesteps": 1_000_000, "comparisons_per_iteration": comps_per_iter,
+            "timesteps_per_iteration": 20_000, "checkpoint_interval": 10,
+        }},
+    })
+    OmegaConf.save(cfg, os.path.join(checkpoint_dir, "config.yaml"))
+    print(f"- Config saved to {checkpoint_dir}/config.yaml")
 
     algo.train(
         total_timesteps=1_000_000,
