@@ -38,26 +38,37 @@ def _extract_segments(trajs, segment_length):
                 start = end - segment_length
                 traj_segs.append(traj_list[start:end])
                 end = start
-            if end > 0:  # leftover shorter than segment_length: take [0:segment_length], overlapping
-                traj_segs.append(traj_list[:segment_length])
             segments.extend(reversed(traj_segs))
     return segments
 
 
 # ── Scoring ───────────────────────────────────────────────────────────────────
 
+# next_status: 7-dim one-hot [arrived, collided, off_road, timeout, running, teleported, removed_unknown]
+_STATUS_LABELS = {
+    0: "arrived", 1: "collision", 2: "off_road", 3: "timeout",
+    4: "running", 5: "teleported", 6: "removed",
+}
+_STATUS_COLORS = {
+    0: "steelblue", 1: "orange", 2: "crimson", 3: "mediumpurple",
+    4: "gray",      5: "gold",   6: "saddlebrown",
+}
+
 def _score_segments(segments, rm):
-    """Return (true_returns, pred_returns) as np.ndarray."""
-    true_returns, pred_returns = [], []
+    """Return (true_returns, pred_returns, terminal_status) as np.ndarray.
+    terminal_status: argmax of last step's next_status.
+    """
+    true_returns, pred_returns, statuses = [], [], []
     for seg in segments:
         obs  = np.array([t.observation for t in seg], dtype=np.float32)
         acts = np.array([t.action      for t in seg], dtype=np.float32)
         ns   = np.array([t.next_status for t in seg], dtype=np.float32)
         dn   = np.array([float(t.done) for t in seg], dtype=np.float32)
         pred_mean, _ = rm.predict_mean_std(obs, acts, ns, dn)
-        true_returns.append(sum(t.true_reward for t in seg))
-        pred_returns.append(float(pred_mean.sum()))
-    return np.array(true_returns), np.array(pred_returns)
+        true_returns.append(np.mean([t.true_reward for t in seg]))
+        pred_returns.append(float(pred_mean.mean()))
+        statuses.append(int(np.argmax(seg[-1].next_status)))
+    return np.array(true_returns), np.array(pred_returns), np.array(statuses, dtype=int)
 
 
 # ── Scatter plot ──────────────────────────────────────────────────────────────
@@ -75,7 +86,7 @@ def plot_scatter(trajs, rm, segment_length=None, normalize=False, robust=False):
         print(f"No segments of length {segment_length} found.")
         return
 
-    true_ret, pred_ret = _score_segments(segments, rm)
+    true_ret, pred_ret, term_status = _score_segments(segments, rm)
 
     if normalize:
         if robust:
@@ -95,15 +106,20 @@ def plot_scatter(trajs, rm, segment_length=None, normalize=False, robust=False):
     seg_label = f"seg={segment_length}" if segment_length is not None else "full episode"
     align_tag = f" ({'robust' if robust else 'z-score'} aligned)" if normalize else ""
 
-    combined = np.concatenate([true_ret, pred_ret])
-    span = combined.max() - combined.min() + 1e-8
-    lo, hi = combined.min() - 0.05 * span, combined.max() + 0.05 * span
-
     fig, ax = plt.subplots(figsize=(6, 5))
-    ax.scatter(true_ret, pred_ret, alpha=0.55, s=25, edgecolors="none")
+    for status_id, color in _STATUS_COLORS.items():
+        mask = term_status == status_id
+        if not mask.any():
+            continue
+        label = _STATUS_LABELS.get(status_id, "running")
+        ax.scatter(true_ret[mask], pred_ret[mask],
+                   alpha=0.75, s=25, edgecolors="none", color=color, label=label)
+    x_lo, x_hi = ax.get_xlim()
+    y_lo, y_hi = ax.get_ylim()
+    lo, hi = min(x_lo, y_lo), max(x_hi, y_hi)
     ax.plot([lo, hi], [lo, hi], "r--", lw=1.5, label="y=x")
-    ax.set_xlim(lo, hi)
-    ax.set_ylim(lo, hi)
+    ax.set_xlim(x_lo, x_hi)
+    ax.set_ylim(y_lo, y_hi)
     ax.set_xlabel("True return")
     ax.set_ylabel(f"Predicted return{align_tag}")
     ax.set_title(

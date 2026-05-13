@@ -31,21 +31,23 @@ algo:
   kwargs:
     lr_rew: 0.0003
     n_epochs_rew: 1
-    batch_size_rew: 128
+    batch_size_rew: 1000
     l2_rew: 0.0001
     fragment_length: 1
     transition_oversampling: 1
-    initial_comparisons: 0
+    initial_comparisons: 500
     initial_epoch_multiplier: 1
-    comparison_queue_size: 5000
+    comparison_queue_size: 1000000
     n_ensembles_rew: 3
     train_comparison_frac: 0.8
     net_arch_rew: [128, 128]
+    fragmenter_type: active
 
 train:
   kwargs:
     total_timesteps: 1000000
-    comparisons_per_iteration: 500
+    comparisons_per_iteration: 2000
+    comparison_timesteps_per_iteration: 20000
     timesteps_per_iteration: 20000
     checkpoint_interval: 10
 

@@ -75,8 +75,8 @@ def main(cfg: DictConfig) -> None:
     run_dir = Path(HydraConfig.get().runtime.output_dir)
 
     wandb.init(
-        project="temp",
-        entity="rventurelli-politecnico-di-milano",
+        project="debug-local",
+        entity="andrea02polimi-politecnico-di-milano",
         config=OmegaConf.to_container(cfg, resolve=True),
         name=get_name(cfg),
         dir=str(run_dir),

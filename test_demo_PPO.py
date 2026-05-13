@@ -89,8 +89,8 @@ def main(cfg: DictConfig) -> None:
     run_dir = Path(HydraConfig.get().runtime.output_dir)
 
     wandb.init(
-        project="temp",
-        entity="rventurelli-politecnico-di-milano",
+        project="debug-local",
+        entity="andrea02polimi-politecnico-di-milano",
         config=OmegaConf.to_container(cfg, resolve=True),
         name=get_name(cfg),
         dir=str(run_dir),
@@ -116,7 +116,7 @@ def main(cfg: DictConfig) -> None:
 
     else:
         print(f"Loading expert from {cfg.expert.path}...")
-        expert = ExpertPredictor(PPO.load(cfg.expert.path, env=env))
+        expert = sre.load_policy("ppo-fast", env=env)
 
         print("Initializing algorithm...")
         algo = ZhangAlgorithm(env=env, agent=agent, expert=expert, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
