@@ -95,7 +95,7 @@ if __name__ == "__main__":
         transition_oversampling=1,
         initial_comparisons=initial_comparisons,
         initial_epoch_multiplier=1,
-        comparison_queue_size=1_000_000,
+        comparison_queue_size=30_000,
         n_ensembles_rew=3,
         train_comparison_frac=0.8,
         net_arch_rew=[128, 128],
