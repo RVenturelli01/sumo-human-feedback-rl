@@ -21,7 +21,7 @@ for i in $(seq 0 $((N_SLOTS - 1))); do SLOT_PIDS[$i]=-1; done
 
 SEGS=(1 5 20)
 FRAGS=("random")
-SEEDS=(0 1 2)
+SEEDS=(10)
 
 COMBOS=()
 for seg in "${SEGS[@]}"; do
