@@ -13,7 +13,7 @@ LOG_DIR="/storage/fis3/logs_may14"
 
 mkdir -p "$LOG_DIR"
 
-CORE_GROUPS=("0-3" "4-7" "8-11" "30-33" "34-37" "38-41" "42-45")
+CORE_GROUPS=("30-33" "34-37" "38-41" "42-45")
 N_SLOTS=${#CORE_GROUPS[@]}
 
 declare -a SLOT_PIDS
