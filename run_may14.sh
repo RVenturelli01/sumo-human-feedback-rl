@@ -19,8 +19,8 @@ N_SLOTS=${#CORE_GROUPS[@]}
 declare -a SLOT_PIDS
 for i in $(seq 0 $((N_SLOTS - 1))); do SLOT_PIDS[$i]=-1; done
 
-SEGS=(1 2 5 20 50 80 1000)
-FRAGS=("active" "random")
+SEGS=(1 5 20)
+FRAGS=("random")
 SEEDS=(0 1 2)
 
 COMBOS=()

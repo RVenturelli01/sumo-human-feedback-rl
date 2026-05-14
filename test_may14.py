@@ -13,12 +13,8 @@ import wandb
 
 COMPS_FOR_SEG = {
     1:    2000,
-    2:    2000,
     5:    2000,
     20:   2000,
-    50:   2000,
-    80:   2000,
-    1000: 200,
 }
 
 COMPARISON_TIMESTEPS_PER_ITERATION = 20_000
@@ -56,18 +52,6 @@ if __name__ == "__main__":
         name=run_name,
         group=group,
         config={
-            "segment_length":                    args.seg,
-            "fragmenter_type":                   args.frag,
-            "comparisons_per_iter":              comps_per_iter,
-            "initial_comparisons":               initial_comparisons,
-            "comparison_queue_size":             1_000_000,
-            "comparison_timesteps_per_iteration": COMPARISON_TIMESTEPS_PER_ITERATION,
-            "net_arch_rew":                      "128x128",
-            "n_ensembles_rew":                   3,
-            "batch_size_rew":                    1000,
-            "timesteps_per_iteration":           20_000,
-            "total_timesteps":                   1_000_000,
-            "seed":                              args.seed,
             "group_name":                        group,
         },
     )
@@ -104,14 +88,14 @@ if __name__ == "__main__":
         agent=agent,
         rng=np.random.default_rng(args.seed),
         lr_rew=3e-4,
-        n_epochs_rew=1,
-        batch_size_rew=1000,
+        n_epochs_rew=3,
+        batch_size_rew=5000,
         l2_rew=1e-4,
         fragment_length=args.seg,
         transition_oversampling=1,
         initial_comparisons=initial_comparisons,
         initial_epoch_multiplier=1,
-        comparison_queue_size=1_000_000,
+        comparison_queue_size=30_000,
         n_ensembles_rew=3,
         train_comparison_frac=0.8,
         net_arch_rew=[128, 128],
@@ -124,36 +108,9 @@ if __name__ == "__main__":
     )
 
     os.makedirs(checkpoint_dir, exist_ok=True)
-    cfg = OmegaConf.create({
-        "run":   {"seed": args.seed},
-        "env":   {"id": "HighwayEgo-v0", "n_envs": 4, "kwargs": {"ego": "continuous", "reward": "fast"}},
-        "agent": {"kwargs": {
-            "policy": "MlpPolicy", "n_steps": 1000, "n_epochs": 10,
-            "learning_rate": 3e-4, "batch_size": 64, "ent_coef": 0.01,
-            "gae_lambda": 0.95, "gamma": 0.995,
-            "policy_kwargs": {"net_arch": [64, 64]}, "device": "cpu", "seed": args.seed,
-        }},
-        "algo":  {"kwargs": {
-            "lr_rew": 3e-4, "n_epochs_rew": 1, "batch_size_rew": 1000, "l2_rew": 1e-4,
-            "fragment_length": args.seg, "transition_oversampling": 1,
-            "initial_comparisons": initial_comparisons, "initial_epoch_multiplier": 1,
-            "comparison_queue_size": 1_000_000, "n_ensembles_rew": 3,
-            "train_comparison_frac": 0.8, "net_arch_rew": [128, 128],
-            "fragmenter_type": args.frag,
-        }},
-        "train": {"kwargs": {
-            "total_timesteps": 1_000_000,
-            "comparisons_per_iteration": comps_per_iter,
-            "timesteps_per_iteration": 20_000,
-            "comparison_timesteps_per_iteration": COMPARISON_TIMESTEPS_PER_ITERATION,
-            "checkpoint_interval": 10,
-        }},
-    })
-    OmegaConf.save(cfg, os.path.join(checkpoint_dir, "config.yaml"))
-    print(f"- Config saved to {checkpoint_dir}/config.yaml")
 
     algo.train(
-        total_timesteps=1_000_000,
+        total_timesteps=3_000_000,
         comparisons_per_iteration=comps_per_iter,
         timesteps_per_iteration=20_000,
         comparison_timesteps_per_iteration=COMPARISON_TIMESTEPS_PER_ITERATION,

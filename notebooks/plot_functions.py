@@ -38,6 +38,8 @@ def _extract_segments(trajs, segment_length):
                 start = end - segment_length
                 traj_segs.append(traj_list[start:end])
                 end = start
+            if end > 0:  # leftover shorter than segment_length: take [0:segment_length], overlapping
+                traj_segs.append(traj_list[:segment_length])
             segments.extend(reversed(traj_segs))
     return segments
 
