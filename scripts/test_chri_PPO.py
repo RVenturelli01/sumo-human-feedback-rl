@@ -1,3 +1,4 @@
+import pickle
 import random
 
 import hydra
@@ -96,8 +97,25 @@ def main(cfg: DictConfig) -> None:
         )
 
     else:
+        debug_dataset_dir = Path(__file__).parent.parent / "data_for_training"
+        debug_dataset_files = {
+            "seg1":       "debug_dataset_seg1.pkl",
+            "seg5":       "debug_dataset_seg5.pkl",
+            "seg20":      "debug_dataset_seg20.pkl",
+            "segNone": "debug_dataset_full_ep.pkl",
+        }
+        debug_datasets = {}
+        artifact = wandb.Artifact("debug_datasets", type="dataset")
+        for key, filename in debug_dataset_files.items():
+            pkl_path = debug_dataset_dir / filename
+            if pkl_path.exists():
+                with open(pkl_path, "rb") as f:
+                    debug_datasets[key] = pickle.load(f)
+                artifact.add_file(str(pkl_path))
+        wandb.log_artifact(artifact)
+
         print("Initializing algorithm...")
-        algo = ChristianoAlgorithm(env=env, agent=agent, rng=rng, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
+        algo = ChristianoAlgorithm(env=env, agent=agent, rng=rng, debug_datasets=debug_datasets, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
 
         print("Starting training...")
         train_kwargs = OmegaConf.to_container(cfg.train.kwargs, resolve=True)
