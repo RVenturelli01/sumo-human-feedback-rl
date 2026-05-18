@@ -1,9 +1,14 @@
 
-
 run:
   seed: 0
-  output_dir: "./outputs"
+  output_dir: Null
   baseline: false
+
+wandb: 
+  entity: Null
+  project: Null
+  tags: Null
+
 
 env:
   id: "HighwayEgo-v0"
@@ -18,41 +23,45 @@ agent:
     n_steps: 1000
     n_epochs: 10
     learning_rate: 0.0003
-    batch_size: 64
+    batch_size: 200
     ent_coef: 0.01
     gae_lambda: 0.95
     gamma: 0.995
     policy_kwargs:
       net_arch: [64, 64]
     device: "cpu"
-    seed: 0
 
 algo:
   kwargs:
-    lr_rew: 0.0003
+    lr_rew: 0.0005
     n_epochs_rew: 1
-    batch_size_rew: 1000
-    l2_rew: 0.0001
+    n_minibatches_rew: 5
+    l2_rew: 0.001
     fragment_length: 1
-    transition_oversampling: 1
-    initial_comparisons: 500
-    initial_epoch_multiplier: 1
+    initial_queries: 500
+    exploration_frac: 0.0
+    exploration_eps: 0.5
+    hard_labels: True
+    query_schedule: "constant"
     comparison_queue_size: 1000000
-    n_ensembles_rew: 3
     train_comparison_frac: 0.8
-    net_arch_rew: [128, 128]
     fragmenter_type: active
+    reward_model_kwargs:
+      n_ensembles: 1
+      net_arch: [128, 128]
+      activation_fn: relu
 
 train:
   kwargs:
     total_timesteps: 1000000
-    comparisons_per_iteration: 2000
-    comparison_timesteps_per_iteration: 20000
+    total_queries: 100000
     timesteps_per_iteration: 20000
+    checkpoint_dir: Null
     checkpoint_interval: 10
 
 hydra:
   job:
     chdir: false
   run:
-    dir: ${run.output_dir}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: .
+  output_subdir: null

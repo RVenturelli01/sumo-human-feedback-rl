@@ -1,8 +1,13 @@
+import random
+
 import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 from pathlib import Path
+
+import numpy as np
+import torch as th
 
 import sumo_rl_ego as sre
 from stable_baselines3 import PPO
@@ -88,6 +93,12 @@ def print_summary(cfg):
 def main(cfg: DictConfig) -> None:
     run_dir = Path(HydraConfig.get().runtime.output_dir)
 
+    seed = cfg.run.seed
+    random.seed(seed)
+    np.random.seed(seed)
+    th.manual_seed(seed)
+    rng = np.random.default_rng(seed)
+
     wandb.init(
         project="debug-local",
         entity="andrea02polimi-politecnico-di-milano",
@@ -99,10 +110,10 @@ def main(cfg: DictConfig) -> None:
     print_summary(cfg)
 
     print("Creating environment...")
-    env = sre.make_vec_env(cfg.env.id, n_envs=cfg.env.n_envs, base_seed=cfg.run.seed, **OmegaConf.to_container(cfg.env.kwargs, resolve=True))
+    env = sre.make_vec_env(cfg.env.id, n_envs=cfg.env.n_envs, base_seed=seed, **OmegaConf.to_container(cfg.env.kwargs, resolve=True))
 
     print("Initializing agent...")
-    agent = PPO(env=env, **OmegaConf.to_container(cfg.agent.kwargs, resolve=True))
+    agent = PPO(env=env, seed=seed, **OmegaConf.to_container(cfg.agent.kwargs, resolve=True))
 
     if cfg.run.baseline:
         agent.set_env(VecMonitor(env))
@@ -119,7 +130,7 @@ def main(cfg: DictConfig) -> None:
         expert = sre.load_policy("ppo-fast", env=env)
 
         print("Initializing algorithm...")
-        algo = ZhangAlgorithm(env=env, agent=agent, expert=expert, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
+        algo = ZhangAlgorithm(env=env, agent=agent, expert=expert, rng=rng, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
 
         print("Starting training...")
         train_kwargs = OmegaConf.to_container(cfg.train.kwargs, resolve=True)
