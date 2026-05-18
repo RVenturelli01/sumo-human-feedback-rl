@@ -61,6 +61,10 @@ def load_reward_ensemble(path: str, obs_space, act_space, device: str = "cpu") -
         sd = ckpt
         n_members = None
 
+    # Saved from NormalizedRewardNet wrapper: keys are "net.members.*" → strip "net."
+    if any(k.startswith("net.members.") for k in sd):
+        sd = {k[len("net."):]: v for k, v in sd.items() if k.startswith("net.")}
+
     if n_members is None:
         indices = {int(k.split(".")[1]) for k in sd if k.startswith("members.")}
         n_members = max(indices) + 1

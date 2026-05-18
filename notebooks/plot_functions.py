@@ -153,6 +153,169 @@ def plot_scatter_from_segments(segments, rm, normalize=False, robust=False, titl
     )
 
 
+# ── Checkpoint interactive scatter ────────────────────────────────────────────
+
+def plot_scatter_checkpoints_interactive(run_dir, segments, load_fn, obs_space, act_space):
+    """
+    Interactive scatter (true return vs predicted return) with an ipywidgets
+    slider to browse checkpoints.  All checkpoints are scored upfront so
+    sliding is instant.  Works with the default inline backend (no ipympl needed).
+
+    run_dir  : Path  — parent directory containing checkpoint_* sub-dirs
+    segments : list  — pre-sampled segments (list of lists of transitions)
+    load_fn  : callable(path, obs_space, act_space) -> reward_model
+    obs_space, act_space : gym spaces passed verbatim to load_fn
+    """
+    import ipywidgets as widgets
+    from IPython.display import display, clear_output
+    from pathlib import Path
+
+    run_dir = Path(run_dir)
+    checkpoints = sorted(
+        run_dir.glob("checkpoint_*"),
+        key=lambda p: int(p.name.split("_")[1]),
+    )
+    if not checkpoints:
+        print(f"No checkpoints found in {run_dir}")
+        return
+
+    # ── pre-score all checkpoints ─────────────────────────────────────────────
+    print(f"Scoring {len(checkpoints)} checkpoints…")
+    scores = []
+    for ckpt in checkpoints:
+        rm = load_fn(ckpt / "reward_model.pt", obs_space, act_space)
+        true_ret, pred_ret, term_status = _score_segments(segments, rm)
+        pr, _ = pearsonr(true_ret, pred_ret)
+        sr, _ = spearmanr(true_ret, pred_ret)
+        scores.append((true_ret, pred_ret, term_status, pr, sr))
+    print("Done.")
+
+    # ── global axis limits (same scale across all checkpoints) ────────────────
+    all_true = np.concatenate([s[0] for s in scores])
+    all_pred = np.concatenate([s[1] for s in scores])
+    pad = ((all_true.max() - all_true.min()) + (all_pred.max() - all_pred.min())) * 0.02
+    x_lo, x_hi = all_true.min() - pad, all_true.max() + pad
+    y_lo, y_hi = all_pred.min() - pad, all_pred.max() + pad
+    lo, hi = min(x_lo, y_lo), max(x_hi, y_hi)
+
+    out = widgets.Output()
+
+    def _draw(change):
+        idx = change["new"]
+        true_ret, pred_ret, term_status, pr, sr = scores[idx]
+        with out:
+            clear_output(wait=True)
+            fig, ax = plt.subplots(figsize=(6, 5))
+            for status_id, color in _STATUS_COLORS.items():
+                mask = term_status == status_id
+                if mask.any():
+                    ax.scatter(
+                        true_ret[mask], pred_ret[mask],
+                        alpha=0.7, s=20, edgecolors="none", color=color,
+                        label=_STATUS_LABELS.get(status_id),
+                    )
+            ax.plot([lo, hi], [lo, hi], "r--", lw=1, label="y=x")
+            ax.set_xlim(x_lo, x_hi)
+            ax.set_ylim(y_lo, y_hi)
+            ax.set_xlabel("True return")
+            ax.set_ylabel("Pred return")
+            ax.set_title(
+                f"{checkpoints[idx].name}\n"
+                f"Pearson r={pr:.2f}   Spearman ρ={sr:.2f}"
+            )
+            ax.legend(loc="upper left", fontsize=8)
+            plt.tight_layout()
+            plt.show()
+
+    slider = widgets.IntSlider(
+        value=0, min=0, max=len(checkpoints) - 1, step=1,
+        description="Checkpoint",
+        continuous_update=False,
+        layout=widgets.Layout(width="500px"),
+    )
+    slider.observe(_draw, names="value")
+    display(widgets.VBox([slider, out]))
+    _draw({"new": 0})
+
+
+# ── Checkpoint grid scatter ───────────────────────────────────────────────────
+
+def plot_scatter_checkpoints(run_dir, segments, load_fn, obs_space, act_space, n_cols=4):
+    """
+    Grid of scatter plots (true return vs predicted return) for every checkpoint
+    found under *run_dir*, all drawn on the same x/y scale.
+
+    run_dir  : Path  — parent directory containing checkpoint_* sub-dirs
+    segments : list  — pre-sampled segments (list of lists of transitions)
+    load_fn  : callable(path, obs_space, act_space) -> reward_model
+    obs_space, act_space : gym spaces passed verbatim to load_fn
+    n_cols   : int   — columns in the subplot grid
+    """
+    from pathlib import Path
+
+    run_dir = Path(run_dir)
+    checkpoints = sorted(
+        run_dir.glob("checkpoint_*"),
+        key=lambda p: int(p.name.split("_")[1]),
+    )
+    if not checkpoints:
+        print(f"No checkpoints found in {run_dir}")
+        return
+
+    # ── pre-score every checkpoint ────────────────────────────────────────────
+    scores = []
+    for ckpt in checkpoints:
+        rm = load_fn(ckpt / "reward_model.pt", obs_space, act_space)
+        true_ret, pred_ret, term_status = _score_segments(segments, rm)
+        pr, _ = pearsonr(true_ret, pred_ret)
+        sr, _ = spearmanr(true_ret, pred_ret)
+        scores.append((true_ret, pred_ret, term_status, pr, sr))
+
+    # ── global axis limits ────────────────────────────────────────────────────
+    all_true = np.concatenate([s[0] for s in scores])
+    all_pred = np.concatenate([s[1] for s in scores])
+    pad = ((all_true.max() - all_true.min()) + (all_pred.max() - all_pred.min())) * 0.02
+    x_lo = all_true.min() - pad;  x_hi = all_true.max() + pad
+    y_lo = all_pred.min() - pad;  y_hi = all_pred.max() + pad
+
+    # ── plot ──────────────────────────────────────────────────────────────────
+    n_rows = -(-len(checkpoints) // n_cols)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 4), squeeze=False)
+
+    for ax in axes.flat:
+        ax.set_visible(False)
+
+    for ax, ckpt, (true_ret, pred_ret, term_status, pr, sr) in zip(
+        axes.flat, checkpoints, scores
+    ):
+        ax.set_visible(True)
+
+        for status_id, color in _STATUS_COLORS.items():
+            mask = term_status == status_id
+            if mask.any():
+                ax.scatter(
+                    true_ret[mask], pred_ret[mask],
+                    alpha=0.7, s=12, edgecolors="none", color=color,
+                    label=_STATUS_LABELS.get(status_id),
+                )
+
+        lo = min(x_lo, y_lo);  hi = max(x_hi, y_hi)
+        ax.plot([lo, hi], [lo, hi], "r--", lw=1, label="y=x")
+        ax.set_xlim(x_lo, x_hi)
+        ax.set_ylim(y_lo, y_hi)
+
+        ax.set_title(f"{ckpt.name}\nr={pr:.2f}  ρ={sr:.2f}", fontsize=8)
+        ax.set_xlabel("True return", fontsize=7)
+        ax.set_ylabel("Pred return", fontsize=7)
+        ax.tick_params(labelsize=6)
+
+    handles, labels = next(ax for ax in axes.flat if ax.get_visible()).get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=8, frameon=False)
+    plt.suptitle(f"Reward model scatter — all checkpoints\n{run_dir.name}", fontsize=10)
+    plt.tight_layout(rect=[0, 0.04, 1, 1])
+    plt.show()
+
+
 # ── Reward curves ─────────────────────────────────────────────────────────────
 
 def plot_reward_curves(trajs, rm, normalize=False, robust=False):
