@@ -88,6 +88,21 @@ def plot_scatter(trajs, rm, segment_length=None, normalize=False, robust=False):
         print(f"No segments of length {segment_length} found.")
         return
 
+    seg_label = f"seg={segment_length}" if segment_length is not None else "full episode"
+    plot_scatter_from_segments(segments, rm, normalize=normalize, robust=robust, title=f"Scatter — {seg_label}")
+
+
+def plot_scatter_from_segments(segments, rm, normalize=False, robust=False, title=None):
+    """
+    Scatter: true return vs predicted return per segment già campionati.
+
+    Uguale a plot_scatter ma salta _extract_segments: i segmenti vengono
+    passati direttamente come lista di liste di transizioni.
+    """
+    if not segments:
+        print("No segments provided.")
+        return
+
     true_ret, pred_ret, term_status = _score_segments(segments, rm)
 
     if normalize:
@@ -105,17 +120,18 @@ def plot_scatter(trajs, rm, segment_length=None, normalize=False, robust=False):
     spearman_rho, _ = spearmanr(true_ret, pred_ret)
     kendall_tau,  _ = kendalltau(true_ret, pred_ret)
 
-    seg_label = f"seg={segment_length}" if segment_length is not None else "full episode"
-    align_tag = f" ({'robust' if robust else 'z-score'} aligned)" if normalize else ""
+    seg_len    = len(segments[0])
+    align_tag  = f" ({'robust' if robust else 'z-score'} aligned)" if normalize else ""
+    plot_title = title or f"Scatter — presampled segments  (L={seg_len}, n={len(segments)})"
 
     fig, ax = plt.subplots(figsize=(6, 5))
     for status_id, color in _STATUS_COLORS.items():
         mask = term_status == status_id
         if not mask.any():
             continue
-        label = _STATUS_LABELS.get(status_id, "running")
         ax.scatter(true_ret[mask], pred_ret[mask],
-                   alpha=0.75, s=25, edgecolors="none", color=color, label=label)
+                   alpha=0.75, s=25, edgecolors="none", color=color,
+                   label=_STATUS_LABELS.get(status_id, "running"))
     x_lo, x_hi = ax.get_xlim()
     y_lo, y_hi = ax.get_ylim()
     lo, hi = min(x_lo, y_lo), max(x_hi, y_hi)
@@ -125,14 +141,14 @@ def plot_scatter(trajs, rm, segment_length=None, normalize=False, robust=False):
     ax.set_xlabel("True return")
     ax.set_ylabel(f"Predicted return{align_tag}")
     ax.set_title(
-        f"Scatter — {seg_label}  (n={len(segments)})\n"
+        f"{plot_title}\n"
         f"Pearson r={pearson_r:.3f}   Spearman ρ={spearman_rho:.3f}   Kendall τ={kendall_tau:.3f}"
     )
     ax.legend()
     plt.tight_layout()
     plt.show()
     print(
-        f"[{seg_label}] Pearson={pearson_r:.3f}  "
+        f"Pearson={pearson_r:.3f}  "
         f"Spearman={spearman_rho:.3f}  Kendall={kendall_tau:.3f}  n={len(segments)}"
     )
 
