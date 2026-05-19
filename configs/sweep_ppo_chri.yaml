@@ -1,0 +1,57 @@
+program: scripts/test_chri_PPO.py
+method: bayes
+metric:
+  name: agent/event_rate/successes
+  goal: maximize
+early_terminate:
+  type: hyperband
+  min_iter: 5       # almeno 5 iterazioni prima di terminare un run
+
+# I parametri del sweep vengono iniettati come override Hydra via ${args_no_hyphens},
+# quindi passano attraverso Hydra prima di wandb.init — nessuna modifica allo script.
+command:
+  - python
+  - ${program}
+  - --config-path
+  - ../configs
+  - --config-name
+  - test_chri_PPO
+  - wandb.entity=andrea02polimi-politecnico-di-milano   # aggiornare se cambia
+  - wandb.project=sweep-ppo-chri                        # aggiornare se cambia
+  - run.output_dir=outputs
+  - run.baseline=false
+  - algo.kwargs.hard_labels=false
+  - algo.kwargs.bt_temperature=5.0
+  - algo.kwargs.initial_queries=1000
+  - algo.kwargs.fragment_length=1
+  - algo.kwargs.fragmenter_type=random
+  - train.kwargs.total_timesteps=1000000 # 1000000
+  - train.kwargs.total_queries=50000 # 50000
+  - train.kwargs.timesteps_per_iteration=20000 # 20000
+  - env.n_envs=4
+  - ${args_no_hyphens}
+
+parameters:
+
+  # ── seed ────────────────────────────────────────────────────────────────────
+  run.seed:
+    values: [0]
+
+  # ── PPO ─────────────────────────────────────────────────────────────────────
+  agent.kwargs.learning_rate:
+    distribution: log_uniform_values
+    min: 0.00001
+    max: 0.005
+
+  agent.kwargs.n_steps:
+    # buffer = n_steps × n_envs; batch_size deve dividere il buffer
+    values: [512, 1024, 2048]
+
+  agent.kwargs.batch_size:
+    # validi per tutti i valori di n_steps × n_envs sopra (min buffer = 2048)
+    values: [64, 128, 256]
+
+  agent.kwargs.n_epochs:
+    values: [5, 10, 20]
+
+

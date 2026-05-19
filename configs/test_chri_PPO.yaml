@@ -37,6 +37,7 @@ algo:
     gradient_steps_rew: 30
     batch_size_rew: 128
     l2_rew: 0.0001
+    bt_temperature: 1.0
     fragment_length: 1
     initial_queries: 500
     exploration_frac: 0.0
@@ -46,6 +47,7 @@ algo:
     comparison_queue_size: 1000000
     train_comparison_frac: 0.8
     fragmenter_type: active
+    pessimism: 0.0
     reward_model_kwargs:
       n_ensembles: 1
       net_arch: [128, 128]
