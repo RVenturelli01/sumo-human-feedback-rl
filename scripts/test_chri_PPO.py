@@ -11,7 +11,7 @@ import torch as th
 
 import sumo_rl_ego as sre
 from stable_baselines3 import PPO
-from human_feedback_rl.algorithms import ChristianoAlgorithm
+from human_feedback_rl.algorithms import SoftPreferenceAlgorithm, BinaryPreferenceAlgorithm
 from sumo_rl_ego.utils import CustomLoggingCallback
 import wandb
 
@@ -115,7 +115,7 @@ def main(cfg: DictConfig) -> None:
         wandb.log_artifact(artifact)
 
         print("Initializing algorithm...")
-        algo = ChristianoAlgorithm(env=env, agent=agent, rng=rng, debug_datasets=debug_datasets, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
+        algo = SoftPreferenceAlgorithm(env=env, agent=agent, rng=rng, debug_datasets=debug_datasets, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
 
         print("Starting training...")
         train_kwargs = OmegaConf.to_container(cfg.train.kwargs, resolve=True)
