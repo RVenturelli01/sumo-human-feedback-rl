@@ -325,7 +325,7 @@ def plot_reward_curves(trajs, rm, normalize=False, robust=False):
         ax_term.set_xticklabels(["True", "Pred"], fontsize=8)
         ax_term.set_title("Terminal")
         ax_term.axhline(0, color="gray", lw=0.5, ls="--")
-        ax_term.set_ylim(-11, 1)
+        ax_term.set_ylim(-60, 1)
 
     norm_label = f"{'robust' if robust else 'z-score'} normalized" if normalize else "raw"
     plt.suptitle(f"Reward curves — {norm_label}", y=1.002, fontsize=13)

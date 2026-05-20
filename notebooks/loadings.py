@@ -23,7 +23,7 @@ class _Member(RewardNet):
 
 def _infer_arch(sd: dict, member_idx: int = 0):
     """Return (input_dim, hidden_dims, has_bias_last) by inspecting state dict keys."""
-    prefix = f"members.{member_idx}.net."
+    prefix = f"members.{member_idx}.net.net."
     weight_keys = sorted(
         [k for k in sd if k.startswith(prefix) and k.endswith(".weight")],
         key=lambda k: int(k[len(prefix):].split(".")[0]),
@@ -80,6 +80,15 @@ def load_reward_ensemble(path: str, obs_space, act_space, device: str = "cpu") -
         for _ in range(n_members)
     ]
     ensemble = RewardEnsemble(obs_space, act_space, members)
+
+    fixed_sd = {}
+
+    for k, v in sd.items():
+        fixed_key = k.replace(".net.net.", ".net.")
+        fixed_sd[fixed_key] = v
+
+    sd = fixed_sd
+
     ensemble.load_state_dict(sd)
     ensemble.eval()
 

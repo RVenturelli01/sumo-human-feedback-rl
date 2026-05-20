@@ -1,12 +1,12 @@
 
 run:
   seed: 0
-  output_dir: Null
+  output_dir: outputs
   baseline: false
 
 wandb: 
-  entity: Null
-  project: Null
+  entity: andrea02polimi-politecnico-di-milano
+  project: debug-local-new
   tags: Null
 
 
@@ -23,10 +23,10 @@ agent:
     n_steps: 1000
     n_epochs: 10
     learning_rate: 0.0003
-    batch_size: 100
-    ent_coef: 0.01
+    batch_size: 64
+    ent_coef: 0
     gae_lambda: 0.95
-    gamma: 0.995
+    gamma: 0.997
     policy_kwargs:
       net_arch: [64, 64]
     device: "cpu"
@@ -34,29 +34,29 @@ agent:
 algo:
   kwargs:
     lr_rew: 0.0003
-    gradient_steps_rew: 30
+    gradient_steps_rew: 200
     batch_size_rew: 128
     l2_rew: 0.0001
     fragment_length: 1
-    initial_queries: 500
+    initial_queries: 1000
     exploration_frac: 0.0
     exploration_eps: 0.5
-    hard_labels: True
     query_schedule: "constant"
     comparison_queue_size: 1000000
     train_comparison_frac: 0.8
-    fragmenter_type: active
+    fragmenter_type: "active"
+    labels_type: "binary_bernulli"
     reward_model_kwargs:
-      n_ensembles: 1
+      n_ensembles: 3
       net_arch: [128, 128]
       activation_fn: tanh
 
 train:
   kwargs:
-    total_timesteps: 1000000
+    total_timesteps: 2000000
     total_queries: 100000
     timesteps_per_iteration: 20000
-    checkpoint_dir: Null
+    checkpoint_dir: checkpoints
     checkpoint_interval: 10
 
 hydra:

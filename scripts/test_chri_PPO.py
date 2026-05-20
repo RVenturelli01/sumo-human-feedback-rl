@@ -11,7 +11,7 @@ import torch as th
 
 import sumo_rl_ego as sre
 from stable_baselines3 import PPO
-from human_feedback_rl.algorithms import SoftPreferenceAlgorithm, BinaryPreferenceAlgorithm
+from human_feedback_rl.algorithms.preference_algorithm import BinaryPreferenceAlgorithm
 from sumo_rl_ego.utils import CustomLoggingCallback
 import wandb
 
@@ -38,14 +38,12 @@ def get_name(cfg):
     
     total_queries = cfg.train.kwargs.total_queries
     segment_length = cfg.algo.kwargs.fragment_length
-    hard_labels = cfg.algo.kwargs.hard_labels
     seed = cfg.run.seed
 
     group_name = (
         f"ppo_{type}"
         f" seg_len={segment_length}"
         f" tot_queries={total_queries}"
-        f" hard_labels={hard_labels}"
     )
 
     run_name = group_name + f" seed={seed}"
@@ -54,7 +52,7 @@ def get_name(cfg):
 
 
 
-@hydra.main(version_base=None, config_path=".", config_name="config")
+@hydra.main(version_base=None, config_path="../configs", config_name="test_chri_PPO.yaml")
 def main(cfg: DictConfig) -> None:
     
     seed = cfg.run.seed
@@ -115,7 +113,7 @@ def main(cfg: DictConfig) -> None:
         wandb.log_artifact(artifact)
 
         print("Initializing algorithm...")
-        algo = SoftPreferenceAlgorithm(env=env, agent=agent, rng=rng, debug_datasets=debug_datasets, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
+        algo = BinaryPreferenceAlgorithm(env=env, agent=agent, rng=rng, debug_datasets=debug_datasets, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
 
         print("Starting training...")
         train_kwargs = OmegaConf.to_container(cfg.train.kwargs, resolve=True)
