@@ -44,6 +44,7 @@ algo:
     query_schedule: "constant"
     comparison_queue_size: 1000000
     train_comparison_frac: 0.8
+    temperature: 20.0
     fragmenter_type: "active"
     labels_type: "binary_bernulli"
     reward_model_kwargs:
