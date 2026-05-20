@@ -24,36 +24,38 @@ agent:
     n_epochs: 10
     learning_rate: 0.0003
     batch_size: 100
-    ent_coef: 0.01
+    ent_coef: 0
     gae_lambda: 0.95
-    gamma: 0.995
+    gamma: 0.997
     policy_kwargs:
       net_arch: [64, 64]
     device: "cpu"
 
 algo:
   kwargs:
-    lr_rew: 0.0003
-    gradient_steps_rew: 30
-    batch_size_rew: 128
-    l2_rew: 0.0001
+    lr_rew: 0.0007
+    gradient_steps_rew: 200
+    batch_size_rew: 500
+    l2_rew: 0.0
     fragment_length: 1
-    initial_queries: 500
+    temperature: 20
+    initial_queries: 2000
     exploration_frac: 0.0
-    exploration_eps: 0.5
-    hard_labels: True
-    query_schedule: "constant"
+    exploration_eps: 0.0
+    labels_type: binary_bernulli
+    query_schedule: constant
     comparison_queue_size: 1000000
     train_comparison_frac: 0.8
-    fragmenter_type: active
+    fragmenter_type: random
     reward_model_kwargs:
       n_ensembles: 1
-      net_arch: [128, 128]
+      net_arch: [32, 32]
       activation_fn: tanh
+      alfa: 1
 
 train:
   kwargs:
-    total_timesteps: 1000000
+    total_timesteps: 2000000
     total_queries: 100000
     timesteps_per_iteration: 20000
     checkpoint_dir: Null
