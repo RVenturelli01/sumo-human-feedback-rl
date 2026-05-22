@@ -38,16 +38,14 @@ def get_name(cfg):
     
     total_queries = cfg.train.kwargs.total_queries
     segment_length = cfg.algo.kwargs.fragment_length
-    labels_type = cfg.algo.kwargs.labels_type
-    fragmenter_type = cfg.algo.kwargs.fragmenter_type
+    hard_labels = cfg.algo.kwargs.hard_labels
     seed = cfg.run.seed
 
     group_name = (
         f"ppo_{type}"
-        f" {labels_type}"
-        f" seg{segment_length}"
+        f" seg_len={segment_length}"
         f" tot_queries={total_queries}"
-        f" fragmenter_type={fragmenter_type}"
+        f" hard_labels={hard_labels}"
     )
 
     run_name = group_name + f" seed={seed}"
@@ -56,7 +54,7 @@ def get_name(cfg):
 
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="test_chri_PPO.yaml")
+@hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg: DictConfig) -> None:
     
     seed = cfg.run.seed
@@ -80,7 +78,7 @@ def main(cfg: DictConfig) -> None:
         dir=str(run_dir),
     )
 
-    print(OmegaConf.to_yaml(cfg))
+    print(cfg)
 
     print("Creating environment...")
     env = sre.make_vec_env(cfg.env.id, n_envs=cfg.env.n_envs, base_seed=seed, **OmegaConf.to_container(cfg.env.kwargs, resolve=True))
@@ -99,25 +97,13 @@ def main(cfg: DictConfig) -> None:
         )
 
     else:
-        debug_dataset_dir = Path(__file__).parent.parent / "data_for_training"
-        debug_dataset_files = {
-            "seg1":       "debug_dataset_seg1.pkl",
-            "seg5":       "debug_dataset_seg5.pkl",
-            "seg20":      "debug_dataset_seg20.pkl",
-            "segNone": "debug_dataset_full_ep.pkl",
-        }
-        debug_datasets = {}
-        artifact = wandb.Artifact("debug_datasets", type="dataset")
-        for key, filename in debug_dataset_files.items():
-            pkl_path = debug_dataset_dir / filename
-            if pkl_path.exists():
-                with open(pkl_path, "rb") as f:
-                    debug_datasets[key] = pickle.load(f)
-                artifact.add_file(str(pkl_path))
-        wandb.log_artifact(artifact)
+        debug_dataset_path = Path(__file__).parent.parent / "data_for_training/debug_dataset.pkl"
+        
+        with open(debug_dataset_path, "rb") as f:
+            debug_dataset = pickle.load(f)
 
         print("Initializing algorithm...")
-        algo = PreferenceAlgorithm(env=env, agent=agent, rng=rng, debug_datasets=debug_datasets, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
+        algo = PreferenceAlgorithm(env=env, agent=agent, rng=rng, debug_dataset=debug_dataset, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
 
         print("Starting training...")
         train_kwargs = OmegaConf.to_container(cfg.train.kwargs, resolve=True)
