@@ -34,22 +34,17 @@ def make_run_dir(output_dir: Path, name: str) -> Path:
 
 
 def get_name(cfg):
-    type = "baseline" if cfg.run.baseline else f"chri"
-    
-    total_queries = cfg.train.kwargs.total_queries
     segment_length = cfg.algo.kwargs.fragment_length
-    hard_labels = cfg.algo.kwargs.hard_labels
+    type = cfg.algo.kwargs.labels_type
     seed = cfg.run.seed
 
-    group_name = (
-        f"ppo_{type}"
-        f" seg_len={segment_length}"
-        f" tot_queries={total_queries}"
-        f" hard_labels={hard_labels}"
-    )
+    if cfg.run.baseline:
+        group_name = "ppo_baseline"
+    else:
+        group_name = f"ppo_chri_{type} seg={segment_length}"
 
     run_name = group_name + f" seed={seed}"
-    
+
     return group_name, run_name
 
 
@@ -78,7 +73,7 @@ def main(cfg: DictConfig) -> None:
         dir=str(run_dir),
     )
 
-    print(cfg)
+    print(OmegaConf.to_yaml(cfg))
 
     print("Creating environment...")
     env = sre.make_vec_env(cfg.env.id, n_envs=cfg.env.n_envs, base_seed=seed, **OmegaConf.to_container(cfg.env.kwargs, resolve=True))

@@ -1,97 +1,57 @@
+import pickle
 import random
+from pathlib import Path
 
 import hydra
-from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
-
-from pathlib import Path
 
 import numpy as np
 import torch as th
 
 import sumo_rl_ego as sre
 from stable_baselines3 import PPO
-from human_feedback_rl.algorithms.demo_rew import ZhangAlgorithm
-from sumo_rl_ego.utils import CustomLoggingCallback
+from human_feedback_rl.algorithms import DemoAlgorithm
 import wandb
 
-from human_feedback_rl.common.loggers import WandbWriter, PrefixedLogger
-from stable_baselines3.common.logger import Logger
-from stable_baselines3.common.vec_env import VecMonitor
 
-
-class ExpertPredictor:
-    """Wraps an SB3 model so predict() returns only the actions array."""
-    def __init__(self, model):
-        self.model = model
-
-    def predict(self, obs):
-        actions, _ = self.model.predict(obs, deterministic=True)
-        return actions
+def make_run_dir(output_dir: Path, name: str) -> Path:
+    candidate = output_dir / name
+    if not candidate.exists():
+        candidate.mkdir(parents=True)
+        return candidate
+    i = 1
+    while True:
+        candidate = output_dir / f"{name}_{i:02d}"
+        if not candidate.exists():
+            candidate.mkdir(parents=True)
+            return candidate
+        i += 1
 
 
 def get_name(cfg):
-    total_timesteps = cfg.train.kwargs.total_timesteps
-    timesteps_per_it = cfg.train.kwargs.timesteps_per_iteration
-    n_envs = cfg.env.n_envs
-    n_steps = cfg.agent.kwargs.n_steps
-
-    base = (
-        f"PPO"
-        f" {n_envs}x{n_steps}={n_envs * n_steps}"
-        f" tot_steps={total_timesteps}"
-        f" steps_per_it={timesteps_per_it}"
-    )
-
-    if cfg.run.baseline:
-        return base + " (baseline)"
-
-    comparisons_per_it = cfg.train.kwargs.comparisons_per_iteration
-    segment_length = cfg.algo.kwargs.fragment_length
-    query_schedule = cfg.algo.kwargs.query_schedule
-
-    return base + f" comp_per_it={comparisons_per_it} seg_len={segment_length} sched={query_schedule} (Zhang)"
+    seed = cfg.run.seed
+    group_name = "ppo_demo_irl"
+    run_name = group_name + f" seed={seed}"
+    return group_name, run_name
 
 
-def print_summary(cfg):
-    train = cfg.train.kwargs
-    agent = cfg.agent.kwargs
-    n_envs = cfg.env.n_envs
-
-    steps_per_it = train.timesteps_per_iteration
-    tot_steps = train.total_timesteps
-    rollout_len = n_envs * agent.n_steps
-    n_it = int(tot_steps / steps_per_it)
-
-    print("=" * 60)
-    print(f"  {get_name(cfg)}")
-    print("=" * 60)
-    print(f"  Iterations:       {n_it}")
-    print(f"  Timesteps:        {steps_per_it:>4} / it    total: {steps_per_it * n_it:>10}")
-    print(f"  Rollout length:   {rollout_len}  ({n_envs} envs x {agent.n_steps} steps)")
-
-    if not cfg.run.baseline:
-        algo = cfg.algo.kwargs
-        comp_per_it = train.comparisons_per_iteration
-        seg_len = algo.fragment_length
-        print(f"  Comparisons:      {comp_per_it:>4} / it    total: {comp_per_it * n_it:>10}")
-        print(f"  Segment length:   {seg_len}")
-        print(f"  Expert path:      {cfg.expert.path}")
-        print("-" * 60)
-        print("  Reward model:")
-        print(f"    lr:                    {algo.lr_rew}")
-        print(f"    n_epochs:              {algo.n_epochs_rew}")
-        print(f"    batch size:            {algo.batch_size_rew}")
-        print(f"    decay_rew:             {algo.decay_rew}")
-        print(f"    query_schedule:        {algo.query_schedule}")
-        print(f"    comparison_queue_size: {algo.comparison_queue_size}")
-
-    print("=" * 60)
+def load_expert_trajectories(path: str) -> list:
+    """Load trajectories from a directory of .pkl files or a single .pkl file."""
+    p = Path(path)
+    if p.is_dir():
+        trajectories = []
+        for pkl_file in sorted(p.glob("*.pkl")):
+            with open(pkl_file, "rb") as f:
+                data = pickle.load(f)
+            trajectories.extend(data if isinstance(data, list) else [data])
+        return trajectories
+    with open(p, "rb") as f:
+        data = pickle.load(f)
+    return data if isinstance(data, list) else [data]
 
 
-@hydra.main(version_base=None, config_path=".", config_name="config_demo_rew")
+@hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg: DictConfig) -> None:
-    run_dir = Path(HydraConfig.get().runtime.output_dir)
 
     seed = cfg.run.seed
     random.seed(seed)
@@ -99,43 +59,63 @@ def main(cfg: DictConfig) -> None:
     th.manual_seed(seed)
     rng = np.random.default_rng(seed)
 
+    group_name, run_name = get_name(cfg)
+    run_dir = make_run_dir(Path(cfg.run.output_dir), run_name)
+
+    config = OmegaConf.to_container(cfg, resolve=True)
+    config["group_name"] = group_name
+
     wandb.init(
-        project="debug-local",
-        entity="andrea02polimi-politecnico-di-milano",
-        config=OmegaConf.to_container(cfg, resolve=True),
-        name=get_name(cfg),
+        entity=cfg.wandb.entity,
+        project=cfg.wandb.project,
+        config=config,
+        group=group_name,
+        name=run_name,
         dir=str(run_dir),
     )
 
-    print_summary(cfg)
+    print(OmegaConf.to_yaml(cfg))
+
+    print(f"Loading expert trajectories...")
+    expert_trajectories_path = Path(__file__).parent.parent / "data_for_training/expert_trajectories.pkl"
+    
+    with open(expert_trajectories_path, "rb") as f:
+        expert_trajectories = pickle.load(f)
+
+    # expert_trajectories = load_expert_trajectories(expert_trajectories_path)
+    print(f"Loaded {len(expert_trajectories)} expert trajectories")
 
     print("Creating environment...")
-    env = sre.make_vec_env(cfg.env.id, n_envs=cfg.env.n_envs, base_seed=seed, **OmegaConf.to_container(cfg.env.kwargs, resolve=True))
+    env = sre.make_vec_env(
+        cfg.env.id,
+        n_envs=cfg.env.n_envs,
+        base_seed=seed,
+        **OmegaConf.to_container(cfg.env.kwargs, resolve=True),
+    )
+
+    debug_dataset_path = Path(__file__).parent.parent / "data_for_training/debug_dataset.pkl"
+    debug_dataset = None
+    if debug_dataset_path.exists():
+        with open(debug_dataset_path, "rb") as f:
+            debug_dataset = pickle.load(f)
 
     print("Initializing agent...")
     agent = PPO(env=env, seed=seed, **OmegaConf.to_container(cfg.agent.kwargs, resolve=True))
 
-    if cfg.run.baseline:
-        agent.set_env(VecMonitor(env))
-        logger = Logger(folder=None, output_formats=[WandbWriter()])
-        agent.set_logger(PrefixedLogger(logger, "agent"))
+    print("Initializing DemoAlgorithm...")
+    algo = DemoAlgorithm(
+        env=env,
+        agent=agent,
+        expert_trajectories=expert_trajectories,
+        rng=rng,
+        debug_dataset=debug_dataset,
+        **OmegaConf.to_container(cfg.algo.kwargs, resolve=True),
+    )
 
-        agent.learn(
-            total_timesteps=cfg.train.kwargs.total_timesteps,
-            callback=CustomLoggingCallback(),
-        )
-
-    else:
-        print(f"Loading expert from {cfg.expert.path}...")
-        expert = sre.load_policy("ppo-fast", env=env)
-
-        print("Initializing algorithm...")
-        algo = ZhangAlgorithm(env=env, agent=agent, expert=expert, rng=rng, **OmegaConf.to_container(cfg.algo.kwargs, resolve=True))
-
-        print("Starting training...")
-        train_kwargs = OmegaConf.to_container(cfg.train.kwargs, resolve=True)
-        train_kwargs["checkpoint_dir"] = str(run_dir)
-        agent = algo.train(**train_kwargs)
+    print("Starting training...")
+    train_kwargs = OmegaConf.to_container(cfg.train.kwargs, resolve=True)
+    train_kwargs["checkpoint_dir"] = str(run_dir)
+    algo.train(**train_kwargs)
 
 
 if __name__ == '__main__':
