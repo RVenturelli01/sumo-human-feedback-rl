@@ -222,3 +222,6 @@ launchers/
 assets
 thesis
 tensorboard.DS_Store
+environment.yml
+
+data_for_training/expert_trajectories.pkl
