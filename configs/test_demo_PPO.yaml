@@ -46,6 +46,13 @@ algo:
     model_buffer_size: 1000
     n_anchor_iterations: 10
     anchor_frac: 0.4
+    # Reward model freeze (set freeze_patience > 0 to enable).
+    # The model is frozen (restored to best weights) when Kendall τ drops
+    # below freeze_threshold_low for freeze_patience consecutive iterations.
+    # It unfreezes if Kendall τ recovers above freeze_threshold_high.
+    freeze_threshold_low: 0.5
+    freeze_threshold_high: 0.8
+    freeze_patience: 3
     reward_model_kwargs:
       n_ensembles: 3
       net_arch: [32, 32]
