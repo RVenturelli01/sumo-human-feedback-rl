@@ -35,15 +35,20 @@ def make_run_dir(output_dir: Path, name: str) -> Path:
 
 def get_name(cfg):
     segment_length = cfg.algo.kwargs.fragment_length
-    type = cfg.algo.kwargs.labels_type
+    labels_type = cfg.algo.kwargs.labels_type
+    temperature = cfg.algo.kwargs.temperature
+    total_queries = cfg.train.kwargs.total_queries
     seed = cfg.run.seed
+    suffix = cfg.run.get("name_suffix", None)
 
     if cfg.run.baseline:
         group_name = "ppo_baseline"
     else:
-        group_name = f"ppo_chri_{type} seg={segment_length}"
+        group_name = f"ppo_chri_{labels_type} seg={segment_length}"
 
-    run_name = group_name + f" seed={seed}"
+    run_name = group_name + f" q={total_queries} temp={temperature} seed={seed}"
+    if suffix:
+        run_name += f" {suffix}"
 
     return group_name, run_name
 
@@ -70,6 +75,7 @@ def main(cfg: DictConfig) -> None:
         config=config,
         group=group_name,
         name=run_name,
+        tags=cfg.wandb.tags,
         dir=str(run_dir),
     )
 
