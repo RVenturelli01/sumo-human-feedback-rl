@@ -35,7 +35,6 @@ FRAGMENT_LENGTH="${FRAGMENT_LENGTH:-1}"
 FRAGMENTER_TYPE="${FRAGMENTER_TYPE:-active}"
 NET_ARCH="${NET_ARCH:-[32,32]}"
 N_ENSEMBLES="${N_ENSEMBLES:-3}"
-MAX_PARALLEL="${MAX_PARALLEL:-1}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 CORE_RANGE="${CORE_RANGE:-}"
 
@@ -81,11 +80,9 @@ cd "$REPO_ROOT"
 
 export WANDB_MODE
 
-running_jobs=0
 submitted_jobs=0
 total_jobs=$(( ${#SEEDS[@]} * ${#LABEL_QUERY_TEMPERATURE[@]} ))
 failures=0
-declare -a PIDS=()
 
 echo "Reward-label experiments"
 echo "Preset:      $PRESET"
@@ -93,41 +90,13 @@ echo "Runs:        $total_jobs"
 echo "Output dir:  $OUTPUT_DIR"
 echo "Logs:        $LOG_DIR"
 echo "WandB:       $WANDB_ENTITY / $WANDB_PROJECT ($WANDB_MODE)"
+echo "Parallel:    disabled (runs execute sequentially)"
 if [[ -n "$CORE_RANGE" ]]; then
   echo "CPU cores:   $CORE_RANGE"
 else
   echo "CPU cores:   all available"
 fi
 echo ""
-
-reap_finished_jobs() {
-  local still_running=()
-  local pid
-
-  for pid in "${PIDS[@]:-}"; do
-    if kill -0 "$pid" 2>/dev/null; then
-      still_running+=("$pid")
-    else
-      if wait "$pid"; then
-        :
-      else
-        failures=$((failures + 1))
-      fi
-      running_jobs=$((running_jobs - 1))
-    fi
-  done
-
-  PIDS=("${still_running[@]:-}")
-}
-
-wait_for_slot() {
-  while (( running_jobs >= MAX_PARALLEL )); do
-    reap_finished_jobs
-    if (( running_jobs >= MAX_PARALLEL )); then
-      sleep 5
-    fi
-  done
-}
 
 launch_one() {
   local job_id="$1"
@@ -193,19 +162,15 @@ launch_one() {
 for seed in "${SEEDS[@]}"; do
   for spec in "${LABEL_QUERY_TEMPERATURE[@]}"; do
     IFS='|' read -r labels_type total_queries temperature name_suffix <<< "$spec"
-    wait_for_slot
     submitted_jobs=$((submitted_jobs + 1))
-    launch_one "$submitted_jobs" "$seed" "$labels_type" "$total_queries" "$temperature" "$name_suffix" &
-    PIDS+=("$!")
-    running_jobs=$((running_jobs + 1))
+    if launch_one "$submitted_jobs" "$seed" "$labels_type" "$total_queries" "$temperature" "$name_suffix"; then
+      echo "[$(date '+%H:%M:%S')] done  $submitted_jobs/$total_jobs: $name_suffix seed=$seed"
+    else
+      rc=$?
+      failures=$((failures + 1))
+      echo "[$(date '+%H:%M:%S')] fail  $submitted_jobs/$total_jobs: $name_suffix seed=$seed rc=$rc"
+    fi
   done
-done
-
-while (( running_jobs > 0 )); do
-  reap_finished_jobs
-  if (( running_jobs > 0 )); then
-    sleep 5
-  fi
 done
 
 echo ""
