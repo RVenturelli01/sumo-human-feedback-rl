@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-# Sweep over the preference-fragment (segment) length for Christiano-style
-# preference learning, holding the rest of the configuration fixed.
+# 2D sweep over preference-fragment (segment) length x label family for
+# Christiano-style preference learning, holding the rest of the config fixed.
 #
 # Motivation:
 #   The reward_label_checkpoint_analysis notebook only has runs at
-#   fragment_length=1. This script extends the study to longer segments and to
-#   the whole-episode case, so the notebook can analyse how reward-model quality
-#   and policy performance change with the segment length.
+#   fragment_length=1. This script extends the study to longer segments (and the
+#   whole-episode case) AND crosses it with the label families, so the notebook
+#   can separate two effects that interact along the length axis:
+#     - binary            : T-independent -> isolates the pure segment-length
+#                           (temporal credit-assignment) effect.
+#     - binary_bernoulli  : realistic noisy human (BTL sampled hard labels) ->
+#                           reveals the collapse to coin-flip labels as segments
+#                           grow and sigma((r1-r2)/T) -> 0.5.
+#     - soft              : idealized oracle (continuous probability target) ->
+#                           smooth upper bound, degrades without label-flip noise.
 #
 # Fixed base configuration (chosen to match the existing length=1 runs):
-#   labels_type = soft, total_queries = 10000, temperature = 20, seed = 0
+#   total_queries = 10000, temperature = 20, seed = 0
 #   fragmenter_type = active (same as the other launchers)
 #
 # Segment lengths swept (override via SEGMENT_LENGTHS):
@@ -26,9 +33,10 @@
 #   On machines without `taskset` (e.g. macOS) runs execute without pinning.
 #
 # Examples:
-#   ./scripts/launch_segment_length_sweep.sh
+#   ./scripts/launch_segment_length_sweep.sh                                     # 3 families x 6 lengths x seed 0 = 18 runs
+#   LABEL_TYPES="binary soft" ./scripts/launch_segment_length_sweep.sh           # drop bernoulli
 #   SEGMENT_LENGTHS="1 10 50 episode" ./scripts/launch_segment_length_sweep.sh
-#   CORE_RANGE=21-47 CORES_PER_RUN=9 ./scripts/launch_segment_length_sweep.sh   # 3 parallel slots
+#   CORE_RANGE=21-47 CORES_PER_RUN=9 ./scripts/launch_segment_length_sweep.sh    # 3 parallel slots
 #   SEED_LIST="0 1 2" ./scripts/launch_segment_length_sweep.sh
 
 set -euo pipefail
@@ -54,7 +62,7 @@ BATCH_SIZE_REW="${BATCH_SIZE_REW:-128}"
 FRAGMENTER_TYPE="${FRAGMENTER_TYPE:-active}"
 NET_ARCH="${NET_ARCH:-[32,32]}"
 N_ENSEMBLES="${N_ENSEMBLES:-3}"
-LABELS_TYPE="${LABELS_TYPE:-soft}"
+LABEL_TYPES="${LABEL_TYPES:-binary binary_bernoulli soft}"
 TOTAL_QUERIES="${TOTAL_QUERIES:-10000}"
 TEMPERATURE="${TEMPERATURE:-20}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
@@ -73,21 +81,24 @@ declare -a SLOT_PIDS=()
 declare -a SLOT_LABELS=()
 
 build_experiments() {
-  local seed seglen frag_value name_suffix
+  local seed labels_type seglen frag_value seglen_tag name_suffix
   for seed in $SEED_LIST; do
-    for seglen in $SEGMENT_LENGTHS; do
-      if [[ "$seglen" == "episode" || "$seglen" == "null" || "$seglen" == "full" ]]; then
-        frag_value="null"
-        name_suffix="seglen_episode"
-      elif [[ "$seglen" =~ ^[0-9]+$ ]]; then
-        frag_value="$seglen"
-        name_suffix="seglen_${seglen}"
-      else
-        echo "Invalid segment length '$seglen' (use a positive integer or 'episode')." >&2
-        exit 2
-      fi
-      # spec: seed | fragment_length_override | name_suffix
-      EXPERIMENTS+=("${seed}|${frag_value}|${name_suffix}")
+    for labels_type in $LABEL_TYPES; do
+      for seglen in $SEGMENT_LENGTHS; do
+        if [[ "$seglen" == "episode" || "$seglen" == "null" || "$seglen" == "full" ]]; then
+          frag_value="null"
+          seglen_tag="episode"
+        elif [[ "$seglen" =~ ^[0-9]+$ ]]; then
+          frag_value="$seglen"
+          seglen_tag="$seglen"
+        else
+          echo "Invalid segment length '$seglen' (use a positive integer or 'episode')." >&2
+          exit 2
+        fi
+        name_suffix="${labels_type}_seglen_${seglen_tag}"
+        # spec: seed | labels_type | fragment_length_override | name_suffix
+        EXPERIMENTS+=("${seed}|${labels_type}|${frag_value}|${name_suffix}")
+      done
     done
   done
 }
@@ -125,8 +136,9 @@ build_slot_ranges() {
 
 make_command() {
   local seed="$1"
-  local frag_value="$2"
-  local name_suffix="$3"
+  local labels_type="$2"
+  local frag_value="$3"
+  local name_suffix="$4"
   local initial_queries
 
   initial_queries=$(( TOTAL_QUERIES / 50 ))
@@ -144,13 +156,13 @@ make_command() {
     "+run.name_suffix=$name_suffix" \
     wandb.entity="$WANDB_ENTITY" \
     wandb.project="$WANDB_PROJECT" \
-    "wandb.tags=[seglen_sweep,$LABELS_TYPE,$name_suffix]" \
+    "wandb.tags=[seglen_sweep,$labels_type,seglen_${frag_value},$name_suffix]" \
     algo.kwargs.lr_rew="$LR_REW" \
     algo.kwargs.gradient_steps_rew="$GRADIENT_STEPS_REW" \
     algo.kwargs.batch_size_rew="$BATCH_SIZE_REW" \
     algo.kwargs.fragment_length="$frag_value" \
     algo.kwargs.fragmenter_type="$FRAGMENTER_TYPE" \
-    algo.kwargs.labels_type="$LABELS_TYPE" \
+    algo.kwargs.labels_type="$labels_type" \
     algo.kwargs.temperature="$TEMPERATURE" \
     algo.kwargs.reward_model_kwargs.n_ensembles="$N_ENSEMBLES" \
     "algo.kwargs.reward_model_kwargs.net_arch=$NET_ARCH" \
@@ -166,14 +178,14 @@ run_experiment() {
   local job_id="$2"
   local spec="$3"
   local core_range="${SLOT_RANGES[$slot]}"
-  local seed frag_value name_suffix log_file cmd
+  local seed labels_type frag_value name_suffix log_file cmd
 
-  IFS='|' read -r seed frag_value name_suffix <<< "$spec"
+  IFS='|' read -r seed labels_type frag_value name_suffix <<< "$spec"
   log_file="$LOG_DIR/$(printf '%03d' "$job_id")_${name_suffix}_seed${seed}.log"
 
-  echo "[$(date '+%H:%M:%S')] start job=$job_id/$total_jobs slot=$slot cores=$core_range fragment_length=$frag_value seed=$seed"
+  echo "[$(date '+%H:%M:%S')] start job=$job_id/$total_jobs slot=$slot cores=$core_range label=$labels_type fragment_length=$frag_value seed=$seed"
 
-  cmd="$(make_command "$seed" "$frag_value" "$name_suffix")"
+  cmd="$(make_command "$seed" "$labels_type" "$frag_value" "$name_suffix")"
   if command -v taskset >/dev/null 2>&1; then
     bash -lc "taskset -c '$core_range' $cmd" > "$log_file" 2>&1
   else
@@ -228,8 +240,9 @@ failures=0
 completed=0
 submitted=0
 
-echo "Segment-length sweep (Christiano preference learning)"
-echo "Fixed base:  labels=$LABELS_TYPE  queries=$TOTAL_QUERIES  T=$TEMPERATURE  fragmenter=$FRAGMENTER_TYPE"
+echo "Segment-length x label-family sweep (Christiano preference learning)"
+echo "Fixed base:  queries=$TOTAL_QUERIES  T=$TEMPERATURE  fragmenter=$FRAGMENTER_TYPE"
+echo "Labels:      $LABEL_TYPES"
 echo "Lengths:     $SEGMENT_LENGTHS"
 echo "Seeds:       $SEED_LIST"
 echo "Runs:        $total_jobs"
