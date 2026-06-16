@@ -305,10 +305,6 @@ def plot_reward_curves(trajs, rm, normalize=False, robust=False):
                      marker="o", markersize=3, markeredgewidth=0)
         ax_main.plot(t_ax, pred_r[:-1], label="Predicted", color="tomato",    lw=1.5, ls="--",
                      marker="o", markersize=3, markeredgewidth=0)
-        ax_main.fill_between(t_ax,
-                             pred_r[:-1] - pred_s[:-1],
-                             pred_r[:-1] + pred_s[:-1],
-                             alpha=0.2, color="tomato", label="±1σ ensemble")
 
         true_ret_val = float(sum(t.true_reward for t in traj))
         pred_ret_val = float(pred_mean.sum())

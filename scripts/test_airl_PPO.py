@@ -10,7 +10,7 @@ import torch as th
 
 import sumo_rl_ego as sre
 from stable_baselines3 import PPO
-from human_feedback_rl.algorithms import DemoAlgorithm
+from human_feedback_rl.algorithms import AirlAlgorithm
 import wandb
 
 
@@ -30,7 +30,7 @@ def make_run_dir(output_dir: Path, name: str) -> Path:
 
 def get_name(cfg):
     seed = cfg.run.seed
-    group_name = "ppo_demo_irl"
+    group_name = "ppo_airl_irl"
     run_name = group_name + f" seed={seed}"
     return group_name, run_name
 
@@ -71,14 +71,13 @@ def main(cfg: DictConfig) -> None:
         config=config,
         group=group_name,
         name=run_name,
-        tags=OmegaConf.to_container(cfg.wandb.tags, resolve=True) if cfg.wandb.tags else None,
         dir=str(run_dir),
     )
 
     print(OmegaConf.to_yaml(cfg))
 
     print(f"Loading expert trajectories...")
-    expert_trajectories_path = Path(__file__).parent.parent / "data_for_training/expert_trajectories.pkl"
+    expert_trajectories_path = Path(__file__).parent.parent / "data_for_training/expert_trajectories_airl.pkl"
     
     with open(expert_trajectories_path, "rb") as f:
         expert_trajectories = pickle.load(f)
@@ -94,7 +93,7 @@ def main(cfg: DictConfig) -> None:
         **OmegaConf.to_container(cfg.env.kwargs, resolve=True),
     )
 
-    debug_dataset_path = Path(__file__).parent.parent / "data_for_training/balanced_eval_dataset.pkl"
+    debug_dataset_path = Path(__file__).parent.parent / "data_for_training/balanced_eval_dataset_airl.pkl"
     debug_dataset = None
     if debug_dataset_path.exists():
         with open(debug_dataset_path, "rb") as f:
@@ -103,8 +102,8 @@ def main(cfg: DictConfig) -> None:
     print("Initializing agent...")
     agent = PPO(env=env, seed=seed, **OmegaConf.to_container(cfg.agent.kwargs, resolve=True))
 
-    print("Initializing DemoAlgorithm...")
-    algo = DemoAlgorithm(
+    print("Initializing AirlAlgorithm...")
+    algo = AirlAlgorithm(
         env=env,
         agent=agent,
         expert_trajectories=expert_trajectories,

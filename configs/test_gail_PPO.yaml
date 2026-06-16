@@ -22,7 +22,7 @@ agent:
     n_epochs: 10
     learning_rate: 0.0003
     batch_size: 64
-    ent_coef: 0
+    ent_coef: 0.01
     gae_lambda: 0.95
     gamma: 0.997
     policy_kwargs:
@@ -31,7 +31,7 @@ agent:
 
 algo:
   kwargs:
-    lr_rew: 0.0001
+    lr_rew: 0.001
     gradient_steps_rew: 100
     batch_size_expert: 32
     batch_size_model: 64
@@ -39,19 +39,14 @@ algo:
     fragment_length: 1
     temperature: 1.0
     initial_queries: 100
-    initial_agent_timesteps: 20000
     exploration_frac: 0.0
     exploration_eps: 0.5
     query_schedule: "constant"
-    model_buffer_size: 1000
-    n_anchor_iterations: 4
-    anchor_frac: 0.4
     grad_clip_rew: null
     reward_model_kwargs:
       n_ensembles: 3
       net_arch: [32, 32]
       activation_fn: tanh
-      alfa: 1
 
 train:
   kwargs:

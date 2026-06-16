@@ -98,7 +98,7 @@ def main(cfg: DictConfig) -> None:
         )
 
     else:
-        debug_dataset_path = Path(__file__).parent.parent / "data_for_training/debug_dataset.pkl"
+        debug_dataset_path = Path(__file__).parent.parent / "data_for_training/balanced_eval_dataset.pkl"
         
         with open(debug_dataset_path, "rb") as f:
             debug_dataset = pickle.load(f)

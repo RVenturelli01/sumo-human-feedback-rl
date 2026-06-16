@@ -93,7 +93,7 @@ def main(cfg: DictConfig) -> None:
         **OmegaConf.to_container(cfg.env.kwargs, resolve=True),
     )
 
-    debug_dataset_path = Path(__file__).parent.parent / "data_for_training/debug_dataset.pkl"
+    debug_dataset_path = Path(__file__).parent.parent / "data_for_training/balanced_eval_dataset.pkl"
     debug_dataset = None
     if debug_dataset_path.exists():
         with open(debug_dataset_path, "rb") as f:
