@@ -1,0 +1,41 @@
+# Stage 1 — Core RL hyperparameters (30-50 trials).
+# Tune the learning dynamics first; buffer/schedule and architecture are fixed
+# at their config defaults and tuned in later stages using the best values here.
+#
+#   wandb sweep sweeps/sweep_core.yaml
+#   wandb agent <entity>/<project>/<sweep_id>
+
+program: scripts/train_sac_baseline.py
+method: bayes
+# Stop the sweep automatically after this many trials (across all agents).
+run_cap: 40
+metric:
+  name: sweep/mean_fast_return
+  goal: maximize
+
+# ${args_no_hyphens} expands each parameter as `key=value`, i.e. ready-made Hydra
+# overrides, because the parameter names below are Hydra dotpaths.
+command:
+  - python
+  - ${program}
+  - ${args_no_hyphens}
+
+parameters:
+  agent.kwargs.learning_rate:
+    distribution: log_uniform_values
+    min: 0.00005
+    max: 0.001
+  agent.kwargs.gamma:
+    values: [0.98, 0.99, 0.995, 0.997, 0.999]
+  agent.kwargs.tau:
+    distribution: log_uniform_values
+    min: 0.001
+    max: 0.02
+  agent.kwargs.batch_size:
+    values: [64, 128, 256, 512]
+  agent.kwargs.ent_coef:
+    values: ["auto", 0.05, 0.1, 0.2]
+  # Keep training length modest during the sweep to get more trials; raise it for
+  # the final confirmation runs.
+  train.kwargs.total_timesteps:
+    value: 500000
