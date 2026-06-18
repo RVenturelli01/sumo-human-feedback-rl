@@ -1,8 +1,12 @@
 # SAC baseline trained directly on the environment's TRUE reward (no reward model).
 
 run:
-  seed: 0
-  output_dir: Null
+  # Each run trains one agent per seed and the sweeps optimise the across-seed
+  # mean of the final deterministic eval, so a lucky single seed can't win a trial.
+  seeds: [0, 1, 2]
+  # Must be a real path: sweep agents don't pass it, so a Null default would make
+  # every trial crash in make_run_dir.
+  output_dir: "outputs"
 
 wandb:
   entity: "andrea02polimi-politecnico-di-milano"

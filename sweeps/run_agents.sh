@@ -30,4 +30,5 @@ done
 
 echo "Tail progress with:  tail -f logs/agent_*.log"
 wait
-echo "All agents finished (sweep run_cap reached)."
+echo "All agents exited. If this returned almost immediately, the trials are"
+echo "crashing on startup — check logs/agent_*.log for the traceback."

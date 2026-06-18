@@ -2,11 +2,11 @@
 SAC baseline trained on the environment's TRUE reward (no reward model).
 """
 
-import os
 import random
 from pathlib import Path
 
 import hydra
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 import numpy as np
@@ -38,10 +38,19 @@ def make_run_dir(output_dir: Path, name: str) -> Path:
 
 def get_name():
     group_name = "sac_baseline"
-    # Under a sweep, let W&B auto-name each trial so the runs table shows distinct,
-    # unique names; standalone runs get a descriptive name. Both share the group,
+    # Name each run after the Hydra overrides it received. Under a sweep these are
+    # exactly the swept hyperparameters for this trial, so every trial gets a
+    # distinct, informative name (e.g. "learning_rate=0.0003_gamma=0.997") that
+    # works automatically at every stage, whatever that stage sweeps. Standalone
+    # runs (no overrides) fall back to the group name. All runs share the group,
     # so baseline runs stay together and separable from the demo-IRL experiments.
-    run_name = None if os.environ.get("WANDB_SWEEP_ID") else group_name
+    overrides = HydraConfig.get().overrides.task
+    parts = []
+    for o in overrides:
+        key, _, value = o.partition("=")
+        # keep only the leaf of the dotpath to keep names short
+        parts.append(f"{key.split('.')[-1]}={value}")
+    run_name = "_".join(parts) if parts else group_name
     return group_name, run_name
 
 
