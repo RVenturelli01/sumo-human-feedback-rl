@@ -218,7 +218,6 @@ outputs*
 /random/run_oracle_comparison.sh
 /tmp
 
-launchers/
 assets
 thesis
 tensorboard.DS_Store

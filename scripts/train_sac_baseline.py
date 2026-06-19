@@ -2,15 +2,11 @@
 SAC baseline trained on the environment's TRUE reward (no reward model).
 """
 
-import random
-from pathlib import Path
-
 import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 import numpy as np
-import torch as th
 
 import sumo_rl_ego as sre
 from stable_baselines3 import SAC
@@ -21,19 +17,7 @@ import wandb
 
 from human_feedback_rl.common.loggers import WandbWriter, PrefixedLogger, Logger
 
-
-def make_run_dir(output_dir: Path, name: str) -> Path:
-    candidate = output_dir / name
-    if not candidate.exists():
-        candidate.mkdir(parents=True)
-        return candidate
-    i = 1
-    while True:
-        candidate = output_dir / f"{name}_{i:02d}"
-        if not candidate.exists():
-            candidate.mkdir(parents=True)
-            return candidate
-        i += 1
+from _common import init_wandb_run, make_run_dir, seed_everything
 
 
 def get_name():
@@ -114,9 +98,7 @@ def train_and_eval_one_seed(cfg, seed: int, env_kwargs: dict):
     time. Training metrics are logged under an `agent_seed{seed}` prefix so the
     per-seed learning curves stay separate in W&B.
     """
-    random.seed(seed)
-    np.random.seed(seed)
-    th.manual_seed(seed)
+    seed_everything(seed)
 
     env = sre.make_vec_env(cfg.env.id, n_envs=cfg.env.n_envs, base_seed=seed, **env_kwargs)
     agent = SAC(env=env, seed=seed, **OmegaConf.to_container(cfg.agent.kwargs, resolve=True))
@@ -140,19 +122,8 @@ def train_and_eval_one_seed(cfg, seed: int, env_kwargs: dict):
 @hydra.main(version_base=None, config_path="../configs", config_name="train_sac_baseline")
 def main(cfg: DictConfig) -> None:
     group_name, run_name = get_name()
-    run_dir = make_run_dir(Path(cfg.run.output_dir), run_name or group_name)
-
-    config = OmegaConf.to_container(cfg, resolve=True)
-    config["group_name"] = group_name
-
-    wandb.init(
-        entity=cfg.wandb.entity,
-        project=cfg.wandb.project,
-        config=config,
-        group=group_name,
-        name=run_name,
-        dir=str(run_dir),
-    )
+    run_dir = make_run_dir(cfg.run.output_dir, run_name or group_name)
+    init_wandb_run(cfg, group_name, run_name, run_dir)
 
     print(OmegaConf.to_yaml(cfg))
     env_kwargs = OmegaConf.to_container(cfg.env.kwargs, resolve=True)

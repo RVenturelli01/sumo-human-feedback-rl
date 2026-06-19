@@ -39,6 +39,8 @@ agent:
 
 algo:
   kwargs:
+    # Reward loss: one of "maxent", "maxent_2", "demo".
+    loss_type: maxent
     lr_rew: 0.001
     gradient_steps_rew: 100
     batch_size_expert: 32
@@ -52,12 +54,14 @@ algo:
       n_ensembles: 3
       net_arch: [32, 32]
       activation_fn: tanh
-      alfa: 1
+      alpha: 1
 
 train:
   kwargs:
     total_timesteps: 2000000
     timesteps_per_iteration: 10000
+    # How often (in agent episodes) SB3 logs during agent training.
+    log_interval: 100
     checkpoint_interval: 10
 
 hydra:
