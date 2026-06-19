@@ -13,6 +13,8 @@ import torch as th
 import wandb
 from omegaconf import DictConfig, OmegaConf
 
+from human_feedback_rl.common.loggers import configure_wandb_metrics
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data_for_training"
 
 
@@ -56,7 +58,7 @@ def init_wandb_run(cfg: DictConfig, group_name: str, run_name: str, run_dir: Pat
     """Initialise a W&B run, recording the resolved Hydra config."""
     config = OmegaConf.to_container(cfg, resolve=True)
     config["group_name"] = group_name
-    wandb.init(
+    run = wandb.init(
         entity=cfg.wandb.entity,
         project=cfg.wandb.project,
         config=config,
@@ -64,3 +66,4 @@ def init_wandb_run(cfg: DictConfig, group_name: str, run_name: str, run_dir: Pat
         name=run_name,
         dir=str(run_dir),
     )
+    configure_wandb_metrics(run)
