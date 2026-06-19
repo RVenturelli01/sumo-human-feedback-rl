@@ -20,7 +20,8 @@ def main(cfg: DictConfig) -> None:
     rng = seed_everything(seed)
 
     group_name = "ppo_demo_irl"
-    run_name = f"{group_name} seed={seed}"
+    loss_type = cfg.algo.kwargs.loss_type
+    run_name = f"{group_name} loss={loss_type} seed={seed}"
     run_dir = make_run_dir(cfg.run.output_dir, run_name)
     init_wandb_run(cfg, group_name, run_name, run_dir)
 
@@ -37,6 +38,12 @@ def main(cfg: DictConfig) -> None:
         base_seed=seed,
         **OmegaConf.to_container(cfg.env.kwargs, resolve=True),
     )
+    rollout_env = sre.make_vec_env(
+        cfg.env.id,
+        n_envs=cfg.env.n_envs,
+        base_seed=seed + 10_000,
+        **OmegaConf.to_container(cfg.env.kwargs, resolve=True),
+    )
 
     print("Initializing agent...")
     agent = PPO(env=env, seed=seed, **OmegaConf.to_container(cfg.agent.kwargs, resolve=True))
@@ -48,6 +55,7 @@ def main(cfg: DictConfig) -> None:
         expert_trajectories=expert_trajectories,
         rng=rng,
         debug_dataset=load_debug_dataset(),
+        rollout_env=rollout_env,
         **OmegaConf.to_container(cfg.algo.kwargs, resolve=True),
     )
 

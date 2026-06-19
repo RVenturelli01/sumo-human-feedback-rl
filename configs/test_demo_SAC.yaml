@@ -23,8 +23,8 @@ agent:
     # models don't dominate training. With timesteps_per_iteration=10000 this
     # gives ~10 iterations of history.
     buffer_size: 100000
-    # Collect enough data before the first gradient update so the reward model
-    # has already run at least one iteration when SAC starts updating.
+    # DemoAlgorithm first bootstraps the reward on a separate rollout, then uses
+    # these timesteps to warm up SAC on an already-trained reward model.
     learning_starts: 2000
     batch_size: 256
     learning_rate: 0.0003
@@ -39,8 +39,12 @@ agent:
 
 algo:
   kwargs:
-    # Reward loss: one of "maxent", "maxent_2", "demo".
+    # Historical: maxent, maxent_2, demo (or demo_loss).
+    # Corrected: maxent_corrected, demo_corrected.
     loss_type: maxent
+    # Keep the diagnostic replay buffer in both cases. False makes SAC consume
+    # stored rewards while still logging their mismatch with current predictions.
+    relabel_rewards: true
     lr_rew: 0.001
     gradient_steps_rew: 100
     batch_size_expert: 32

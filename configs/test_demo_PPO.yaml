@@ -31,6 +31,9 @@ agent:
 
 algo:
   kwargs:
+    # Historical: maxent, maxent_2, demo (or demo_loss).
+    # Corrected: maxent_corrected, demo_corrected.
+    loss_type: maxent
     lr_rew: 0.001
     gradient_steps_rew: 100
     batch_size_expert: 32

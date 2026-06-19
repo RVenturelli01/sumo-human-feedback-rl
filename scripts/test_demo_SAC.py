@@ -4,6 +4,7 @@ from omegaconf import DictConfig, OmegaConf
 import sumo_rl_ego as sre
 from stable_baselines3 import SAC
 from human_feedback_rl.algorithms import DemoAlgorithm
+from human_feedback_rl.common.replay_buffers import RewardRelabelReplayBuffer
 
 from _common import (
     init_wandb_run,
@@ -20,7 +21,9 @@ def main(cfg: DictConfig) -> None:
     rng = seed_everything(seed)
 
     group_name = "sac_demo_irl"
-    run_name = f"{group_name} seed={seed}"
+    loss_type = cfg.algo.kwargs.loss_type
+    relabel_rewards = cfg.algo.kwargs.relabel_rewards
+    run_name = f"{group_name} loss={loss_type} relabel={relabel_rewards} seed={seed}"
     run_dir = make_run_dir(cfg.run.output_dir, run_name)
     init_wandb_run(cfg, group_name, run_name, run_dir)
 
@@ -37,9 +40,20 @@ def main(cfg: DictConfig) -> None:
         base_seed=seed,
         **OmegaConf.to_container(cfg.env.kwargs, resolve=True),
     )
+    rollout_env = sre.make_vec_env(
+        cfg.env.id,
+        n_envs=cfg.env.n_envs,
+        base_seed=seed + 10_000,
+        **OmegaConf.to_container(cfg.env.kwargs, resolve=True),
+    )
 
     print("Initializing agent...")
-    agent = SAC(env=env, seed=seed, **OmegaConf.to_container(cfg.agent.kwargs, resolve=True))
+    agent = SAC(
+        env=env,
+        seed=seed,
+        replay_buffer_class=RewardRelabelReplayBuffer,
+        **OmegaConf.to_container(cfg.agent.kwargs, resolve=True),
+    )
 
     print("Initializing DemoAlgorithm...")
     algo = DemoAlgorithm(
@@ -48,6 +62,7 @@ def main(cfg: DictConfig) -> None:
         expert_trajectories=expert_trajectories,
         rng=rng,
         debug_dataset=load_debug_dataset(),
+        rollout_env=rollout_env,
         **OmegaConf.to_container(cfg.algo.kwargs, resolve=True),
     )
 
