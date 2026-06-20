@@ -45,6 +45,9 @@ algo:
     # Keep the diagnostic replay buffer in both cases. False makes SAC consume
     # stored rewards while still logging their mismatch with current predictions.
     relabel_rewards: true
+    # Fit mean/std on each current rollout. The transform is applied only to
+    # rewards consumed by SAC; the IRL loss continues to use raw rewards.
+    normalize_agent_reward: true
     lr_rew: 0.001
     gradient_steps_rew: 100
     batch_size_expert: 32

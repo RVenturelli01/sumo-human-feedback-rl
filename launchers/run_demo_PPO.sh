@@ -30,6 +30,7 @@ DEVICE=cpu
 # Reward learning
 # Historical: maxent, maxent_2, demo. Corrected: maxent_corrected, demo_corrected.
 LOSS_TYPE=maxent
+NORMALIZE_AGENT_REWARD=true
 REWARD_LR=0.001
 REWARD_GRADIENT_STEPS=100
 EXPERT_BATCH_SIZE=32
@@ -67,6 +68,7 @@ cmd=(
   "agent.kwargs.policy_kwargs.net_arch=$AGENT_ARCH"
   agent.kwargs.device="$DEVICE"
   algo.kwargs.loss_type="$LOSS_TYPE"
+  algo.kwargs.normalize_agent_reward="$NORMALIZE_AGENT_REWARD"
   algo.kwargs.lr_rew="$REWARD_LR"
   algo.kwargs.gradient_steps_rew="$REWARD_GRADIENT_STEPS"
   algo.kwargs.batch_size_expert="$EXPERT_BATCH_SIZE"
