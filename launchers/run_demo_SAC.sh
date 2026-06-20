@@ -8,7 +8,7 @@ cd "$REPO_ROOT"
 # Runtime and logging
 PYTHON_BIN="${PYTHON_BIN:-python}"
 SEED=0
-OUTPUT_DIR="outputs/demo_sac"
+OUTPUT_DIR="outputs/demo_sac_debug"
 WANDB_ENTITY="andrea02polimi-politecnico-di-milano"
 WANDB_PROJECT="demo-sac"
 WANDB_TAGS=null
