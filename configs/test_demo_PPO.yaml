@@ -58,6 +58,7 @@ train:
     # How often (in agent episodes) SB3 logs during agent training.
     log_interval: 1
     checkpoint_interval: 10
+    imitation_diagnostics_interval: 10
 
 hydra:
   job:
