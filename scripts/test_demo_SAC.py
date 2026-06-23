@@ -4,7 +4,10 @@ from omegaconf import DictConfig, OmegaConf
 import sumo_rl_ego as sre
 from stable_baselines3 import SAC
 from human_feedback_rl.algorithms import DemoAlgorithm
-from human_feedback_rl.common.replay_buffers import RewardRelabelReplayBuffer
+from human_feedback_rl.common.replay_buffers import (
+    RewardDiagnosticsReplayBuffer,
+    RewardRelabelReplayBuffer,
+)
 
 from _common import (
     init_wandb_run,
@@ -51,7 +54,11 @@ def main(cfg: DictConfig) -> None:
     agent = SAC(
         env=env,
         seed=seed,
-        replay_buffer_class=RewardRelabelReplayBuffer,
+        replay_buffer_class=(
+            RewardRelabelReplayBuffer
+            if relabel_rewards
+            else RewardDiagnosticsReplayBuffer
+        ),
         **OmegaConf.to_container(cfg.agent.kwargs, resolve=True),
     )
 
