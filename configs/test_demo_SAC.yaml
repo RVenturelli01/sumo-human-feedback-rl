@@ -54,6 +54,10 @@ algo:
     batch_size_model: 64
     l2_rew: 0.01
     temperature: 1.0
+    # Only used by maxent_corrected. null = whole-trajectory partition (historical).
+    # Short fragments (e.g. 10-30) shrink the variance of log q over long horizons
+    # and keep the importance-sampling effective sample size from collapsing to 1.
+    fragment_length: null
     initial_agent_timesteps: 10000
     exploration_frac: 0.0
     exploration_eps: 0.5
