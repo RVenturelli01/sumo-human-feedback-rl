@@ -31,15 +31,15 @@ parameters:
 
   # --- BEST FROM STAGE 1 (edit these) ---
   agent.kwargs.learning_rate:
-    value: 0.0003
+    value: 0.0001242983309370202
   agent.kwargs.gamma:
-    value: 0.997
+    value: 0.999
   agent.kwargs.tau:
-    value: 0.005
+    value: 0.0031102923983872435
   agent.kwargs.batch_size:
     value: 256
   agent.kwargs.ent_coef:
     value: "auto"
 
   train.kwargs.total_timesteps:
-    value: 500000
+    value: 1000000

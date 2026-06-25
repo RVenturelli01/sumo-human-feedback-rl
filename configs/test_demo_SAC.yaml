@@ -76,6 +76,9 @@ train:
     checkpoint_interval: 10
     # Set to 0 to disable the state-action occupancy AUC diagnostic.
     imitation_diagnostics_interval: 10
+    # How often (in iterations) to log the debug-dataset true-vs-predicted
+    # return scatter to W&B. null -> use imitation_diagnostics_interval; 0 disables.
+    scatter_interval: null
 
 hydra:
   job:

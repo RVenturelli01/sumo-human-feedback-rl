@@ -7,10 +7,10 @@ cd "$REPO_ROOT"
 
 # Runtime and logging
 PYTHON_BIN="${PYTHON_BIN:-python}"
-SEED=0
-OUTPUT_DIR="outputs/demo_sac_debug"
+SEED="${SEED:-0}"
+OUTPUT_DIR="${OUTPUT_DIR:-outputs/demo_sac_robustness_4m_alberto_no_collision}"
 WANDB_ENTITY="andrea02polimi-politecnico-di-milano"
-WANDB_PROJECT="demo-sac-debug"
+WANDB_PROJECT="${WANDB_PROJECT:-demo-sac-robustness-4m}"
 WANDB_TAGS=null
 
 # Environment
@@ -31,7 +31,7 @@ DEVICE=cpu
 
 # Reward learning
 # Historical: maxent, maxent_2, demo. Corrected: maxent_corrected, demo_corrected.
-LOSS_TYPE=maxent_corrected
+LOSS_TYPE=demo
 RELABEL_REWARDS=true
 NORMALIZE_AGENT_REWARD=false
 REWARD_LR=0.0003
@@ -49,8 +49,8 @@ REWARD_ARCH="[64,64]"
 REWARD_ACTIVATION=tanh
 
 # Training
-TOTAL_TIMESTEPS=2000000 # 2000000
-TIMESTEPS_PER_ITERATION=20000 #20000
+TOTAL_TIMESTEPS="${TOTAL_TIMESTEPS:-4000000}"
+TIMESTEPS_PER_ITERATION="${TIMESTEPS_PER_ITERATION:-20000}"
 LOG_INTERVAL=100 # SAC log per episode, PPO per rollout.
 CHECKPOINT_INTERVAL=10
 IMITATION_DIAGNOSTICS_INTERVAL=5
