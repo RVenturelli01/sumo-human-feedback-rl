@@ -84,6 +84,13 @@ def load_reward_ensemble(path: str, obs_space, act_space, device: str = "cpu") -
     fixed_sd = {}
 
     for k, v in sd.items():
+        # durante il training ogni reward network era normalizzata individualmente (NormalizedRewardNet);
+        # il checkpoint contiene ancora i buffer _mean e _std di ogni membro;
+        # il RewardEnsemble invece usa direttamente i reward raw dei membri, quindi quei buffer sono inutili;
+        # un’eventuale normalizzazione globale residua viene comunque compensata dall’affine alignment successivo;
+        # quindi i buffer vengono rimossi dal checkpoint per poter ricostruire correttamente l’ensemble “grezzo”.
+        if k.endswith("._mean") or k.endswith("._std"):
+            continue
         fixed_key = k.replace(".net.net.", ".net.")
         fixed_sd[fixed_key] = v
 
