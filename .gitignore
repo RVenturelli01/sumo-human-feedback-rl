@@ -221,3 +221,14 @@ outputs*
 assets
 thesis
 tensorboard.DS_Store
+
+*.DS_Store
+
+*.aux
+*.fdb_latexmk
+*.fls
+*.out
+*.synctex.gz
+*.tex
+*.yml
+*.pkl
