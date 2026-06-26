@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scarica i dataset Parquet SUMO-RLHF dal repo privato su Hugging Face.
+"""Scarica i dataset .pkl SUMO-RLHF dal repo privato su Hugging Face.
 
 Repo: https://huggingface.co/datasets/Andrea02/sumo-rlhf-datasets (privato)
 
@@ -9,8 +9,8 @@ Autenticazione (necessaria perche' il dataset e' privato), scegli una via:
 
 Uso:
     python scripts/download_datasets.py
-    python scripts/download_datasets.py --out data_for_training/parquet
-    python scripts/download_datasets.py --files expert_trajectories.parquet
+    python scripts/download_datasets.py --out data_for_training
+    python scripts/download_datasets.py --files expert_trajectories.pkl
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from huggingface_hub import snapshot_download
 
 REPO_ID = "Andrea02/sumo-rlhf-datasets"
 REPO_TYPE = "dataset"
-DEFAULT_OUT = Path(__file__).resolve().parent.parent / "data_for_training" / "parquet"
+DEFAULT_OUT = Path(__file__).resolve().parent.parent / "datasets"
 
 
 def main() -> None:
@@ -30,13 +30,13 @@ def main() -> None:
         "--out",
         type=Path,
         default=DEFAULT_OUT,
-        help="Cartella di destinazione (default: data_for_training/parquet).",
+        help="Cartella di destinazione (default: <repo>/datasets).",
     )
     parser.add_argument(
         "--files",
         nargs="*",
         default=None,
-        help="Nomi di file specifici da scaricare (default: tutti i .parquet).",
+        help="Nomi di file specifici da scaricare (default: tutti i .pkl).",
     )
     parser.add_argument(
         "--token",
@@ -46,7 +46,7 @@ def main() -> None:
     args = parser.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
-    patterns = list(args.files) if args.files else ["*.parquet"]
+    patterns = list(args.files) if args.files else ["*.pkl"]
 
     print(f"Scarico {REPO_ID} -> {args.out}")
     local_path = snapshot_download(
@@ -57,7 +57,7 @@ def main() -> None:
         token=args.token,  # None => usa cache login / HF_TOKEN
     )
 
-    downloaded = sorted(Path(local_path).glob("*.parquet"))
+    downloaded = sorted(Path(local_path).glob("*.pkl"))
     print(f"\nFatto. {len(downloaded)} file in {local_path}:")
     for f in downloaded:
         print(f"  {f.name:40s} {f.stat().st_size / 1e6:7.1f} MB")
