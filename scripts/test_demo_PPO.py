@@ -1,6 +1,7 @@
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
+import sumo_gym_ego as sge
 import sumo_rl_ego as sre
 from stable_baselines3 import PPO
 from human_feedback_rl.algorithms import DemoAlgorithm
@@ -32,13 +33,13 @@ def main(cfg: DictConfig) -> None:
     print(f"Loaded {len(expert_trajectories)} expert trajectories")
 
     print("Creating environment...")
-    env = sre.make_vec_env(
+    env = sge.make_vec_env(
         cfg.env.id,
         n_envs=cfg.env.n_envs,
         base_seed=seed,
         **OmegaConf.to_container(cfg.env.kwargs, resolve=True),
     )
-    rollout_env = sre.make_vec_env(
+    rollout_env = sge.make_vec_env(
         cfg.env.id,
         n_envs=cfg.env.n_envs,
         base_seed=seed + 10_000,

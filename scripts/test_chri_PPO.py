@@ -1,6 +1,7 @@
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
+import sumo_gym_ego as sge
 import sumo_rl_ego as sre
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecMonitor
@@ -36,7 +37,7 @@ def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
     print("Creating environment...")
-    env = sre.make_vec_env(
+    env = sge.make_vec_env(
         cfg.env.id,
         n_envs=cfg.env.n_envs,
         base_seed=seed,

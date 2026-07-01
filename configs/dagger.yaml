@@ -1,0 +1,50 @@
+
+run:
+  seed: 0
+  output_dir: Null
+
+wandb:
+  entity: Null
+  project: Null
+  tags: Null
+
+env:
+  id: "HighwayEgo-v0"
+  # DAgger collects episodes one at a time (indexes env 0), so a single env is standard.
+  n_envs: 1
+  kwargs:
+    # ppo-fast is a continuous-control expert, so the ego must be continuous too.
+    ego: "continuous"
+    reward: "fast"
+
+expert:
+  # Loaded via sre.load_policy(cfg.expert.id). Available ids: FastPolicy-v0, sac-fast, dqn-fast, ppo-fast.
+  id: "ppo-fast"
+
+agent:
+  # BCPolicy (ActorCriticPolicy) trained by behaviour cloning on the aggregated dataset.
+  kwargs:
+    policy_kwargs:
+      net_arch: [64, 64]
+
+algo:
+  kwargs:
+    bc_epochs: 50
+    bc_batch_size: 256
+    bc_lr: 1e-3
+    n_eval_episodes: 50
+    # Episodes of pure-expert rollouts collected once for the fixed imitation-error dataset.
+    n_expert_rollout_episodes: 50
+    beta_decay: 0.7
+
+train:
+  kwargs:
+    n_rounds: 80
+    num_episodes: 50
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
+  output_subdir: null
