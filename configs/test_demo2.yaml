@@ -1,0 +1,76 @@
+
+run:
+  seed: 0
+  output_dir: Null
+
+wandb:
+  entity: Null
+  project: Null
+  tags: Null
+
+env:
+  id: "HighwayEgo-v0"
+  # The policy update is weighted behavior cloning (no RL), so a single env is
+  # enough; more envs only speed up rollout collection.
+  n_envs: 1
+  kwargs:
+    ego: "continuous"
+    reward: "fast"
+
+algo:
+  kwargs:
+    # Section 13 requires the partition to be estimated on the q_t batch, so only
+    # the batch-mixed partition losses are valid: maxent_2 (expert+model) or
+    # maxent (model-only surrogate).
+    loss_type: maxent_2
+    lr_rew: 0.001
+    gradient_steps_rew: 100
+    batch_size_expert: 32
+    batch_size_model: 64
+    l2_rew: 0.01
+    temperature: 1.0
+    # --- weighted behavior cloning (section 13.2/13.3) ---
+    # Optimizer for the standalone policy fit against target q_t(tau)*exp(R_theta).
+    lr_policy: 0.0003
+    gradient_steps_policy: 32
+    # Temperature eta for the target weights w_j ∝ exp(R_theta(tau_j) / eta).
+    # Larger eta -> flatter weights (closer to plain BC on the mixed batch);
+    # smaller eta -> sharper weights (higher variance, watch the ESS diagnostic).
+    weight_temperature: 1.0
+    # z-score the trajectory rewards before the softmax so eta is a temperature
+    # relative to the batch spread and the weights don't collapse onto one traj.
+    standardize_weights: true
+    # Standalone tanh-squashed Gaussian policy (bounded density on the action box).
+    policy_kwargs:
+      net_arch: [64, 64]
+      activation_fn: tanh
+      log_std_init: -0.5
+    # -----------------------------------------------------
+    # Optional bootstrap: seed the reward model on an initial rollout before the
+    # first policy update. No RL warm-up happens.
+    initial_reward_timesteps: 10000
+    reward_model_kwargs:
+      n_ensembles: 3
+      net_arch: [32, 32]
+      activation_fn: tanh
+      alpha: 1
+    device: cpu
+
+train:
+  kwargs:
+    total_timesteps: 2000000
+    timesteps_per_iteration: 10000
+    log_interval: 100
+    checkpoint_interval: 10
+    # Set to 0 to disable the state-action occupancy AUC diagnostic.
+    imitation_diagnostics_interval: 10
+    # How often (in iterations) to log the debug-dataset true-vs-predicted
+    # return scatter to W&B. null -> use imitation_diagnostics_interval; 0 disables.
+    scatter_interval: null
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
+  output_subdir: null
