@@ -8,9 +8,9 @@ cd "$REPO_ROOT"
 # Runtime and logging
 PYTHON_BIN="${PYTHON_BIN:-python}"
 SEED=0
-OUTPUT_DIR="outputs/demo2_weighted_bc_debug"
+OUTPUT_DIR="outputs/demo2_weighted_bc"
 WANDB_ENTITY="andrea02polimi-politecnico-di-milano"
-WANDB_PROJECT="demo2-weighted-bc-debug"
+WANDB_PROJECT="demo2-weighted-bc"
 WANDB_TAGS=null
 
 # Environment
@@ -20,15 +20,16 @@ N_ENVS=4
 POLICY_ARCH="[64,64]"
 POLICY_ACTIVATION=tanh
 POLICY_LOG_STD_INIT=-0.5
+POLICY_LOG_STD_BOUNDS="[-0.9,2.0]"
 DEVICE=cpu
 
 # Reward learning (batch-mixed partition: maxent_2 or maxent)
 LOSS_TYPE=maxent_2
 REWARD_LR=0.0003
-REWARD_GRADIENT_STEPS=20
-EXPERT_BATCH_SIZE=64
-MODEL_BATCH_SIZE=64
-REWARD_L2=0.05
+REWARD_GRADIENT_STEPS=30
+EXPERT_BATCH_SIZE=96
+MODEL_BATCH_SIZE=32
+REWARD_L2=0.03
 TEMPERATURE=1.0
 INITIAL_REWARD_TIMESTEPS=20000
 N_ENSEMBLES=3
@@ -37,12 +38,13 @@ REWARD_ACTIVATION=tanh
 
 # Weighted behavior cloning (section 13.2/13.3)
 POLICY_LR=0.001
-POLICY_GRADIENT_STEPS=64
+POLICY_GRADIENT_STEPS=20
 WEIGHT_TEMPERATURE=1.0
-STANDARDIZE_WEIGHTS=false
+STANDARDIZE_WEIGHTS=true
+ENT_COEF=0.03
 
 # Training
-TOTAL_TIMESTEPS=2000000
+TOTAL_TIMESTEPS=4000000
 TIMESTEPS_PER_ITERATION=20000
 LOG_INTERVAL=100
 CHECKPOINT_INTERVAL=10
@@ -67,9 +69,11 @@ cmd=(
   algo.kwargs.gradient_steps_policy="$POLICY_GRADIENT_STEPS"
   algo.kwargs.weight_temperature="$WEIGHT_TEMPERATURE"
   algo.kwargs.standardize_weights="$STANDARDIZE_WEIGHTS"
+  algo.kwargs.ent_coef="$ENT_COEF"
   "algo.kwargs.policy_kwargs.net_arch=$POLICY_ARCH"
   algo.kwargs.policy_kwargs.activation_fn="$POLICY_ACTIVATION"
   algo.kwargs.policy_kwargs.log_std_init="$POLICY_LOG_STD_INIT"
+  "algo.kwargs.policy_kwargs.log_std_bounds=$POLICY_LOG_STD_BOUNDS"
   algo.kwargs.initial_reward_timesteps="$INITIAL_REWARD_TIMESTEPS"
   algo.kwargs.reward_model_kwargs.n_ensembles="$N_ENSEMBLES"
   "algo.kwargs.reward_model_kwargs.net_arch=$REWARD_ARCH"

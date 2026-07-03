@@ -40,11 +40,17 @@ algo:
     # z-score the trajectory rewards before the softmax so eta is a temperature
     # relative to the batch spread and the weights don't collapse onto one traj.
     standardize_weights: true
+    # Entropy bonus on the BC loss (per-step, weighted like the log-likelihood).
+    # ent_coef=0 -> pure max-likelihood (report §13.2). ent_coef>0 keeps the policy
+    # stochastic and stops it collapsing to a near-deterministic mode over time.
+    ent_coef: 0.0
     # Standalone tanh-squashed Gaussian policy (bounded density on the action box).
     policy_kwargs:
       net_arch: [64, 64]
       activation_fn: tanh
       log_std_init: -0.5
+      # Lower bound clamps the minimum std (entropy floor): -0.9 -> sigma_min~0.41.
+      log_std_bounds: [-2.0, 2.0]
     # -----------------------------------------------------
     # Optional bootstrap: seed the reward model on an initial rollout before the
     # first policy update. No RL warm-up happens.
