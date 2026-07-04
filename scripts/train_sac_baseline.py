@@ -8,6 +8,7 @@ from omegaconf import DictConfig, OmegaConf
 
 import numpy as np
 
+import sumo_gym_ego as sge
 import sumo_rl_ego as sre
 from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import VecMonitor
@@ -54,7 +55,7 @@ class _SB3PolicyAdapter:
 
 def evaluate(model, env_id: str, env_kwargs: dict, n_episodes: int, seed: int) -> dict:
     """Run `n_episodes` deterministic episodes on a fresh env; return mean metrics."""
-    env = sre.make_env(env_id, seed=seed, **env_kwargs)
+    env = sge.make_env(env_id, seed=seed, **env_kwargs)
     policy = _SB3PolicyAdapter(model)
     fast_returns, comfort_returns, speeds, lengths = [], [], [], []
     successes, collisions, off_roads, timeouts = [], [], [], []
@@ -100,7 +101,7 @@ def train_and_eval_one_seed(cfg, seed: int, env_kwargs: dict):
     """
     seed_everything(seed)
 
-    env = sre.make_vec_env(cfg.env.id, n_envs=cfg.env.n_envs, base_seed=seed, **env_kwargs)
+    env = sge.make_vec_env(cfg.env.id, n_envs=cfg.env.n_envs, base_seed=seed, **env_kwargs)
     agent = SAC(env=env, seed=seed, **OmegaConf.to_container(cfg.agent.kwargs, resolve=True))
 
     agent.set_env(VecMonitor(env))

@@ -1,4 +1,5 @@
 import hydra
+import sumo_gym_ego as sge
 import sumo_rl_ego as sre
 
 from omegaconf import DictConfig, OmegaConf
@@ -39,7 +40,7 @@ def main(cfg: DictConfig):
     confirm_cfg()
 
     print("Loading environment...")
-    env = sre.make_env(
+    env = sge.make_env(
         cfg.env.id, 
         seed=cfg.run.seed, 
         **cfg.env.kwargs,

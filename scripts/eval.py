@@ -1,6 +1,7 @@
 import numpy as np
 import hydra
 import wandb
+import sumo_gym_ego as sge
 import sumo_rl_ego as sre
 
 from collections import defaultdict
@@ -160,7 +161,7 @@ def main(cfg: DictConfig):
 
     try:
         print("Loading environment...")
-        env = sre.make_env(
+        env = sge.make_env(
             cfg.env.id, 
             seed=cfg.run.seed, 
             **cfg.env.kwargs

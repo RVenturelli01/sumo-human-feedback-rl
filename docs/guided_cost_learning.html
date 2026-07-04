@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guided Cost Learning per SUMO</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #52616b;
+      --line: #d9e2ec;
+      --panel: #f5f7fa;
+      --accent: #0f6b6e;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+      color: var(--ink);
+      background: #ffffff;
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 24px 64px;
+    }
+    h1, h2, h3 {
+      line-height: 1.2;
+      margin: 0 0 12px;
+    }
+    h1 {
+      font-size: 34px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    h2 {
+      font-size: 24px;
+      padding-top: 28px;
+      border-top: 1px solid var(--line);
+      margin-top: 32px;
+    }
+    h3 {
+      font-size: 18px;
+      margin-top: 22px;
+    }
+    p {
+      margin: 0 0 14px;
+    }
+    code, pre {
+      font-family: "SFMono-Regular", Consolas, monospace;
+    }
+    code {
+      background: var(--panel);
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+    pre {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 14px;
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: var(--panel);
+    }
+    ul {
+      margin-top: 6px;
+      padding-left: 22px;
+    }
+    .lead {
+      color: var(--muted);
+      font-size: 17px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Guided Cost Learning per SUMO</h1>
+  <p class="lead">
+    Implementazione di Guided Cost Learning: Deep Inverse Optimal Control via
+    Policy Optimization per l'ambiente <code>HighwayEgo-v0</code>.
+  </p>
+
+  <h2>Panoramica</h2>
+  <p>
+    L'algoritmo apprende un modello di costo da dimostrazioni esperte e usa una
+    policy RL per generare campioni on-policy sempre piu informativi. La loss e
+    la negative log-likelihood MaxEnt IOC:
+  </p>
+  <pre>L(theta) = mean_tau_E[c_theta(tau)] + log mean_tau_q[z(tau) exp(-c_theta(tau))]</pre>
+  <p>
+    La policy viene poi addestrata sul reward <code>-c_theta</code>. In questo modo
+    la policy aggiornata agisce come distribuzione di campionamento guidata, come
+    in Algorithm 1 del paper.
+  </p>
+
+  <h2>Architettura del codice</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>File</th>
+        <th>Ruolo</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>human-feedback-rl/human_feedback_rl/common/gcl.py</code></td>
+        <td>Cost model neurale, guardrail terminale, flattening delle traiettorie, stima gaussiana delle distribuzioni, regularizer.</td>
+      </tr>
+      <tr>
+        <td><code>human-feedback-rl/human_feedback_rl/algorithms/guided_cost_learning.py</code></td>
+        <td>Ciclo completo sample -> cost update -> policy update -> eval -> checkpoint.</td>
+      </tr>
+      <tr>
+        <td><code>scripts/train_guided_cost_learning.py</code></td>
+        <td>Entry point Hydra per training GCL.</td>
+      </tr>
+      <tr>
+        <td><code>configs/guided_cost_learning.yaml</code></td>
+        <td>Iperparametri di ambiente, SAC, cost model, IOC e W&amp;B.</td>
+      </tr>
+      <tr>
+        <td><code>launchers/run_gcl.sh</code></td>
+        <td>Launcher con attivazione Conda e forwarding degli override Hydra.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Corrispondenza con il paper</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Paper</th>
+        <th>Implementazione</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Eq. 1, modello MaxEnt <code>p(tau) proportional exp(-c(tau))</code></td>
+        <td><code>GuidedCostLearning._cost_loss</code> ottimizza la likelihood MaxEnt sample-based.</td>
+      </tr>
+      <tr>
+        <td>Algorithm 1, campioni adattivi da <code>q_k</code></td>
+        <td><code>collect_policy_samples</code> raccoglie rollout dalla policy corrente; <code>train_policy</code> aggiorna la policy sul costo appreso.</td>
+      </tr>
+      <tr>
+        <td>Algorithm 2, demo batch aggiunto al background batch</td>
+        <td><code>background_batch = sample_batch + demo_batch</code> nella loss del cost model.</td>
+      </tr>
+      <tr>
+        <td>Pesi d'importanza con distribuzione di fusione</td>
+        <td><code>fusion_log_prob</code> usa demo distribution piu distribuzioni gaussiane dei rollout recenti.</td>
+      </tr>
+      <tr>
+        <td>Cost model neurale <code>||A f_theta(x) + b||^2 + w_u ||u||^2</code></td>
+        <td><code>GuidedCostNet.cost</code>, esposto come reward <code>-cost</code> per SB3.</td>
+      </tr>
+      <tr>
+        <td>Regularizer local constant rate e monotonicita</td>
+        <td><code>local_constant_rate_regularizer</code> e <code>monotonic_regularizer</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Adattamenti per SUMO</h2>
+  <ul>
+    <li>La policy optimization lineare-gaussiana/LQR del paper e sostituita da SB3. Il default e SAC, che include una componente entropica coerente con il principio MaxEnt.</li>
+    <li>Gli episodi SUMO hanno lunghezza variabile; la distribuzione dimostrativa e modellata come gaussiana diagonale sui passi <code>(obs, action, status, done)</code> piu una gaussiana sulla lunghezza.</li>
+    <li>Gli status terminali SUMO sono inclusi nel cost model per permettere al costo di distinguere arrivo, collisione, offroad e timeout.</li>
+    <li>Per evitare reward hacking su episodi brevissimi, il cost model include una guardrail terminale non apprendibile: collisione, offroad, teleported e removed_unknown ricevono un costo fisso alto quando <code>done=True</code>.</li>
+    <li>La stima della partizione GCL puo usare temperatura e clipping dello span dei log-termini per ridurre il collasso dei pesi d'importanza quando un singolo rollout domina il batch.</li>
+    <li>Il reward usato dalla policy e <code>-cost</code>; il true return <code>fast</code> rimane disponibile tramite le metriche dell'ambiente.</li>
+  </ul>
+
+  <h2>Differenze motivate</h2>
+  <p>
+    Il paper usa controller locali lineari-gaussiani e dinamiche locali stimate
+    per robot torque-control. In questa repository le policy e i wrapper sono
+    basati su Stable-Baselines3; usare SAC/PPO preserva il ciclo guidato e rende
+    l'algoritmo integrabile con il codice RLHF esistente. I pesi d'importanza non
+    usano le vere densita di dinamica, non disponibili in SUMO; usano invece una
+    distribuzione empirica di fusione sui passi delle traiettorie.
+    La guardrail terminale e una protezione pratica introdotta per SUMO: non fa
+    parte della formulazione originale, ma impedisce alla policy di sfruttare il
+    modello di costo scegliendo fallimenti terminali immediati. La temperatura
+    della partizione e il clipping dei log-termini sono disattivabili; con i
+    valori di default della configurazione corrente servono a rendere piu
+    stabile l'update del cost model quando le diagnostiche mostrano
+    <code>top1_importance_weight</code> vicino a 1.
+  </p>
+
+  <h2>Esecuzione</h2>
+  <p>Training default:</p>
+  <pre>bash launchers/run_gcl.sh</pre>
+  <p>Modalita W&amp;B offline o disabilitata:</p>
+  <pre>bash launchers/run_gcl.sh wandb.mode=offline
+bash launchers/run_gcl.sh wandb.mode=disabled</pre>
+  <p>Smoke test breve:</p>
+  <pre>bash launchers/run_gcl.sh \
+  train.kwargs.n_iterations=1 \
+  train.kwargs.rollout_steps_per_iteration=128 \
+  train.kwargs.policy_steps_per_iteration=128 \
+  train.kwargs.eval_episodes=1 \
+  algo.kwargs.cost_gradient_steps=2 \
+  agent.kwargs.learning_starts=1 \
+  wandb.mode=disabled</pre>
+
+  <h2>Logging</h2>
+  <p>Metriche principali registrate in W&amp;B:</p>
+  <ul>
+    <li><code>eval/fast_return</code>: true return fast dell'ambiente.</li>
+    <li><code>eval/success_rate</code>: frazione di episodi terminati con <code>arrived</code>.</li>
+    <li><code>imitation/expert_action_rmse</code>: RMSE tra azioni deterministiche della policy e azioni demo.</li>
+    <li><code>cost_model/loss</code>, <code>cost_model/ioc_loss</code>: loss del modello di costo.</li>
+    <li><code>policy/loss</code>: ultima actor/policy loss esposta da SB3 quando disponibile.</li>
+    <li><code>cost_model/effective_sample_fraction</code>, <code>cost_model/top1_importance_weight</code>: diagnostiche sui pesi d'importanza.</li>
+    <li><code>cost_model/raw_log_term_span</code>, <code>cost_model/partition_log_term_span</code>, <code>cost_model/partition_clipped_fraction</code>: diagnostiche sulla stabilizzazione della partizione.</li>
+  </ul>
+
+  <h2>Checkpoint</h2>
+  <p>
+    Ogni checkpoint contiene <code>cost_model.pt</code>, <code>cost_optimizer.pt</code>,
+    <code>agent.zip</code> e <code>metadata.pkl</code>. Al termine lo script salva anche
+    <code>agent_final.zip</code> e <code>cost_model_final.pt</code> nella directory run.
+  </p>
+</main>
+</body>
+</html>

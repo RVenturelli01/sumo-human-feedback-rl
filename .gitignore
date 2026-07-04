@@ -232,3 +232,5 @@ tensorboard.DS_Store
 *.tex
 *.yml
 *.pkl
+
+reports/

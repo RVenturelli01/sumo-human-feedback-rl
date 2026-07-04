@@ -1,0 +1,107 @@
+run:
+  seed: 0
+  output_dir: "outputs/guided_cost_learning"
+
+wandb:
+  entity: null
+  project: "sumo-guided-cost-learning"
+  tags: ["gcl", "sumo", "expert-demonstrations"]
+  mode: "online"
+  notes: "Guided Cost Learning with SUMO demonstrations"
+
+env:
+  id: "HighwayEgo-v0"
+  n_envs: 1
+  kwargs:
+    ego: "continuous"
+    reward: "fast"
+
+demonstrations:
+  dataset: "expert_trajectories_no_collision.pkl"
+  # 0 means use every trajectory in the pickle.
+  max_trajectories: 0
+  expert_policy_id: "ppo-fast"
+
+agent:
+  algo: "SAC"
+  kwargs:
+    policy: "MlpPolicy"
+    buffer_size: 100000
+    learning_starts: 1000
+    batch_size: 256
+    learning_rate: 0.0003
+    gamma: 0.995
+    tau: 0.005
+    ent_coef: "auto"
+    train_freq: 1
+    gradient_steps: 1
+    policy_kwargs:
+      net_arch: [64, 64]
+    device: "cpu"
+
+algo:
+  kwargs:
+    lr_cost: 0.0001
+    weight_decay_cost: 0.0001
+    cost_gradient_steps: 25
+    demo_batch_size: 64
+    sample_batch_size: 64
+    trajectory_cost_reduction: "sum"
+    lcr_reg_weight: 0.001
+    monotonic_reg_weight: 0.0001
+    monotonic_margin: 1.0
+    importance_mode: "fusion_gaussian"
+    gaussian_regularization: 0.001
+    max_gaussian_transitions: 50000
+    max_fusion_distributions: 12
+    max_sample_trajectories: 2000
+    max_log_weight: 20.0
+    # Mildly temper and clip the empirical partition estimate. This keeps the
+    # GCL cost update from being dominated by a single trajectory when the
+    # Gaussian fusion sampler assigns very uneven densities.
+    partition_temperature: 2.0
+    max_partition_log_term_span: 8.0
+    exploration_frac: 0.0
+    exploration_eps: 0.2
+    expert_rmse_transitions: 4096
+    grad_clip_norm: 10.0
+    cost_model_kwargs:
+      feature_hidden_sizes: [64, 64]
+      feature_dim: 64
+      quadratic_dim: 32
+      activation_fn: "relu"
+      action_weight: 0.001
+      include_action_in_features: true
+      include_status: true
+      include_done: true
+      reward_scale: 0.05
+      # Hard, non-learned terminal guardrail. Values are in cost units and are
+      # multiplied by reward_scale in the agent reward, so 1000 -> -50 when
+      # reward_scale=0.05.
+      terminal_costs:
+        arrived: 0.0
+        collided: 1500.0
+        offroad: 1000.0
+        timeout: 200.0
+        running: 0.0
+        teleported: 1000.0
+        removed_unknown: 1000.0
+      terminal_cost_on_done_only: true
+      identity_init: true
+      device: "cpu"
+
+train:
+  kwargs:
+    n_iterations: 50
+    rollout_steps_per_iteration: 2048
+    policy_steps_per_iteration: 4096
+    log_interval: 4
+    eval_episodes: 100
+    checkpoint_interval: 5
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
+  output_subdir: null

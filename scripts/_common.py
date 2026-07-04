@@ -15,7 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from human_feedback_rl.common.loggers import configure_wandb_metrics
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data_for_training"
+DATA_DIR = Path(__file__).resolve().parent.parent / "datasets"
 
 
 def make_run_dir(output_dir: Path, name: str) -> Path:
@@ -43,7 +43,7 @@ def load_pickle(path: Path):
         return pickle.load(f)
 
 
-def load_expert_trajectories(name: str = "expert_trajectories.pkl") -> list:
+def load_expert_trajectories(name: str = "expert_trajectories_no_collision.pkl") -> list:
     """Load the expert trajectories pickle from data_for_training/."""
     return load_pickle(DATA_DIR / name)
 
@@ -58,12 +58,18 @@ def init_wandb_run(cfg: DictConfig, group_name: str, run_name: str, run_dir: Pat
     """Initialise a W&B run, recording the resolved Hydra config."""
     config = OmegaConf.to_container(cfg, resolve=True)
     config["group_name"] = group_name
+    wandb_kwargs = {
+        "project": cfg.wandb.project,
+        "config": config,
+        "group": group_name,
+        "name": run_name,
+        "dir": str(run_dir),
+    }
+    for optional_key in ("entity", "tags", "mode", "notes"):
+        value = OmegaConf.select(cfg, f"wandb.{optional_key}", default=None)
+        if value is not None:
+            wandb_kwargs[optional_key] = value
     run = wandb.init(
-        entity=cfg.wandb.entity,
-        project=cfg.wandb.project,
-        config=config,
-        group=group_name,
-        name=run_name,
-        dir=str(run_dir),
+        **wandb_kwargs,
     )
     configure_wandb_metrics(run)
