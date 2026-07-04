@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MaxEnt IRL + DAC absorbing-state — Report (run 7h0zrcbz)</title>
+<style>
+  :root{
+    --bg:#0f1117; --panel:#171a23; --panel2:#1d2130; --ink:#e7e9ee; --muted:#9aa3b2;
+    --line:#2a2f3e; --accent:#6ea8fe; --green:#3ddc97; --red:#ff6b6b; --amber:#ffb454;
+    --violet:#b18cff; --teal:#37d6d6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 24px 80px}
+  h1{font-size:30px;margin:0 0 6px;letter-spacing:-.4px}
+  h2{font-size:22px;margin:48px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
+  h3{font-size:17px;margin:26px 0 8px;color:var(--accent)}
+  p{color:#cdd2dc}
+  .sub{color:var(--muted);margin:0 0 22px;font-size:14px}
+  code,pre{font-family:"SF Mono",Menlo,Consolas,monospace}
+  code{background:var(--panel2);padding:1px 6px;border-radius:5px;font-size:13px;color:#e9d8ff}
+  pre{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+    overflow:auto;font-size:12.5px;line-height:1.55;color:#d6dbe6}
+  pre .c{color:#6f7890}
+  pre .k{color:#ff9d6b} pre .s{color:#9ce0a0} pre .f{color:#74b6ff}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:18px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.4px}
+  td.num{font-family:"SF Mono",monospace;text-align:right}
+  .ok{color:var(--green)} .bad{color:var(--red)} .warn{color:var(--amber)}
+  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}
+  .pill.g{background:rgba(61,220,151,.15);color:var(--green)}
+  .pill.r{background:rgba(255,107,107,.15);color:var(--red)}
+  .pill.a{background:rgba(255,180,84,.15);color:var(--amber)}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:6px 0 2px;font-size:12.5px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:11px;height:3px;border-radius:2px;display:inline-block}
+  .chart-title{font-size:13.5px;color:var(--muted);margin:2px 0 4px}
+  .note{font-size:13px;color:var(--muted);border-left:3px solid var(--accent);padding:6px 0 6px 14px;margin:12px 0}
+  .formula{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 14px;
+    margin:10px 0;font-family:"SF Mono",monospace;font-size:13px;color:#cfe3ff;overflow:auto}
+  .tag{font-size:11px;color:var(--muted)}
+  .filechip{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+    padding:1px 8px;font-family:"SF Mono",monospace;font-size:12px;color:#9ce0a0;margin:0 2px}
+  ul{padding-left:20px} li{margin:4px 0;color:#cdd2dc}
+  .kbd{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Reward learning da dimostrazioni — MaxEnt IRL + correzione DAC</h1>
+  <p class="sub">
+    <code>DemoAlgorithm</code> · <code>loss_type = maxent_corrected</code> ·
+    run W&B <b>7h0zrcbz</b> (demo-sac-debug) · 2026-06-28 ·
+    <span class="pill g">imitazione convergente ≈ 90% arrivi</span>
+  </p>
+
+  <div class="card">
+    <b>TL;DR.</b> La pipeline impara un <b>reward dalle dimostrazioni</b> (MaxEnt IRL) e allena
+    un agente <b>SAC</b> su quel reward. Le prime versioni fallivano per due bias opposti
+    (l'agente si suicidava subito, oppure gironzolava senza arrivare). La causa comune è il
+    <b>reward bias dell'absorbing state</b> identificato da <i>Kostrikov et al. 2019 (DAC)</i>.
+    Aggiungendo la coda assorbente analitica <code>γ/(1−γ)·r(s<sub>a</sub>)</code> + giusta
+    regolarizzazione, l'agente <b>converge alla distribuzione di esiti dell'esperto</b>:
+    ~90% arrivi, lunghezza media ~160 (esperto ~164), velocità ~20.
+  </div>
+
+  <!-- ===================== TEORIA ===================== -->
+  <h2>1 · Inquadramento teorico</h2>
+
+  <h3>1.1 — Cosa fa l'algoritmo (IRL, non imitation diretta)</h3>
+  <p>
+    Non è behavioral cloning. È <b>Inverse RL a massima entropia</b>: si assume che l'esperto
+    campioni traiettorie con probabilità proporzionale al reward,
+  </p>
+  <div class="formula">p(τ) = exp(r(τ)) / Z ,   Z = ∫ exp(r(τ)) dτ   (partition function)</div>
+  <p>
+    La loss è la negative log-likelihood <code>−r(esperto) + log Z</code>: alza il reward sulle
+    traiettorie esperte, lo abbassa su tutte le altre. Tutto il problema è stimare <code>Z</code>.
+    L'agente finale (SAC) ottimizza il reward appreso → <b>recupera la policy a massima entropia
+    consistente con le dimostrazioni</b>, cioè imita la <i>distribuzione di traiettorie</i>
+    dell'esperto, non azione-per-azione.
+  </p>
+
+  <h3>1.2 — Stima di Z: importance sampling + fusion (GCL)</h3>
+  <p>
+    Le traiettorie non sono campionate uniformemente ma dalla policy dell'agente <code>q</code>.
+    Serve la correzione di importance sampling (Finn et al. 2016, <i>Guided Cost Learning</i>):
+  </p>
+  <div class="formula">log Z ≈ logsumexp<sub>i</sub>( r(τ<sub>i</sub>)/τ − log q(τ<sub>i</sub>) ) − log N</div>
+  <p>
+    Rispetto alle varianti storiche (<code>maxent</code>, <code>maxent_2</code>) che omettono
+    <code>−log q</code> (assumendo proposal uniforme → stima distorta), qui è stata implementata
+    la versione consistente di GCL:
+  </p>
+  <ul>
+    <li><b>partizione su demos ∪ rollout accumulati</b> (Alg. 2 di GCL — gli esperti nel denominatore mantengono la loss limitata);</li>
+    <li><b>fusion distribution</b> <code>q(τ)=(1/K)Σ<sub>κ</sub> q<sub>κ</sub>(τ)</code> su tutti gli snapshot di policy passati;</li>
+    <li><b>q<sub>demo</sub></b> degli esperti stimata con una gaussiana per-step sulle azioni.</li>
+  </ul>
+
+  <h3>1.3 — Il bug: survival / loitering bias (absorbing state)</h3>
+  <p>
+    Con return = <b>somma</b> di reward per-step, la scala dipende dalla lunghezza
+    (traiettorie 1–401 step) → la partizione è dominata dalle traiettorie lunghe e
+    l'<b>effective sample size collassa</b>. Peggio: a seconda del segno del reward per-step,
+    l'agente sfrutta lo stato terminale a cui è implicitamente assegnato reward zero:
+  </p>
+  <ul>
+    <li>reward per-step <b>negativo</b> → conviene <b>terminare subito</b> (suicidio: off-road allo step 1);</li>
+    <li>reward per-step <b>positivo</b> → conviene <b>non terminare mai</b> (loitering: gira in tondo, timeout).</li>
+  </ul>
+  <p>
+    Sono <b>la stessa malattia</b>, segni opposti. <i>Kostrikov et al. 2019 (DAC)</i> la chiamano
+    <b>reward bias</b>: la gestione implicita (reward 0) dell'absorbing state. La radice teorica è
+    in <i>Ng, Harada &amp; Russell 1999</i> (solo lo shaping potential-based lascia invariata la policy ottima).
+  </p>
+
+  <h3>1.4 — La correzione: absorbing-state reward (DAC §4.2)</h3>
+  <p>
+    Si assegna un reward <b>appreso</b> all'absorbing state. Variante analitica usata qui:
+  </p>
+  <div class="formula">R<sub>T</sub> = Σ<sub>t</sub> γ<sup>t</sup> r(s<sub>t</sub>,a<sub>t</sub>) + [ γ<sup>T</sup> / (1−γ) ] · r(s<sub>a</sub>)</div>
+  <p>
+    La coda <code>γ/(1−γ)·r(s<sub>a</sub>)</code> dà valore al <i>raggiungere</i> il terminale
+    giusto (arrivo) invece di rimandarlo. Applicata <b>solo ai terminali genuini</b>
+    (<code>done AND not timeout</code>: i timeout fanno bootstrap, non sono assorbenti).
+    Lo sconto <code>γ&lt;1</code> bonus: limita il return → controlla anche ESS/length bias.
+  </p>
+  <div class="note">
+    Caveat onesto (dal paper stesso): la variante analitica è <i>"much less stable"</i> della
+    self-loop esplicita, perché <code>1/(1−γ)</code> amplifica un reward appreso. Con
+    <code>γ=0.995</code> il fattore è ×200 → richiede regolarizzazione robusta (vedi §3).
+  </div>
+
+  <!-- ===================== MODIFICHE CODICE ===================== -->
+  <h2>2 · Modifiche al codice</h2>
+  <p>Tutto è confinato a <code>loss_type = maxent_corrected</code>; le altre loss restano invariate.</p>
+
+  <table>
+    <tr><th>File</th><th>Modifica</th></tr>
+    <tr><td><span class="filechip">algorithms/demo/losses.py</span></td>
+        <td>Fusion GCL (<code>_fusion_log_density</code>, <code>_PolicyLogProbAdapter</code>, <code>q_demo</code> gaussiana); return scontato + coda assorbente (<code>_traj_return</code>, <code>_absorbing_reward</code>); flag <code>per_step_return</code></td></tr>
+    <tr><td><span class="filechip">algorithms/demo_algorithm.py</span></td>
+        <td>Param <code>gamma</code>, accumulo background + snapshot policy, validazione <code>gamma == agent.gamma</code>, scoping coda a maxent_corrected</td></tr>
+    <tr><td><span class="filechip">common/replay_buffers.py</span></td>
+        <td>Coda assorbente in <code>_predict_rewards</code> (reward autoritativo del critic con relabel)</td></tr>
+    <tr><td><span class="filechip">common/env_wrappers.py</span></td>
+        <td>Coda assorbente in <code>EnvRewardWrapper.step_wait</code> (relabel=false + diagnostica)</td></tr>
+    <tr><td><span class="filechip">common/trajectory_generators.py</span></td>
+        <td>Propaga <code>gamma</code> al wrapper</td></tr>
+    <tr><td><span class="filechip">algorithms/demo/reward_diagnostics.py</span></td>
+        <td>Diagnostica length bias: <code>length_pred_corr</code>, <code>length_true_corr</code></td></tr>
+  </table>
+
+  <h3>2.1 — Cuore della loss (return con coda assorbente)</h3>
+  <pre><span class="k">def</span> <span class="f">_traj_return</span>(self, member, traj):
+    <span class="c"># return scontato + coda analitica DAC (γ^T/(1-γ)·r(s_a))</span>
+    per_step = self._traj_step_rewards(member, traj)          <span class="c"># (T,)</span>
+    T = per_step.shape[<span class="s">0</span>]
+    <span class="k">if</span> self.gamma &lt; <span class="s">1.0</span>:
+        discounts = self.gamma ** th.arange(T, dtype=th.float32)
+        disc_sum  = (discounts * per_step).sum()
+        tail = (self.gamma ** T) / (<span class="s">1.0</span> - self.gamma) * self._absorbing_reward(member, traj)
+        <span class="k">return</span> disc_sum + tail
+    <span class="k">return</span> per_step.sum()                                     <span class="c"># γ=1: nessuna coda (legacy)</span>
+
+<span class="k">def</span> <span class="f">_absorbing_reward</span>(self, member, traj):
+    last = traj[-<span class="s">1</span>]
+    <span class="c"># solo terminali genuini: done AND not timeout (i timeout fanno bootstrap)</span>
+    status = np.asarray(last.next_status)
+    <span class="k">if</span> <span class="k">not</span> last.done <span class="k">or</span> bool(status[self.STATUS_TIMEOUT]):
+        <span class="k">return</span> th.zeros((), dtype=th.float32)
+    obs    = th.zeros((<span class="s">1</span>, *np.asarray(last.observation).shape), dtype=th.float32)
+    act    = th.zeros((<span class="s">1</span>, *np.asarray(last.action).shape),      dtype=th.float32)
+    status = th.tensor(status[<span class="k">None</span>], dtype=th.float32)
+    <span class="k">return</span> member(obs, act, status, th.ones((<span class="s">1</span>,))).reshape(())</pre>
+
+  <h3>2.2 — Coda nel reward consegnato a SAC (replay buffer, autoritativo)</h3>
+  <pre>rewards = self.reward_model.predict(observations, actions, statuses, dones)
+<span class="k">if</span> self.gamma &lt; <span class="s">1.0</span>:
+    timeouts = self.timeouts[batch_inds, env_indices]
+    true_terminal = dones * (<span class="s">1.0</span> - timeouts)              <span class="c"># solo absorbing genuini</span>
+    <span class="k">if</span> true_terminal.any():
+        abs_rew = self.reward_model.predict(np.zeros_like(observations),
+                    np.zeros_like(actions), statuses, np.ones_like(dones))
+        rewards = rewards + true_terminal * (self.gamma/(<span class="s">1.0</span>-self.gamma)) * abs_rew</pre>
+
+  <h3>2.3 — Config che funziona</h3>
+  <pre><span class="c"># configs/test_demo_SAC.yaml</span>
+algo.kwargs:
+  loss_type: maxent_corrected
+  gamma: <span class="s">0.995</span>            <span class="c"># DEVE == agent.kwargs.gamma (validato a init)</span>
+  per_step_return: <span class="s">false</span>   <span class="c"># con γ&lt;1 lo sconto già limita il return</span>
+  l2_rew: <span class="s">0.05</span>            <span class="c"># DECISIVO: con 0.01 il reward delle collisioni esplode</span>
+  temperature: <span class="s">1.0</span>
+agent.kwargs:
+  gamma: <span class="s">0.995</span></pre>
+
+  <!-- ===================== RISULTATI ===================== -->
+  <h2>3 · Risultati — run 7h0zrcbz</h2>
+
+  <h3>3.1 — L'agente imita l'esperto</h3>
+  <table>
+    <tr><th>Metrica</th><th>Inizio</th><th>Convergenza (agente)</th><th>Esperto</th></tr>
+    <tr><td>successi (arrivi)</td><td class="num">0.00</td><td class="num ok">≈ 0.90</td><td class="num">≈ 0.89</td></tr>
+    <tr><td>lunghezza media episodio</td><td class="num">18</td><td class="num ok">≈ 160</td><td class="num">≈ 164</td></tr>
+    <tr><td>velocità media</td><td class="num">16</td><td class="num ok">≈ 20</td><td class="tag">guida normale</td></tr>
+    <tr><td>off-road</td><td class="num">0.51</td><td class="num ok">≈ 0.01</td><td class="num">—</td></tr>
+    <tr><td>collisioni</td><td class="num">0.49</td><td class="num ok">≈ 0.08</td><td class="num">≈ 0.11</td></tr>
+    <tr><td>timeout</td><td class="num">0.00→0.82</td><td class="num ok">0.00</td><td class="num">0</td></tr>
+  </table>
+
+  <div class="card">
+    <div class="chart-title">Esiti degli episodi nel tempo — il passaggio da loitering (timeout↑) a imitazione (successi↑)</div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--green)"></i>successi</span>
+      <span><i class="dot" style="background:var(--red)"></i>off-road</span>
+      <span><i class="dot" style="background:var(--amber)"></i>collisioni</span>
+      <span><i class="dot" style="background:var(--violet)"></i>timeout</span>
+    </div>
+    <svg id="c_outcomes" viewBox="0 0 900 300" width="100%"></svg>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="chart-title">Lunghezza media episodio → converge a ~160 (esperto ~164)</div>
+      <svg id="c_eplen" viewBox="0 0 440 240" width="100%"></svg>
+    </div>
+    <div class="card">
+      <div class="chart-title">Velocità media → da 3 (loiter) a ~20 (guida)</div>
+      <svg id="c_speed" viewBox="0 0 440 240" width="100%"></svg>
+    </div>
+  </div>
+
+  <h3>3.2 — Il reward impara il ranking corretto degli esiti</h3>
+  <p>
+    La coda assorbente rende <b>arrivo &gt; running &gt; timeout</b>; il reward delle collisioni,
+    gonfiato all'inizio dai 327 esperti-collisi presenti nei demo, viene poi <b>riportato sotto
+    l'arrivo</b> grazie a <code>l2_rew=0.05</code> e alla penalizzazione contrastiva dei rollout.
+  </p>
+  <div class="card">
+    <div class="chart-title">Reward per-step appreso, per tipo di esito terminale</div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--green)"></i>arrived</span>
+      <span><i class="dot" style="background:var(--accent)"></i>running</span>
+      <span><i class="dot" style="background:var(--violet)"></i>timeout</span>
+      <span><i class="dot" style="background:var(--red)"></i>collided</span>
+    </div>
+    <svg id="c_rewards" viewBox="0 0 900 300" width="100%"></svg>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="chart-title">gap arrived − running → +1.9 (loitering risolto)</div>
+      <svg id="c_gaprun" viewBox="0 0 440 240" width="100%"></svg>
+    </div>
+    <div class="card">
+      <div class="chart-title">gap arrived − collided → si ribalta a positivo</div>
+      <svg id="c_gapcoll" viewBox="0 0 440 240" width="100%"></svg>
+    </div>
+  </div>
+
+  <h3>3.3 — Imitazione: esiti vs stile (AUC)</h3>
+  <p>
+    Il discriminatore stato-azione <code>state_action_auc</code> scende da 0.99 a <b>~0.62–0.75</b>
+    (0.5 = indistinguibile). L'agente imita gli <b>esiti/distribuzione</b> ma resta distinguibile
+    a livello di <b>stile di controllo</b> fine — è il limite atteso del MaxEnt IRL (recupera il
+    comportamento aggregato, non azione-per-azione).
+  </p>
+  <div class="card">
+    <div class="chart-title">state-action AUC (↓ = più simile all'esperto; 0.5 = indistinguibile)</div>
+    <svg id="c_auc" viewBox="0 0 900 260" width="100%"></svg>
+  </div>
+
+  <h3>3.4 — Spigoli aperti (non bloccanti)</h3>
+  <ul>
+    <li><span class="pill a">attenzione</span> <b>ESS collassato</b> (<code>ess_fraction ≈ 0.008</code>, stabile): il training del reward è numericamente turbolento per il length scaling (<code>per_step_return=false</code>). Gli esiti restano ottimi perché il segnale terminale assorbente è forte e consistente.</li>
+    <li><span class="pill a">attenzione</span> <b>length_pred_corr ≈ −0.6</b>: il reward conserva un bias di lunghezza, ma non impedisce il successo.</li>
+    <li><span class="pill g">ok</span> La <b>self-loop esplicita DAC</b> (invasiva, <code>obs_dim+1</code>) <b>non è stata necessaria</b>: la variante analitica + L2 robusta basta.</li>
+  </ul>
+
+  <h2>Riferimenti</h2>
+  <ul>
+    <li>Kostrikov, Agrawal, Dwibedi, Levine, Tompson — <i>Discriminator-Actor-Critic</i>, ICLR 2019 (reward bias / absorbing states, §4.1–4.2).</li>
+    <li>Finn, Levine, Abbeel — <i>Guided Cost Learning</i>, ICML 2016 (sample-based MaxEnt IOC, fusion importance sampling §4.3).</li>
+    <li>Ng, Harada, Russell — <i>Policy invariance under reward transformations</i>, ICML 1999 (potential-based shaping).</li>
+    <li>Ziebart et al. — <i>Maximum Entropy IRL</i>, AAAI 2008.</li>
+  </ul>
+
+  <p class="sub" style="margin-top:40px">
+    Generato automaticamente · dati da W&B <code>andrea02polimi-politecnico-di-milano/demo-sac-debug/7h0zrcbz</code>
+    (47 iterazioni reward · 52 punti agente)
+  </p>
+</div>
+
+<script>
+const D = {
+ successes:[0,0,0,0.03,0.06,0.03,0.06,0.76,0.69,0.81,0.81,0.77,0.77,0.76,0.89,0.9,0.92,0.9,0.91,0.89,0.96,0.91,0.93,0.91,0.94,0.94,0.97,0.89,0.93,0.87,0.92,0.93,0.96,0.88,0.97,0.92,0.96,0.87,0.86,0.94,0.91,0.93,0.9,0.88,0.9,0.89,0.84,0.81,0.87,0.91,0.9,0.92],
+ off_road:[0.51,0.7525,0.9192,0.54,0,0,0.01,0.03,0.01,0,0,0.01,0,0.04,0.04,0.01,0,0.01,0.01,0.01,0,0,0,0,0,0,0,0,0,0.01,0.01,0,0,0.01,0,0.02,0,0.01,0.04,0.01,0.03,0.01,0.02,0.03,0,0.01,0.02,0,0.01,0.02,0.02,0.01],
+ collisions:[0.49,0.2475,0.0808,0.32,0.19,0.15,0.16,0.07,0.11,0.07,0.14,0.1,0.12,0.1,0.06,0.06,0.08,0.09,0.08,0.1,0.04,0.09,0.07,0.09,0.06,0.06,0.03,0.11,0.07,0.12,0.07,0.07,0.04,0.11,0.03,0.06,0.04,0.12,0.1,0.05,0.06,0.06,0.08,0.09,0.1,0.1,0.14,0.19,0.12,0.07,0.08,0.07],
+ timeouts:[0,0,0,0.11,0.75,0.82,0.77,0.14,0.19,0.12,0.05,0.12,0.11,0.1,0.01,0.03,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+ ep_len:[17.66,9.68,4.73,86.24,481.49,508.13,482.5,316.33,271.72,232.49,198.31,220.82,211.49,196.63,160.81,175.88,161.49,170.76,201.05,175.86,181.15,171.36,166.68,159.6,170.5,169.34,170.35,154.69,163.84,180.42,176.72,183.86,191.34,169.37,184.91,176.18,184.96,161.45,171.17,170.97,157.79,169.79,164.83,156.45,161.56,155.89,153.53,139.7,146.75,147.74,155.16,150.64],
+ speed:[15.89,18.31,14.6,15.06,3.39,2.64,3.91,12.49,15.51,17.45,18.22,18.96,19.1,20.32,22.21,21.25,21.19,19.76,17.93,19.5,20.58,20.23,19.97,21.51,21.28,20.62,21.44,21.38,20.89,19.36,19.31,19.62,19.89,20.29,19.89,20.49,19.79,20.32,19.73,21.37,21.61,20.81,21.14,20.48,20.97,21.49,20.72,21.68,22.5,23.33,22.51,23.52],
+ auc:[0.9906,0.9765,0.686,0.6895,0.7094,0.6748,0.6197,0.6758,0.7174,0.7531],
+ gap_arr_run:[0.0061,0.0159,0.0648,0.205,0.4373,0.7018,0.9566,1.1675,1.3194,1.4759,1.5351,1.5495,1.5977,1.6237,1.6146,1.6405,1.6555,1.6765,1.6397,1.6731,1.6904,1.7122,1.6786,1.6586,1.6296,1.6376,1.6895,1.7077,1.7151,1.7366,1.8058,1.8484,1.8844,1.9005,1.9135,1.9176,1.903,1.8835,1.9034,1.8837,1.8767,1.8782,1.8381,1.7629,1.6986,1.6836,1.6704],
+ gap_arr_coll:[-0.2385,-0.3899,-0.5534,-0.7134,-0.7712,-0.7853,-0.7634,-0.681,-0.5852,-0.5263,-0.464,-0.4533,-0.4604,-0.4705,-0.4676,-0.4776,-0.4848,-0.4956,-0.4433,-0.4847,-0.519,-0.5399,-0.5408,-0.582,-0.5308,-0.449,-0.3242,-0.2121,-0.0554,0.0603,0.1458,0.2069,0.2652,0.3205,0.4014,0.4751,0.5323,0.5723,0.6412,0.6692,0.739,0.7796,0.7561,0.7542,0.7796,0.8639,0.9432],
+ r_arrived:[-0.0182,-0.0481,-0.0549,0.0196,0.198,0.4289,0.6591,0.8698,1.029,1.1641,1.2415,1.3061,1.3648,1.4048,1.4205,1.445,1.4667,1.471,1.4807,1.4904,1.4726,1.4354,1.3912,1.3625,1.3872,1.406,1.4377,1.4431,1.5001,1.5235,1.5626,1.5493,1.5445,1.5331,1.5044,1.4828,1.4583,1.4249,1.4203,1.3662,1.3374,1.2726,1.166,1.1007,1.0613,1.0617,1.0496],
+ r_running:[-0.0243,-0.064,-0.1197,-0.1854,-0.2393,-0.2729,-0.2976,-0.2978,-0.2904,-0.3118,-0.2935,-0.2434,-0.2328,-0.2189,-0.194,-0.1954,-0.1888,-0.2055,-0.1589,-0.1827,-0.2178,-0.2768,-0.2874,-0.2962,-0.2424,-0.2316,-0.2518,-0.2646,-0.215,-0.2131,-0.2432,-0.2992,-0.3399,-0.3674,-0.4091,-0.4348,-0.4447,-0.4585,-0.483,-0.5175,-0.5394,-0.6056,-0.6721,-0.6622,-0.6374,-0.6219,-0.6208],
+ r_timeout:[-0.1729,-0.3384,-0.522,-0.7186,-0.8292,-0.8868,-0.8876,-0.8072,-0.6876,-0.6394,-0.549,-0.4877,-0.4749,-0.4472,-0.4037,-0.4063,-0.3846,-0.383,-0.386,-0.4866,-0.5247,-0.5322,-0.6415,-0.7093,-0.7886,-0.8585,-0.9269,-1.0118,-1.0484,-1.0729,-1.1291,-1.161,-1.2831,-1.3982,-1.553,-1.6703,-1.7331,-1.7638,-1.8851,-2.0108,-2.0892,-2.2169,-2.3364,-2.4645,-2.53,-2.5807,-2.6912],
+ r_collided:[0.2203,0.3418,0.4985,0.733,0.9691,1.2141,1.4225,1.5508,1.6142,1.6905,1.7055,1.7594,1.8253,1.8753,1.8881,1.9227,1.9515,1.9666,1.924,1.9751,1.9916,1.9754,1.932,1.9445,1.918,1.855,1.7619,1.6552,1.5555,1.4632,1.4167,1.3424,1.2792,1.2126,1.103,1.0077,0.9261,0.8526,0.7791,0.697,0.5984,0.493,0.4098,0.3465,0.2816,0.1978,0.1063]
+};
+const COL={green:'#3ddc97',red:'#ff6b6b',amber:'#ffb454',violet:'#b18cff',accent:'#6ea8fe',muted:'#9aa3b2',line:'#2a2f3e'};
+function draw(id, lines, opt){
+  opt=opt||{};
+  const svg=document.getElementById(id); if(!svg)return;
+  const vb=svg.viewBox.baseVal, W=vb.width, H=vb.height;
+  const m={l:46,r:14,t:12,b:24};
+  const n=Math.max(...lines.map(l=>l.data.length));
+  let lo=opt.min, hi=opt.max;
+  if(lo===undefined){lo=Math.min(...lines.flatMap(l=>l.data));}
+  if(hi===undefined){hi=Math.max(...lines.flatMap(l=>l.data));}
+  if(lo===hi){hi=lo+1;}
+  const pad=(hi-lo)*0.08; lo-=pad; hi+=pad;
+  const X=i=>m.l+(W-m.l-m.r)*(n<2?0:i/(n-1));
+  const Y=v=>m.t+(H-m.t-m.b)*(1-(v-lo)/(hi-lo));
+  let s='';
+  // grid + y labels
+  const ticks=opt.ticks||[lo,(lo+hi)/2,hi];
+  ticks.forEach(t=>{
+    const y=Y(t);
+    s+=`<line x1="${m.l}" y1="${y}" x2="${W-m.r}" y2="${y}" stroke="${COL.line}" stroke-width="1"/>`;
+    s+=`<text x="${m.l-6}" y="${y+3}" fill="${COL.muted}" font-size="10" text-anchor="end">${(+t).toFixed(opt.dec??2)}</text>`;
+  });
+  // zero line
+  if(lo<0&&hi>0){const y=Y(0);s+=`<line x1="${m.l}" y1="${y}" x2="${W-m.r}" y2="${y}" stroke="#4a5168" stroke-width="1" stroke-dasharray="3 3"/>`;}
+  // expert reference
+  if(opt.ref!==undefined){const y=Y(opt.ref);s+=`<line x1="${m.l}" y1="${y}" x2="${W-m.r}" y2="${y}" stroke="${COL.green}" stroke-width="1" stroke-dasharray="5 4" opacity="0.6"/>`;
+    s+=`<text x="${W-m.r}" y="${y-4}" fill="${COL.green}" font-size="9.5" text-anchor="end" opacity="0.8">${opt.refLabel||('esperto '+opt.ref)}</text>`;}
+  lines.forEach(l=>{
+    let d='';
+    l.data.forEach((v,i)=>{d+=(i?'L':'M')+X(i).toFixed(1)+','+Y(v).toFixed(1)+' ';});
+    s+=`<path d="${d}" fill="none" stroke="${l.c}" stroke-width="${l.w||2}" stroke-linejoin="round" opacity="${l.o||1}"/>`;
+  });
+  svg.innerHTML=s;
+}
+draw('c_outcomes',[
+  {data:D.successes,c:COL.green,w:2.4},
+  {data:D.off_road,c:COL.red},
+  {data:D.collisions,c:COL.amber},
+  {data:D.timeouts,c:COL.violet}
+],{min:0,max:1,ticks:[0,0.5,1],dec:1,ref:0.89,refLabel:'esperto 0.89'});
+draw('c_eplen',[{data:D.ep_len,c:COL.accent,w:2.4}],{min:0,ticks:[0,250,500],dec:0,ref:164,refLabel:'esperto 164'});
+draw('c_speed',[{data:D.speed,c:COL.teal||'#37d6d6',w:2.4}],{min:0,ticks:[0,12,24],dec:0});
+draw('c_rewards',[
+  {data:D.r_arrived,c:COL.green,w:2.4},
+  {data:D.r_running,c:COL.accent},
+  {data:D.r_timeout,c:COL.violet},
+  {data:D.r_collided,c:COL.red}
+],{ticks:[-2.5,0,2],dec:1});
+draw('c_gaprun',[{data:D.gap_arr_run,c:COL.green,w:2.4}],{min:0,ticks:[0,1,2],dec:1});
+draw('c_gapcoll',[{data:D.gap_arr_coll,c:COL.amber,w:2.4}],{ticks:[-0.8,0,1],dec:1});
+draw('c_auc',[{data:D.auc,c:COL.violet,w:2.4}],{min:0.5,max:1,ticks:[0.5,0.75,1],dec:2,ref:0.5,refLabel:'indistinguibile 0.5'});
+</script>
+</body>
+</html>

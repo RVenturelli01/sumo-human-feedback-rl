@@ -15,7 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from human_feedback_rl.common.loggers import configure_wandb_metrics
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data_for_training"
+DATA_DIR = Path(__file__).resolve().parent.parent / "datasets"
 
 
 def make_run_dir(output_dir: Path, name: str) -> Path:
@@ -43,7 +43,7 @@ def load_pickle(path: Path):
         return pickle.load(f)
 
 
-def load_expert_trajectories(name: str = "expert_trajectories.pkl") -> list:
+def load_expert_trajectories(name: str = "expert_trajectories_no_collision.pkl") -> list:
     """Load the expert trajectories pickle from data_for_training/."""
     return load_pickle(DATA_DIR / name)
 

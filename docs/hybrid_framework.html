@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hybrid Reward Learning — Demonstrations + Preferences</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1d21; --muted: #5b6570; --line: #e3e7ec;
+    --accent: #2f6fed; --demo: #1f9d55; --pref: #b4690e; --code-bg: #f5f7fa;
+    --card: #fafbfc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171a; --fg: #e6e9ec; --muted: #9aa4af; --line: #2a2f36;
+      --accent: #6ea0ff; --demo: #4bd188; --pref: #e0a86a; --code-bg: #1c2126;
+      --card: #191d22;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .4rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.35rem; margin: 2.6rem 0 .8rem; padding-top: .4rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.08rem; margin: 1.6rem 0 .5rem; }
+  p, li { color: var(--fg); }
+  .lede { color: var(--muted); font-size: 1.08rem; margin-top: .2rem; }
+  code { background: var(--code-bg); padding: .12em .4em; border-radius: 4px;
+    font: .88em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1rem 1.1rem; overflow-x: auto; font: .86rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre code { background: none; padding: 0; }
+  .formula { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; font-size: 1.05rem; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .94rem; }
+  th, td { border: 1px solid var(--line); padding: .55rem .7rem; text-align: left; vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .tag { display: inline-block; font-size: .78rem; font-weight: 600; padding: .1rem .5rem;
+    border-radius: 999px; border: 1px solid var(--line); }
+  .tag.demo { color: var(--demo); border-color: var(--demo); }
+  .tag.pref { color: var(--pref); border-color: var(--pref); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: .9rem; margin: 1rem 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.1rem; }
+  .card h3 { margin-top: 0; }
+  .muted { color: var(--muted); }
+  ul.tight { margin: .4rem 0; padding-left: 1.2rem; }
+  ul.tight li { margin: .2rem 0; }
+  .filelist code { display: inline-block; min-width: 0; }
+  a { color: var(--accent); }
+  .note { font-size: .92rem; color: var(--muted); border-radius: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Hybrid Reward Learning</h1>
+  <p class="lede">Training one reward/cost model from <strong>expert demonstrations</strong> and
+  <strong>human preferences</strong> at the same time, in the SUMO highway driving environment.</p>
+
+  <h2>1. What the framework does</h2>
+  <p>
+    The <code>HybridAlgorithm</code> learns a single, shared reward model from two heterogeneous
+    feedback sources and then trains a SAC policy on that learned reward. The two sources are:
+  </p>
+  <div class="grid">
+    <div class="card">
+      <h3><span class="tag demo">demonstrations</span></h3>
+      <p class="muted">Expert trajectories drive a <strong>Guided Cost Learning</strong> /
+      MaxEnt IRL loss that raises the reward on expert behaviour and lowers it on the policy's
+      own sampled behaviour. This is the <code>maxent_2</code> loss already present in the repo.</p>
+    </div>
+    <div class="card">
+      <h3><span class="tag pref">preferences</span></h3>
+      <p class="muted">Pairwise preferences over trajectory fragments drive a
+      <strong>Bradley–Terry</strong> loss (Christiano et al., 2017). Synthetic preferences are
+      generated from the environment's true reward, exactly as in the existing
+      <code>PreferenceAlgorithm</code>.</p>
+    </div>
+  </div>
+  <p>
+    Both losses back-propagate into the <em>same</em> reward ensemble, so the model is shaped
+    jointly. The goal is to show experimentally that combining demonstrations and preferences
+    beats either source alone.
+  </p>
+
+  <h2>2. How the two sources are integrated</h2>
+  <p>
+    The reward model is a shared ensemble (<code>make_reward_ensemble</code>) of
+    <code>SumoRewardNet</code> members, one Adam optimizer per member. During each reward-training
+    round, for every member and every gradient step, the demonstration loss and the preference
+    loss are computed on that same member and summed into a single scalar that is back-propagated
+    together (one <code>optimizer.step()</code>). This guarantees both feedback types shape one
+    reward function rather than two disjoint models.
+  </p>
+  <p>
+    Preference data is collected each iteration by fragmenting the current policy rollout, gathering
+    synthetic preference labels from the true reward, and pushing them into a train/validation
+    <code>PreferenceDataset</code>. The demonstration loss uses the fixed expert-trajectory dataset
+    plus the current rollout as the model/partition sample.
+  </p>
+
+  <h2>3. Overall loss</h2>
+  <div class="formula">
+    total_loss = <span style="color:var(--demo)">λ<sub>demo</sub> · gcl_loss</span>
+    + <span style="color:var(--pref)">λ<sub>pref</sub> · preference_loss</span>
+    + regularization
+  </div>
+  <ul class="tight">
+    <li><strong>gcl_loss</strong> — MaxEnt <code>maxent_2</code> objective:
+      <code>−E<sub>expert</sub>[R] + logsumexp(R<sub>expert∪model</sub>) − log N</code>,
+      the expert+model partition surrogate of Guided Cost Learning.</li>
+    <li><strong>preference_loss</strong> — Bradley–Terry cross-entropy:
+      <code>−Σ label · log σ(R̄<sub>1</sub> − R̄<sub>2</sub>)</code> over fragment pairs,
+      where <code>R̄</code> is the fragment-average reward.</li>
+    <li><strong>regularization</strong> — L2 weight decay applied through each member's Adam
+      optimizer (<code>l2_rew</code>). Reward normalization statistics are fit separately and only
+      affect the reward handed to SAC, never the learning objective.</li>
+  </ul>
+  <p class="note">λ<sub>demo</sub> and λ<sub>pref</sub> are the two hyper-parameters that both weight
+  the sources and select the experimental mode.</p>
+
+  <h2>4. The three experimental modes</h2>
+  <table>
+    <thead><tr><th>Mode</th><th>λ<sub>demo</sub></th><th>λ<sub>pref</sub></th><th>What it uses</th></tr></thead>
+    <tbody>
+      <tr><td><strong>pref_only</strong></td><td>0</td><td>&gt; 0</td><td>Preferences only — reduces to the original Christiano-style preference learning on a SAC policy.</td></tr>
+      <tr><td><strong>demo_only</strong></td><td>&gt; 0</td><td>0</td><td>Demonstrations only — reduces to the original <code>DemoAlgorithm</code> MaxEnt IRL.</td></tr>
+      <tr><td><strong>hybrid</strong></td><td>&gt; 0</td><td>&gt; 0</td><td>Both losses on the shared reward model.</td></tr>
+    </tbody>
+  </table>
+  <p>The mode is derived automatically from the weights and used to name the W&amp;B run/group
+  (<code>sac_hybrid_&lt;mode&gt;</code>) and logged as <code>hybrid/mode_code</code>
+  (0 = pref_only, 1 = demo_only, 2 = hybrid).</p>
+
+  <h2>5. Running training &amp; evaluation</h2>
+  <h3>Launcher (recommended)</h3>
+  <pre><code>MODE=pref_only ./launchers/run_hybrid_SAC.sh
+MODE=demo_only ./launchers/run_hybrid_SAC.sh
+MODE=hybrid    ./launchers/run_hybrid_SAC.sh</code></pre>
+  <p class="muted">Extra arguments are forwarded as Hydra overrides, e.g.
+  <code>MODE=hybrid ./launchers/run_hybrid_SAC.sh run.seed=1 algo.kwargs.lambda_pref=0.5</code>.</p>
+
+  <h3>Direct CLI</h3>
+  <pre><code>python scripts/test_hybrid_SAC.py \
+    algo.kwargs.lambda_demo=1.0 \
+    algo.kwargs.lambda_pref=1.0 \
+    run.output_dir=outputs/hybrid</code></pre>
+
+  <h3>Evaluation</h3>
+  <p>
+    Rich diagnostics are logged every iteration during training (see below). In addition, the script
+    calls <code>algo.evaluate(n_episodes=20)</code> at the end, which runs the deterministic policy on
+    the dedicated evaluation environment and reports mean true return, success rate and
+    expert-action RMSE under the <code>eval_final/</code> prefix. <code>evaluate()</code> can also be
+    called standalone after loading a checkpoint.
+  </p>
+
+  <h2>6. Logging (Weights &amp; Biases)</h2>
+  <p>All metrics required for comparing the three modes are logged:</p>
+  <table>
+    <thead><tr><th>Concept</th><th>W&amp;B key</th></tr></thead>
+    <tbody>
+      <tr><td>True environment return (fast_return)</td><td><code>agent/rewards/ep_fast_return</code>, <code>eval_final/fast_return</code></td></tr>
+      <tr><td>Success rate</td><td><code>agent/event_rate/successes</code>, <code>eval_final/success_rate</code></td></tr>
+      <tr><td>Expert-action RMSE</td><td><code>imitation/action_rmse</code>, <code>eval_final/expert_action_rmse</code></td></tr>
+      <tr><td>GCL / demonstration loss</td><td><code>reward/gcl_loss</code></td></tr>
+      <tr><td>Preference loss</td><td><code>reward/preference_loss</code></td></tr>
+      <tr><td>Total reward-model loss</td><td><code>reward/total_reward_model_loss</code></td></tr>
+      <tr><td>Policy loss</td><td><code>agent/train/actor_loss</code>, <code>agent/train/critic_loss</code></td></tr>
+      <tr><td>Loss weights</td><td><code>reward/lambda_demo</code>, <code>reward/lambda_pref</code></td></tr>
+      <tr><td>Mode indicator</td><td><code>hybrid/mode_code</code> + run group <code>sac_hybrid_&lt;mode&gt;</code></td></tr>
+      <tr><td>Preference fit quality</td><td><code>pref/acc_train</code>, <code>pref/acc_val</code>, <code>pref/loss_val</code></td></tr>
+    </tbody>
+  </table>
+  <p class="muted">Plus the inherited reward-validation, ranking, partition/ESS and outcome-return
+  diagnostics from <code>DemoAlgorithm</code>.</p>
+
+  <h2>7. Files created</h2>
+  <table class="filelist">
+    <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>human-feedback-rl/.../algorithms/hybrid_algorithm.py</code></td><td>The <code>HybridAlgorithm</code> class: combined loss, preference collection, logging, evaluation, checkpointing.</td></tr>
+      <tr><td><code>scripts/test_hybrid_SAC.py</code></td><td>Hydra training entry point (builds env, SAC agent, algorithm; runs train + final eval).</td></tr>
+      <tr><td><code>configs/test_hybrid_SAC.yaml</code></td><td>Config for mode, loss weights and all hyper-parameters.</td></tr>
+      <tr><td><code>launchers/run_hybrid_SAC.sh</code></td><td>Launcher with <code>MODE</code> selector for the three experiments.</td></tr>
+      <tr><td><code>docs/hybrid_framework.html</code></td><td>This document.</td></tr>
+    </tbody>
+  </table>
+  <p class="muted">The class reuses existing modules for the reward ensemble, GCL/MaxEnt losses,
+  preference dataset/fragmenters/gatherer, rollout, imitation diagnostics and checkpointing rather
+  than duplicating them.</p>
+
+  <h2>8. Key hyper-parameters</h2>
+  <table>
+    <thead><tr><th>Parameter</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>lambda_demo</code> / <code>lambda_pref</code></td><td>Loss weights; also select the mode.</td></tr>
+      <tr><td><code>loss_type</code></td><td>Demonstration loss (default <code>maxent_2</code>, the GCL surrogate).</td></tr>
+      <tr><td><code>temperature</code></td><td>Reward scale in the MaxEnt partition and agent-reward normalization.</td></tr>
+      <tr><td><code>batch_size_expert</code> / <code>batch_size_model</code></td><td>Trajectories sampled per demo-loss step.</td></tr>
+      <tr><td><code>queries_per_iteration</code></td><td>Preference pairs gathered each iteration.</td></tr>
+      <tr><td><code>pref_fragment_length</code></td><td>Fragment length compared in each preference.</td></tr>
+      <tr><td><code>pref_fragmenter_type</code></td><td><code>random</code> or <code>active</code> (ensemble-variance sampling).</td></tr>
+      <tr><td><code>pref_labels_type</code></td><td><code>binary</code>, <code>soft</code>, or <code>binary_bernulli</code>.</td></tr>
+      <tr><td><code>pref_temperature</code></td><td>Softness of synthetic preference labels.</td></tr>
+      <tr><td><code>gradient_steps_rew</code>, <code>lr_rew</code>, <code>l2_rew</code></td><td>Shared reward-model optimization.</td></tr>
+      <tr><td><code>initial_agent_timesteps</code></td><td>Bootstrap: pre-train reward + warm up SAC before the main loop.</td></tr>
+      <tr><td><code>relabel_rewards</code>, <code>normalize_agent_reward</code></td><td>Replay-buffer reward relabeling and agent-facing reward normalization.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>9. Adaptations vs. the original algorithms</h2>
+  <ul class="tight">
+    <li><strong>GCL term</strong> is identical to <code>DemoAlgorithm</code>'s <code>maxent_2</code>
+      loss (same <code>_reward_loss</code>).</li>
+    <li><strong>Preference term</strong> reproduces <code>PreferenceAlgorithm</code>'s Bradley–Terry
+      loss and bootstrap sampling, but the gradient step is <em>shared</em> with the demo term (one
+      combined back-prop per member per step) instead of a separate optimizer loop.</li>
+    <li><strong>Policy optimization</strong> reuses the existing SAC + reward-relabel replay buffer
+      path (unchanged) rather than the PPO loop used by the original preference algorithm, so all
+      three modes share one policy-training procedure and one metric set.</li>
+    <li>When <code>λ<sub>pref</sub>=0</code> the algorithm is exactly the demonstration algorithm;
+      when <code>λ<sub>demo</sub>=0</code> it is exactly the preference algorithm. Existing
+      preference/demonstration code is left untouched.</li>
+  </ul>
+
+  <h2>10. Known limitations &amp; future work</h2>
+  <ul class="tight">
+    <li>Preferences are <strong>synthetic</strong> (generated from the true reward via
+      <code>PreferenceGathererFromReward</code>); no real human labels are used.</li>
+    <li>The demo and preference losses live on different natural scales; the raw
+      λ weights do not normalize for that, so a good hybrid may need tuning of the ratio rather than
+      simply λ = 1. Adaptive/annealed weighting is a natural extension.</li>
+    <li>The MaxEnt partition uses whole-trajectory returns; effective sample size can drop when the
+      reward scale grows (monitored via <code>reward/maxent2_effective_sample_fraction</code>).</li>
+    <li>Synthetic preference labels currently reuse the fast reward; querying preferences from a
+      different criterion (e.g. safety/cost) would let the framework learn a genuine
+      <em>cost</em> model alongside the reward.</li>
+    <li>No offline replay of a fixed preference dataset yet — preferences are collected online from
+      the current rollout each iteration.</li>
+  </ul>
+
+  <p class="note" style="margin-top:2.5rem">SUMO highway ego environment ·
+  reward model shared across demonstrations and preferences · SAC policy optimization.</p>
+
+</div>
+</body>
+</html>

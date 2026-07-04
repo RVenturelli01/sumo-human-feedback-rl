@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report — le loss di demo/losses.py imitano l'esperto?</title>
+<script>
+window.MathJax={tex:{inlineMath:[['$','$'],['\\(','\\)']],displayMath:[['$$','$$'],['\\[','\\]']]}};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
+<style>
+:root{
+ --bg:#0f1419; --panel:#161b22; --panel2:#1c232d; --ink:#e6edf3; --mut:#9aa7b4;
+ --line:#2a323d; --acc:#4ea1ff; --good:#37d67a; --bad:#ff6b6b; --warn:#ffb454; --exp:#c792ea;
+ --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+.wrap{max-width:980px;margin:0 auto;padding:48px 24px 96px;}
+h1{font-size:30px;line-height:1.25;margin:0 0 6px;letter-spacing:-.02em}
+h2{font-size:23px;margin:54px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line);letter-spacing:-.01em}
+h3{font-size:18px;margin:30px 0 10px;color:#cfe0f0}
+p{color:#d6dee6}
+a{color:var(--acc)}
+.sub{color:var(--mut);font-size:15px;margin:0 0 4px}
+.tag{display:inline-block;font:12px/1 var(--mono);padding:5px 9px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);color:var(--mut);margin:4px 6px 4px 0}
+.tag b{color:var(--ink)}
+.verdict{margin:26px 0;padding:18px 20px;border-radius:12px;border:1px solid var(--line);background:linear-gradient(180deg,#1a2230,#141a22);}
+.verdict .big{font-size:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:18px 0}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0;align-items:stretch}
+.col{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--panel);display:flex;flex-direction:column}
+.col .hd{padding:12px 16px;font-weight:650;font-size:15px;border-bottom:1px solid var(--line)}
+.col .hd code{color:inherit;background:transparent;padding:0}
+.col .hd small{display:block;font-weight:400;font-size:12.5px;color:var(--mut);margin-top:3px}
+.col.no .hd{background:rgba(255,107,107,.10);color:#ff9a9a}
+.col.yes .hd{background:rgba(55,214,122,.10);color:#7ee2a8}
+.col.mid .hd{background:rgba(255,180,84,.10);color:#ffce8a}
+.col .bd{padding:2px 16px 14px}
+.col .bd p{font-size:14.5px}
+.step{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--acc);margin:18px 0 2px;font-weight:700}
+.col.no .step{color:#ff9a9a}.col.yes .step{color:#7ee2a8}.col.mid .step{color:#ffce8a}
+.math.sm{padding:2px 12px;font-size:.92em;margin:8px 0}
+.vrd{margin-top:auto;padding:12px 16px;border-top:1px solid var(--line);font-size:14px}
+.col.no .vrd{background:rgba(255,107,107,.07)}.col.yes .vrd{background:rgba(55,214,122,.07)}.col.mid .vrd{background:rgba(255,180,84,.07)}
+.cap{font-size:13px;color:var(--mut);margin-top:10px}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14.5px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em}
+td.n{font-variant-numeric:tabular-nums;text-align:right;font-family:var(--mono);font-size:13.5px}
+.pill{font:12px/1 var(--mono);padding:3px 7px;border-radius:5px;white-space:nowrap}
+.pill.ok{background:rgba(55,214,122,.12);color:var(--good)}
+.pill.no{background:rgba(255,107,107,.12);color:var(--bad)}
+.pill.mid{background:rgba(255,180,84,.12);color:var(--warn)}
+.math{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:8px;padding:6px 18px;margin:14px 0;overflow-x:auto}
+.note{background:rgba(78,161,255,.07);border:1px solid rgba(78,161,255,.25);border-radius:10px;padding:12px 16px;margin:14px 0;font-size:15px}
+.box{border:1px solid var(--line);border-radius:10px;padding:2px 16px;margin:14px 0;background:var(--panel)}
+code{font-family:var(--mono);font-size:13.5px;background:var(--panel2);padding:1px 5px;border-radius:4px;color:#e6c07b}
+.foot{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:var(--mut);font-size:13px}
+.qed{text-align:right;color:var(--good);font-weight:700}
+hr.s{border:none;border-top:1px dashed var(--line);margin:22px 0}
+@media(max-width:760px){.cmp{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="sub">Report di analisi · Reward objectives di <code>DemoAlgorithm</code> · SUMO HighwayEgo</p>
+<h1>Quali loss di <code>demo/losses.py</code> <span style="color:var(--good)">imitano</span> davvero l'esperto?</h1>
+<p class="sub">Analisi teorica e di codice del file <code>human-feedback-rl/human_feedback_rl/algorithms/demo/losses.py</code>. Nessun dato di run: solo le formule implementate e la loro condizione stazionaria.</p>
+<div>
+ <span class="tag">obiettivi distinti <b>5</b></span>
+ <span class="tag">criterio <b>occupancy matching</b></span>
+ <span class="tag">riferimento <b>GCL · MaxEnt IRL</b></span>
+</div>
+
+<div class="verdict">
+<p class="big" style="margin:0"><b>Verdetto in breve.</b> Delle cinque loss distinte, <b style="color:var(--good)">due puntano all'imitazione</b> e <b style="color:var(--bad)">tre no</b>. <code>maxent_corrected</code> è imitazione nel senso forte (likelihood MaxEnt con importance sampling). <code>demo</code>/<code>demo_loss</code> imita nel senso del <b>moment/feature matching</b> avversariale (IPM), ma è illimitata senza regolarizzazione. <code>maxent</code>, <code>maxent_2</code> e <code>demo_corrected</code> <b>non</b> imitano: il loro punto fisso è un <b>discriminatore / preferenza</b> esperto-vs-agente, non l'occupancy matching. Il discrimine, in tutti i casi, è quale distribuzione campiona davvero la <i>fase negativa</i> del gradiente.</p>
+</div>
+
+<div class="note"><b>Cosa NON contiene questo report.</b> Non ci sono curve di training né metriche W&amp;B: la domanda "imita o no" è strutturale e si risolve sulla forma della loss. Dove l'esito empirico è già stato osservato (la run <code>maxent_2</code> con <code>state_action_auc</code> ferma a ~0.68) lo cito come conferma, rimandando a <a href="REPORT_maxent2_no_imitation.html">REPORT_maxent2_no_imitation.html</a>.</p></div>
+
+<h2>1 · Il criterio: cosa significa "imitare"</h2>
+<p>In IRL imitare significa <b>occupancy matching</b>: la policy appresa $q$ (resa soft-ottima da SAC sul reward $R_\theta$) riproduce l'occupancy dell'esperto $p_E$. La condizione di riferimento sui gradienti del reward è</p>
+<div class="math">$$ \mathbb{E}_{\tau\sim p_E}\!\big[\nabla_\theta R_\theta(\tau)\big]\;=\;\mathbb{E}_{\tau\sim q}\!\big[\nabla_\theta R_\theta(\tau)\big]. \qquad(\star) $$</div>
+<p>Tutte le loss del file hanno la stessa impalcatura: una <b>fase positiva</b> $-\frac{1}{N_e}\sum_{i\in E}\nabla R_i$ che alza il reward sugli esperti (il termine <code>expert_term</code>, <code>losses.py:71</code>), più una <b>fase negativa</b> che lo abbassa altrove. <b>La sola cosa che distingue una loss imitativa da un discriminatore è verso quale distribuzione converge la fase negativa.</b> Se converge a $\mathbb{E}_q$ (eventualmente via il Boltzmann $p_\theta\propto e^{R/\beta}$ chiuso da SAC), allora $(\star)$ vale e c'è imitazione; se resta agganciata alla densità di campionamento o a un peso logistico, no.</p>
+<p>Notazione (coerente con <code>APPUNTI_LOSSES_DEMO.md</code>): $R_\theta(\tau)=\sum_t r_\theta(s_t,a_t,s_{t+1},d_t)$ il return appreso; $N_e,N_m$ le numerosità dei batch esperto/modello; $\beta$ = <code>temperature</code>; $q(\tau)$ la densità di traiettoria sotto la policy che ha generato i rollout. Le cinque loss distinte sono <code>VALID_LOSSES</code> (<code>losses.py:13-20</code>), con <code>demo</code> e <code>demo_loss</code> alias identici.</p>
+
+<h2>2 · Scorecard</h2>
+<table>
+<thead><tr><th>Loss (codice)</th><th>Forma della fase negativa</th><th>Bersaglio fase negativa</th><th>Usa <code>temperature</code>?</th><th>Imita?</th></tr></thead>
+<tbody>
+<tr>
+ <td><code>demo</code> / <code>demo_loss</code><br><small>losses.py:71-73</small></td>
+ <td>media lineare dei return agente</td>
+ <td class="n">$\mathbb{E}_{q}[\nabla R]$</td>
+ <td>no</td>
+ <td><span class="pill mid">sì*, moment matching</span></td>
+</tr>
+<tr>
+ <td><code>maxent</code><br><small>losses.py:85-86</small></td>
+ <td>softmax $e^{R}$ sui soli rollout agente</td>
+ <td class="n">$\tilde p\propto q\,e^{R}$</td>
+ <td>no</td>
+ <td><span class="pill no">no</span></td>
+</tr>
+<tr>
+ <td><code>maxent_2</code><br><small>losses.py:81-83</small></td>
+ <td>softmax $e^{R}$ su agente $\cup$ esperti</td>
+ <td class="n">$\tilde p\propto \mu\,e^{R}$</td>
+ <td>no</td>
+ <td><span class="pill no">no</span></td>
+</tr>
+<tr>
+ <td><code>demo_corrected</code><br><small>losses.py:75-79, 283-292</small></td>
+ <td>logistica a coppie sui reward medi/step</td>
+ <td class="n">discriminatore Bradley–Terry</td>
+ <td>sì ($\beta$ nel softplus)</td>
+ <td><span class="pill no">no</span></td>
+</tr>
+<tr>
+ <td><code>maxent_corrected</code><br><small>losses.py:88-144</small></td>
+ <td>softmax con peso IS $z_j=1/q_{\text{fus}}$</td>
+ <td class="n">$p_\theta\propto e^{R/\beta}$</td>
+ <td>sì</td>
+ <td><span class="pill ok">sì (in teoria)</span></td>
+</tr>
+</tbody>
+</table>
+<p class="cap">* <code>demo</code>: la condizione stazionaria del reward <b>è</b> esattamente $(\star)$, ma l'obiettivo è illimitato senza regolarizzazione (vedi §3.1). Il "sì" vale come obiettivo di moment/feature matching, non come likelihood MaxEnt.</p>
+
+<h2>3 · Derivazione loss per loss</h2>
+
+<h3>3.1 <code>demo</code> / <code>demo_loss</code> — moment matching avversariale</h3>
+<div class="card">
+<p><b>Formula</b> (<code>losses.py:71-73</code>, return grezzi via <code>_traj_sum_reward</code>):</p>
+<div class="math sm">$$ \mathcal{L}_{\text{demo}}=-\frac{1}{N_e}\sum_{i\in E}R_i+\frac{1}{N_m}\sum_{j\in M}R_j,\qquad \nabla\mathcal{L}_{\text{demo}}=-\mathbb{E}_{p_E}[\nabla R]+\mathbb{E}_{q}[\nabla R]. $$</div>
+<p>La fase negativa $\frac{1}{N_m}\sum_j\nabla R_j$ è una media Monte Carlo <b>lineare e non pesata</b> sui rollout dell'agente: nessuna inclinazione $e^R$, nessun reweighting. Il suo bersaglio è dunque $q$ stessa. La condizione stazionaria del reward è immediatamente</p>
+<div class="math sm">$$ \nabla\mathcal{L}_{\text{demo}}=0 \iff \mathbb{E}_{p_E}[\nabla R]=\mathbb{E}_{q}[\nabla R]\quad\equiv\quad(\star). $$</div>
+<p><b>Lettura come gioco minimax.</b> Il reward minimizza $\mathcal{L}_{\text{demo}}$, cioè massimizza $\mathbb{E}_{p_E}[R]-\mathbb{E}_{q}[R]$; SAC massimizza $\mathbb{E}_{q}[R]$. Con $R$ in una classe $\mathcal{F}$ a norma limitata (qui delimitata dal <code>weight_decay = l2_rew</code> dell'ottimizzatore), il problema interno è una <b>Integral Probability Metric</b> $d_{\mathcal{F}}(p_E,q)$, che il minimo esterno su $q$ porta a zero $\Rightarrow$ occupancy matching $q\to p_E$. È la famiglia dell'imitazione per moment/feature matching (apprenticeship learning).</p>
+<p><b>Caveat decisivo.</b> Senza il vincolo di norma l'IPM è $+\infty$: la loss è <b>illimitata inferiormente</b> (il reward può separare esperto e agente all'infinito — vedi <code>APPUNTI_LOSSES_DEMO.md</code> §12.6). La regolarizzazione L2 è ciò che definisce $\mathcal{F}$ e rende esistente il saddle; non è una likelihood MaxEnt e la convergenza del gioco alternato reward–SAC non è garantita.</p>
+<p><b>Perché allora "imita" e <code>maxent</code> no?</b> Perché <code>demo</code> penalizza $R$ sull'occupancy <i>reale</i> dell'agente: l'unico modo per l'agente di abbassare la penalità è spostare la propria occupancy verso $p_E$. Non c'è il fattore $e^R$ che in <code>maxent</code> distorce il bersaglio.</p>
+<div class="note" style="margin-bottom:4px"><b>Verdetto.</b> La stazionarietà del reward è esattamente $(\star)$ $\Rightarrow$ <span class="pill mid">imita (moment matching / IPM)</span>, a patto di regolarizzazione che renda l'obiettivo limitato. Non è MaxEnt likelihood.</div>
+</div>
+
+<h3>3.2 <code>maxent</code> e <code>maxent_2</code> — contrastive, non imitazione</h3>
+<div class="cmp">
+<div class="col no">
+<div class="hd"><code>maxent</code> — NON imita<small>partizione sui soli rollout agente · $z\equiv1$</small></div>
+<div class="bd">
+<div class="step">Formula</div>
+<p><code>losses.py:85-86</code>:</p>
+<div class="math sm">$$ \mathcal{L}_{\text{maxent}}=-\frac{1}{N_e}\sum_{i\in E}R_i+\log\!\frac{1}{N_m}\sum_{j\in M}e^{R_j} $$</div>
+<div class="step">Fase negativa</div>
+<p>Pesi softmax $w_j=e^{R_j}/\sum_k e^{R_k}$ su campioni da $q$. Per la legge dei grandi numeri:</p>
+<div class="math sm">$$ \sum_j w_j\nabla R_j\xrightarrow{}\frac{\mathbb{E}_{q}[e^{R}\nabla R]}{\mathbb{E}_{q}[e^{R}]}=\mathbb{E}_{\tilde p}[\nabla R],\;\; \tilde p\propto q\,e^{R}. $$</div>
+<div class="step">Condizione stazionaria</div>
+<p>Manca il peso $1/q$: la densità $q$ <b>non si cancella</b>. Il bersaglio è $\tilde p\propto q\,e^{R}$, non $p_\theta\propto e^{R}$. Coincidono solo se $q$ è uniforme — falso per una policy SAC continua.</p>
+</div>
+<div class="vrd"><b>Verdetto.</b> $\mathbb{E}_{p_E}[\nabla R]=\mathbb{E}_{\tilde p}[\nabla R]\neq\mathbb{E}_{q}[\nabla R]$. Niente $(\star)$. <span class="pill no">non imita</span></div>
+</div>
+
+<div class="col no">
+<div class="hd"><code>maxent_2</code> — NON imita<small>partizione su agente $\cup$ esperti · $z\equiv1$</small></div>
+<div class="bd">
+<div class="step">Formula</div>
+<p><code>losses.py:81-83</code> (<code>logsumexp</code> su <code>model_returns</code> $\cup$ <code>expert_returns</code>):</p>
+<div class="math sm">$$ \mathcal{L}_{2}=-\frac{1}{N_e}\sum_{i\in E}R_i+\log\!\frac{1}{N_e+N_m}\!\!\sum_{k\in E\cup M}\!\!e^{R_k} $$</div>
+<div class="step">Fase negativa — passaggi</div>
+<p><b>(1)</b> Gradiente del <code>logsumexp</code>: la costante $-\log(N_e+N_m)$ sparisce e restano pesi softmax normalizzati sull'<b>intera</b> partizione</p>
+<div class="math sm">$$ \nabla_\theta\log\!\!\sum_{k\in E\cup M}\!\!e^{R_k}=\sum_{k\in E\cup M} w_k\,\nabla R_k,\qquad w_k=\frac{e^{R_k}}{\sum_{k'\in E\cup M}e^{R_{k'}}}. $$</div>
+<p><b>(2)</b> Gli indici $k$ pescano $N_e$ campioni da $p_E$ e $N_m$ da $q$: la densità di campionamento è la miscela</p>
+<div class="math sm">$$ \mu=\frac{N_e}{N_e+N_m}\,p_E+\frac{N_m}{N_e+N_m}\,q\;\xrightarrow{\,N_e=N_m\,}\;\tfrac12 p_E+\tfrac12 q. $$</div>
+<p><b>(3)</b> Riscrivo $\sum_k w_k\nabla R_k$ come rapporto auto-normalizzato e applico la LLN a numeratore e denominatore <b>separatamente</b> (entrambi medie su $\mu$):</p>
+<div class="math sm">$$ \frac{\tfrac{1}{N_e+N_m}\sum_k e^{R_k}\nabla R_k}{\tfrac{1}{N_e+N_m}\sum_k e^{R_k}}\;\xrightarrow{}\;\frac{\mathbb{E}_{\mu}\!\big[e^{R}\nabla R\big]}{\mathbb{E}_{\mu}\!\big[e^{R}\big]}. $$</div>
+<p><b>(4)</b> Quel rapporto è per definizione l'attesa sotto la distribuzione <i>tiltata</i> $\tilde p$, ottenuta inclinando $\mu$ di un fattore $e^{R}$ e rinormalizzando:</p>
+<div class="math sm">$$ \sum_k w_k\nabla R_k\xrightarrow{}\mathbb{E}_{\tilde p}[\nabla R],\qquad \tilde p(\tau)=\frac{\mu(\tau)\,e^{R(\tau)}}{\int\mu(\tau')\,e^{R(\tau')}\,d\tau'}\;\propto\;\mu\,e^{R}. $$</div>
+<div class="step">Condizione stazionaria</div>
+<p><b>(5)</b> Sommando la fase positiva e annullando il gradiente totale:</p>
+<div class="math sm">$$ \nabla\mathcal{L}_2=-\mathbb{E}_{p_E}[\nabla R]+\mathbb{E}_{\tilde p}[\nabla R]=0\;\iff\;\mathbb{E}_{p_E}[\nabla R]=\mathbb{E}_{\tilde p}[\nabla R],\quad\tilde p\propto\mu\,e^{R}. $$</div>
+<p><b>(6)</b> Il bersaglio MaxEnt sarebbe $p_\theta\propto e^{R}$, che si otterrebbe solo col peso di importance sampling $z=1/\mu$ capace di cancellare la proposta. Qui $z\equiv1$: la densità $\mu$ <b>non si cancella</b>. Aggiungere gli esperti alla partizione tiene l'obiettivo limitato (boundedness, à la GCL), ma non introduce $1/\mu$. Bersaglio $\tilde p\propto\mu\,e^{R}\neq p_\theta$.</p>
+</div>
+<div class="vrd"><b>Verdetto.</b> Cross-entropy / discriminatore esperto-vs-agente. <span class="pill no">non imita</span> Confermato empiricamente: AUC ~0.68.</div>
+</div>
+</div>
+<p class="cap">Entrambe sono il caso «GCL con importance weight $z\equiv1$» che Finn et al. (2016, §4.3) indicano come stima <i>inconsistente</i> della likelihood. La dimostrazione completa per <code>maxent_2</code>, con i dati del run <code>0gig63mf</code>, è in <a href="REPORT_maxent2_no_imitation.html">REPORT_maxent2_no_imitation.html</a> §4.</p>
+
+<h3>3.3 <code>demo_corrected</code> — preferenza logistica (Bradley–Terry), non occupancy matching</h3>
+<div class="card">
+<p><b>Formula</b> (<code>losses.py:75-79</code> + <code>_demo_corrected_margins</code> <code>losses.py:283-292</code>). Le prime $n=\min(N_e,N_m)$ traiettorie vengono accoppiate per indice; il margine usa i reward <b>medi per step</b> $\bar R=R/T$:</p>
+<div class="math sm">$$ m_i=\bar R_{e,i}-\bar R_{m,i},\qquad \mathcal{L}_{\text{demo\_corr}}=\frac{1}{n}\sum_i\operatorname{softplus}\!\Big(\!-\frac{m_i}{\beta}\Big)=\frac{1}{n}\sum_i-\log\sigma\!\Big(\frac{m_i}{\beta}\Big). $$</div>
+<p>È una <b>loss logistica di ranking</b> (modello Bradley–Terry), analoga a <a href="https://proceedings.mlr.press/v97/brown19a.html">T-REX</a>. Il gradiente del reward è</p>
+<div class="math sm">$$ \nabla\mathcal{L}_{\text{demo\_corr}}=\frac{1}{\beta}\,\mathbb{E}\!\big[\sigma(-m/\beta)\,(\nabla\bar R_{m}-\nabla\bar R_{e})\big], $$</div>
+<p>con peso logistico $\sigma(-m/\beta)\in(0,1)$. La condizione stazionaria è quella di una <b>regressione logistica</b> che separa esperto e agente per punteggio, non $(\star)$.</p>
+<p><b>Perché non è occupancy matching.</b> All'occupancy condivisa $q=p_E$ (campioni i.i.d. dalla stessa distribuzione), per convessità di softplus e disuguaglianza di Jensen la loss è minimizzata da <b>reward costante</b> ($m_i\equiv0$): è il punto fisso degenere del discriminatore «a caso», esattamente come in <code>maxent_2</code>. I punti fissi non degeneri hanno occupancy <b>diverse</b>. Inoltre il punteggio grezzo $\bar R$ viene passato direttamente a SAC: <b>non</b> è la trasformazione $r=-\log(1-D)$ di GAIL, quindi non si ottiene la minimizzazione della divergenza che in GAIL produce l'imitazione.</p>
+<p><b>Conseguenza pratica.</b> L'etichetta «esperto preferito all'agente» è imposta a ogni coppia casuale anche quando l'agente eguaglia o supera l'esperto (<code>APPUNTI_LOSSES_DEMO.md</code> §12.7): la loss continua a richiedere $\bar R_e>\bar R_m$. È un reward di preferenza, non un vincolo di imitazione.</p>
+<div class="note" style="margin-bottom:4px"><b>Verdetto.</b> Discriminatore/preferenza logistica. Buona come preference learning, ma il suo punto fisso non è $(\star)$. <span class="pill no">non imita (nel senso occupancy)</span></div>
+</div>
+
+<h3>3.4 <code>maxent_corrected</code> — imitazione (in teoria)</h3>
+<div class="card">
+<p><b>Formula</b> a traiettoria intera (<code>losses.py:107-144</code>). Logit corretti con il peso di importance sampling <b>fusion</b> $z_j=R_j/\beta-\log q_{\text{fus}}(\tau_j)$, partizione su <code>background</code> (rollout accumulati di policy passate) $\cup$ esperti:</p>
+<div class="math sm">$$ \mathcal{L}_{\text{corr}}=-\frac{1}{N_e}\sum_{i\in E}\frac{R_i}{\beta}+\log\!\frac{1}{N}\sum_{j}e^{R_j/\beta-\log q_{\text{fus}}(\tau_j)}. $$</div>
+<p>Poiché $e^{z_j}=e^{R_j/\beta}/q_{\text{fus}}(\tau_j)$, il peso $1/q_{\text{fus}}$ <b>cancella esattamente</b> la densità di campionamento $\mu=q_{\text{fus}}=\frac1K\sum_\kappa q_\kappa$ (le policy passate più la gaussiana demo, <code>_fusion_log_density</code> <code>losses.py:214-246</code>). La fase negativa converge al Boltzmann <b>puro</b>:</p>
+<div class="math sm">$$ \sum_j w_j\nabla R_j\xrightarrow{}\frac{\int e^{R/\beta}\nabla R\,d\tau}{\int e^{R/\beta}\,d\tau}=\mathbb{E}_{p_\theta}[\nabla R],\quad p_\theta\propto e^{R/\beta}. $$</div>
+<p><b>Chiusura con SAC.</b> SAC entropy-regularized ha policy soft-ottima $q^\star\propto e^{R/\beta}=p_\theta$; al punto fisso $q=p_\theta$, da cui $\mathbb{E}_{p_E}[\nabla R]=\mathbb{E}_{p_\theta}[\nabla R]=\mathbb{E}_{q}[\nabla R]\Rightarrow(\star)$. È la versione fedele a <a href="https://proceedings.mlr.press/v48/finn16.html">Guided Cost Learning</a>.</p>
+<p><b>Caveat (perché "in teoria").</b> La stazionarietà è quella giusta, ma l'implementazione si discosta dalla NLL stretta e in pratica può non imitare: (i) <code>per_step_return=True</code> di default divide return e $\log q_{\text{fus}}$ per la lunghezza, passando a obiettivo sui <i>rate</i> (<code>losses.py:129-138</code>); (ii) return scontato + coda DAC absorbing-state (<code>losses.py:166-184</code>); (iii) su orizzonti lunghi la varianza IS esplode e l'ESS collassa (<code>APPUNTI_LOSSES_DEMO.md</code> §13). Con ESS degenerata il punto fisso teorico non viene raggiunto.</p>
+<div class="note" style="margin-bottom:4px"><b>Verdetto.</b> Condizione stazionaria $=$ occupancy matching $(\star)$. <span class="pill ok">imita (in teoria)</span> <span class="qed">∎</span></div>
+</div>
+
+<h2>4 · Il punto unificante</h2>
+<div class="note"><b>Una sola domanda separa le cinque loss: la fase negativa abbassa $R$ sull'occupancy reale dell'agente $q$, oppure su una distribuzione distorta?</b><br>
+• <code>demo</code>: bersaglio $=q$ esatto (lineare, nessuna distorsione) $\to$ stazionarietà $=(\star)$ $\to$ <span style="color:var(--good)">imita</span> (moment matching), ma illimitata senza regolarizzazione.<br>
+• <code>maxent_corrected</code>: il peso $1/q_{\text{fus}}$ cancella $\mu$ $\to$ bersaglio $p_\theta\propto e^{R/\beta}$ $\to$ con SAC $(\star)$ $\to$ <span style="color:var(--good)">imita (in teoria)</span>.<br>
+• <code>maxent</code> / <code>maxent_2</code>: il fattore $e^{R}$ senza $1/q$ lascia la densità di campionamento incollata ($\tilde p\propto\mu\,e^{R}$) $\to$ <span style="color:var(--bad)">discriminatore</span>.<br>
+• <code>demo_corrected</code>: il peso logistico produce un classificatore Bradley–Terry, e il punteggio grezzo va a SAC senza la trasformazione GAIL $\to$ <span style="color:var(--bad)">preferenza</span>, non occupancy matching.</div>
+
+<p><b>Coerenza con gli appunti del progetto.</b> <code>APPUNTI_LOSSES_DEMO.md</code> §12 classifica le stesse loss per <i>consistenza come likelihood MaxEnt</i>; questo report usa il criterio (equivalente nel risultato pratico) dell'<i>occupancy matching</i>. L'unico punto che merita una precisazione è <code>demo</code>: gli appunti lo chiamano «semplice separatore tra due distribuzioni». È corretto — ma quel separatore, <code>max_R(\mathbb{E}_{p_E}[R]-\mathbb{E}_{q}[R])</code> a norma limitata, è una IPM il cui azzeramento <b>è</b> l'imitazione per moment matching. Le due descrizioni non sono in contraddizione: <code>demo</code> non è una likelihood MaxEnt, ma il suo equilibrio avversariale con SAC è occupancy matching.</p>
+
+<h2>5 · Conclusione</h2>
+<p>Se l'obiettivo è dichiarare un esperimento di <b>imitazione</b>:</p>
+<ul>
+<li><b><code>maxent_corrected</code></b> è la scelta teoricamente corretta (likelihood MaxEnt con IS), con i caveat di varianza/ESS e <code>per_step_return</code>;</li>
+<li><b><code>demo</code>/<code>demo_loss</code></b> imita nel senso del moment/feature matching, ma va trattata come obiettivo avversariale illimitato da regolarizzare, non come stimatore MaxEnt;</li>
+<li><b><code>maxent</code></b>, <b><code>maxent_2</code></b> e <b><code>demo_corrected</code></b> <b>non</b> sono imitazione: sono rispettivamente due varianti contrastive senza correzione IS e una loss di preferenza logistica. Possono comunque risolvere il task (come mostra la run <code>maxent_2</code> a success ~0.85), ma con occupancy diversa dall'esperto.</li>
+</ul>
+<div class="note">Criterio operativo per verificare l'imitazione su una run: non guardare success rate o <code>reward/loss</code>, ma che <code>imitation/state_action_auc</code> <b>scenda verso 0.5</b>. Per le loss MaxEnt monitorare anche ESS, peso top-1 e massa top-5 della partizione.</div>
+
+<div class="foot">
+Analisi statica di <code>human-feedback-rl/human_feedback_rl/algorithms/demo/losses.py</code> (riferimenti di riga al file alla data del report). Fonti: il codice sorgente; <code>APPUNTI_LOSSES_DEMO.md</code> (classificazione MaxEnt/preferenza, §12–13); <a href="REPORT_maxent2_no_imitation.html">REPORT_maxent2_no_imitation.html</a> (dimostrazione e dati per <code>maxent_2</code>). Riferimenti teorici: Ziebart et al., <i>MaxEnt IRL</i> (2008); Finn, Levine &amp; Abbeel, <i>Guided Cost Learning</i> (ICML 2016), §4.1–4.3; Brown et al., <i>T-REX</i> (ICML 2019). Confidenza alta sulla classificazione strutturale; le previsioni empiriche per-loss dipendono dalla run.
+</div>
+
+</div>
+</body>
+</html>

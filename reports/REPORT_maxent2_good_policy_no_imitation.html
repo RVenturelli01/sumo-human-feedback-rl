@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>maxent_2 — buona policy senza imitare l'esperto (visuale interattiva)</title>
+<script>
+window.MathJax={tex:{inlineMath:[['$','$'],['\\(','\\)']]}};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
+<style>
+:root{
+ --bg:#0f1419; --panel:#161b22; --panel2:#1c232d; --ink:#e6edf3; --mut:#9aa7b4;
+ --line:#2a323d; --acc:#4ea1ff; --good:#37d67a; --bad:#ff6b6b; --warn:#ffb454; --exp:#c792ea;
+ --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+.wrap{max-width:980px;margin:0 auto;padding:48px 24px 96px;}
+h1{font-size:29px;line-height:1.25;margin:0 0 6px;letter-spacing:-.02em}
+h2{font-size:22px;margin:50px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+p{color:#d6dee6}
+a{color:var(--acc)}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.sub{color:var(--mut);font-size:15px;margin:0 0 4px}
+.tag{display:inline-block;font:12px/1 var(--mono);padding:5px 9px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);color:var(--mut);margin:4px 6px 4px 0}
+.tag b{color:var(--ink)}
+.verdict{margin:24px 0;padding:18px 20px;border-radius:12px;border:1px solid var(--line);background:linear-gradient(180deg,#1a2230,#141a22)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:18px 0}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:4px 0 14px}
+button{font:600 14px/1 -apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 14px;cursor:pointer;transition:.15s}
+button:hover{border-color:var(--acc);color:#fff}
+button.b2{border-color:rgba(78,161,255,.5)} button.b2:hover{background:rgba(78,161,255,.15)}
+button.bc{border-color:rgba(55,214,122,.5)} button.bc:hover{background:rgba(55,214,122,.15)}
+button:disabled{opacity:.4;cursor:default}
+.kpis{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+.kpi{flex:1 1 160px;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:11px 14px}
+.kpi .l{font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+.kpi .v{font-size:25px;font-weight:650;margin-top:3px;font-variant-numeric:tabular-nums}
+.kpi .d{font-size:11.5px;color:var(--mut);margin-top:2px}
+.v.good{color:var(--good)}.v.bad{color:var(--bad)}.v.warn{color:var(--warn)}
+canvas{width:100%;height:auto;display:block;border-radius:10px;background:#0c1117;border:1px solid var(--line)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--mut);margin:10px 2px 0}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.dot{width:11px;height:11px;border-radius:50%;display:inline-block}
+.status{font-size:14px;color:#cfe0f0;margin:12px 2px 0;min-height:22px}
+.cap{font-size:13px;color:var(--mut);margin-top:12px}
+.note{background:rgba(78,161,255,.07);border:1px solid rgba(78,161,255,.25);border-radius:10px;padding:12px 16px;margin:14px 0;font-size:15px}
+code{font-family:var(--mono);font-size:13.5px;background:var(--panel2);padding:1px 5px;border-radius:4px;color:#e6c07b}
+.foot{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);color:var(--mut);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="sub">Spiegazione interattiva · reward model <code>maxent_2</code> + SAC · SUMO</p>
+<h1>Come può l'agente avere una <span style="color:var(--good)">buona policy</span> <br>senza <span style="color:var(--bad)">imitare</span> l'esperto?</h1>
+<p class="sub">Una mappa-giocattolo dello spazio delle occupancy. Premi i pulsanti e guarda dove finisce l'agente — e cosa dice l'AUC.</p>
+
+<div class="verdict">
+<p style="margin:0;font-size:17px"><b>L'idea in una frase.</b> Il reward di <code>maxent_2</code> dà un segnale <b>forte</b> per <i>uscire dal fallimento</i> (off-road / collisione) ma è quasi <b>piatto tra i comportamenti competenti</b>: premia la <i>competenza</i>, non la <i>specifica occupancy</i> dell'esperto. SAC cattura il segnale forte → risolve il task; ma non avendo un gradiente che lo orienti verso l'esperto, si ferma su una policy competente <b>ma di stile diverso</b>. Risultato: success rate alto, AUC sopra 0.5.</p>
+</div>
+
+<h2>1 · La mappa: lo spazio delle occupancy</h2>
+<p>Ogni punto è una coppia <code>(osservazione, azione)</code> visitata. Asse orizzontale = <b>competenza nel task</b> (a sinistra si finisce off-road / si collide; a destra si guida e si arriva). Asse verticale = <b>stile della policy</b>: <i>quale</i> comportamento competente, fra i tanti possibili. Lo sfondo luminoso è il <b>reward appreso</b>. È un'astrazione schematica dello spazio reale ad alta dimensione, non i dati di un run.</p>
+
+<div class="card">
+ <h2 class="sr-only">Simulazione interattiva dell'occupancy dell'agente rispetto all'esperto</h2>
+ <div class="controls">
+  <button id="bM2" class="b2">▶ Allena con <code>maxent_2</code></button>
+  <button id="bMC" class="bc">▶ Allena con <code>maxent_corrected</code></button>
+  <button id="bReset">↺ Reset</button>
+ </div>
+ <div class="kpis">
+  <div class="kpi"><div class="l">Success rate</div><div class="v good" id="kSucc">–</div><div class="d">frazione che risolve il task</div></div>
+  <div class="kpi"><div class="l">State-action AUC</div><div class="v" id="kAuc">–</div><div class="d">0.5 = imita · &gt;0.5 = separabili</div></div>
+  <div class="kpi"><div class="l">Esito</div><div class="v" id="kVerd" style="font-size:18px">–</div><div class="d">interpretazione dell'AUC</div></div>
+ </div>
+ <canvas id="cv" width="920" height="520" aria-hidden="true"></canvas>
+ <div class="legend">
+  <span><i class="dot" style="background:#c792ea"></i> esperto (fisso)</span>
+  <span><i class="dot" style="background:#4ea1ff"></i> agente (in addestramento)</span>
+  <span><i class="dot" style="background:#ffb454;border-radius:2px"></i> reward appreso (più chiaro = più alto)</span>
+ </div>
+ <div class="status" id="status">Premi un pulsante. L'agente parte nella zona di <b>fallimento</b> (reward basso), lontano dall'esperto.</div>
+ <p class="cap">L'agente fa risalita del gradiente sul reward (più rumore di esplorazione che si attenua). Con <code>maxent_2</code> il reward è piatto in verticale sulla zona competente → l'agente sale a destra ma mantiene il proprio stile. Con <code>maxent_corrected</code> il peso di importance sampling $1/q$ crea un vero picco sull'esperto → l'agente vi converge.</p>
+</div>
+
+<h2>2 · Perché si ferma prima dell'esperto — il profilo del reward</h2>
+<p>Seguiamo il reward lungo il percorso dell'agente: prima <b>verso destra</b> (esci dal fallimento), poi <b>verso l'alto</b> (avvicìnati allo stile dell'esperto). Le due loss coincidono nel primo tratto e divergono nel secondo.</p>
+<div class="card">
+ <svg id="xsec" viewBox="0 0 920 360" width="100%" role="img" aria-label="Profilo del reward lungo il percorso fallimento→competente→esperto per le due loss">
+  <title>Profilo del reward</title>
+ </svg>
+ <p class="cap"><b>Tratto 1 (forte, identico):</b> uscire dal fallimento fa salire molto il reward → SAC lo segue → task risolto. <b>Tratto 2 (la differenza):</b> con <code>maxent_2</code> il reward è <b>piatto</b> (nessun motivo per muoversi verso l'esperto → niente imitazione); con <code>maxent_corrected</code> sale a un <b>picco</b> sull'esperto (l'agente ci converge → imitazione).</p>
+</div>
+
+<h2>3 · Cosa stai guardando, in termini della loss</h2>
+<div class="note">
+La fase negativa di <code>maxent_2</code> usa pesi softmax $\propto e^{R}$ sul pool esperti+agente: la massa si concentra sui punti a reward più alto, cioè gli <b>esperti</b> stessi (nel run reale <code>expert_softmax_mass</code>~0.6, top-1 quasi sempre esperto). I rollout tipici dell'agente ricevono pressione quasi nulla: al reward basta <b>separare</b> esperto e agente, non <b>identificarli</b>. Separabile ≠ identico → l'AUC si ferma sopra 0.5. <br><br>
+<code>maxent_corrected</code> aggiunge il peso $1/q$ che <b>re-gonfia</b> proprio le regioni ad alto reward poco visitate dall'agente: il bersaglio della fase negativa torna il Boltzmann puro $\propto e^{R}$, il cui massimo è l'occupancy dell'esperto. Da qui il picco del §2 e la convergenza dell'AUC verso 0.5.
+</div>
+<p>In breve: <b>«massimizzare il reward» porta l'agente al massimo del reward</b>. Con <code>maxent_2</code> quel massimo è «un qualunque comportamento chiaramente sopra il fallimento e sotto gli esperti» — competente ma non l'esperto. Il peso $1/q$ mancante è esattamente ciò che sposterebbe quel massimo sull'occupancy dell'esperto.</p>
+
+<div class="foot">
+Visualizzazione schematica (mappa-giocattolo dell'occupancy), non dati di un run W&amp;B. La conferma empirica sul run reale <code>0gig63mf</code> (success ~0.85, <code>state_action_auc</code> ~0.68) e la dimostrazione formale sono in <a href="REPORT_maxent2_no_imitation.html">REPORT_maxent2_no_imitation.html</a>; la classificazione di tutte le loss in <a href="REPORT_demo_losses_imitation.html">REPORT_demo_losses_imitation.html</a>. Codice: <code>human-feedback-rl/human_feedback_rl/algorithms/demo/losses.py</code>.
+</div>
+
+</div>
+<script>
+(function(){
+ "use strict";
+ // ---------- model of the reward landscape (toy occupancy space) ----------
+ const EXP={x:0.82,y:0.66};                 // expert occupancy cluster centre
+ const logistic=(x,k,x0)=>1/(1+Math.exp(-(x-x0)*k));
+ const comp=x=>logistic(x,11,0.40);         // STRONG "leave failure" signal (depends on x only)
+ const well=(x,y)=>{const dx=x-EXP.x,dy=y-EXP.y;return Math.exp(-(dx*dx+dy*dy)/0.05);};
+ // maxent_2: reward = competence only -> FLAT in y over the competent region (indifferent to style)
+ const field2=(x,y)=>comp(x);
+ // maxent_corrected: competence + a real attractor (peak) at the expert occupancy
+ const fieldC=(x,y)=>comp(x)+0.85*well(x,y);
+ const grad=(f,x,y)=>{const e=1e-3;return [ (f(x+e,y)-f(x-e,y))/(2*e), (f(x,y+e)-f(x,y-e))/(2*e) ];};
+ const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+ // gaussian sampler
+ let g2=null;
+ function gauss(m,s){ if(g2!==null){const v=g2;g2=null;return m+s*v;} const u=Math.random()||1e-9,w=Math.random();
+   const r=Math.sqrt(-2*Math.log(u)); g2=r*Math.sin(2*Math.PI*w); return m+s*r*Math.cos(2*Math.PI*w); }
+
+ const NA=210, NE=150;
+ let agents=[], experts=[];
+ function makeExperts(){ experts=[]; for(let i=0;i<NE;i++) experts.push({x:clamp(gauss(EXP.x,0.05),0,1),y:clamp(gauss(EXP.y,0.05),0,1)}); }
+ function initAgents(){ agents=[]; for(let i=0;i<NA;i++) agents.push({x:clamp(gauss(0.12,0.05),0,1),y:clamp(gauss(0.42,0.11),0,1)}); }
+ makeExperts(); initAgents();
+
+ // ---------- AUC (Mann-Whitney) along the centroid-difference direction ----------
+ const mean=a=>{let mx=0,my=0;for(const p of a){mx+=p.x;my+=p.y;}return {x:mx/a.length,y:my/a.length};};
+ function computeAUC(ag,ex){
+   const ma=mean(ag),me=mean(ex); let dx=ma.x-me.x,dy=ma.y-me.y; const n=Math.hypot(dx,dy)||1; dx/=n;dy/=n;
+   const all=[]; for(const p of ex) all.push({v:p.x*dx+p.y*dy,e:1}); for(const p of ag) all.push({v:p.x*dx+p.y*dy,e:0});
+   all.sort((a,b)=>a.v-b.v); let sumE=0; for(let i=0;i<all.length;i++) if(all[i].e) sumE+=(i+1);
+   const M=ex.length,N=ag.length; const U=sumE-M*(M+1)/2; const auc=U/(M*N); return Math.max(auc,1-auc);
+ }
+ const successRate=ag=>ag.reduce((s,p)=>s+(p.x>0.5?1:0),0)/ag.length;
+
+ // ---------- canvas drawing ----------
+ const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+ const W=cv.width,H=cv.height, ML=58,MR=18,MT=30,MB=46;
+ const PX=x=>ML+x*(W-ML-MR), PY=y=>MT+(1-y)*(H-MT-MB);
+ const GX=66,GY=40;
+ function drawField(f){
+   // normalise over grid
+   let mn=1e9,mx=-1e9; const vals=[];
+   for(let i=0;i<GX;i++){for(let j=0;j<GY;j++){const x=(i+0.5)/GX,y=(j+0.5)/GY;const v=f(x,y);vals.push(v);if(v<mn)mn=v;if(v>mx)mx=v;}}
+   const cw=(W-ML-MR)/GX, ch=(H-MT-MB)/GY;
+   let k=0;
+   for(let i=0;i<GX;i++){for(let j=0;j<GY;j++){
+     const t=(vals[k++]-mn)/(mx-mn+1e-9);
+     const a=0.04+0.46*t;
+     ctx.fillStyle='rgba(255,180,84,'+a.toFixed(3)+')';
+     ctx.fillRect(ML+i*cw-0.5, MT+(GY-1-j)*ch-0.5, cw+1, ch+1);
+   }}
+ }
+ function drawAxes(){
+   ctx.strokeStyle='rgba(154,167,180,.35)'; ctx.lineWidth=1;
+   ctx.beginPath(); ctx.moveTo(ML,MT); ctx.lineTo(ML,H-MB); ctx.lineTo(W-MR,H-MB); ctx.stroke();
+   // failure / competent divider
+   ctx.setLineDash([5,5]); ctx.strokeStyle='rgba(255,107,107,.5)';
+   ctx.beginPath(); ctx.moveTo(PX(0.40),MT); ctx.lineTo(PX(0.40),H-MB); ctx.stroke(); ctx.setLineDash([]);
+   ctx.fillStyle='var(--mut)'; ctx.font='12px -apple-system,Segoe UI,Roboto';
+   ctx.fillStyle='rgba(255,107,107,.85)'; ctx.fillText('FALLIMENTO', PX(0.04), MT+16);
+   ctx.fillStyle='rgba(55,214,122,.85)'; ctx.fillText('COMPETENTE — task risolto', PX(0.45), MT+16);
+   ctx.fillStyle='rgba(154,167,180,.9)'; ctx.font='12px -apple-system,Segoe UI,Roboto';
+   ctx.fillText('competenza nel task  →', PX(0.46), H-MB+30);
+   ctx.save(); ctx.translate(ML-40,(MT+H-MB)/2); ctx.rotate(-Math.PI/2);
+   ctx.textAlign='center'; ctx.fillText('stile della policy (occupancy)',0,0); ctx.restore();
+ }
+ function drawCloud(arr,color,r){ ctx.fillStyle=color; for(const p of arr){ ctx.beginPath(); ctx.arc(PX(p.x),PY(p.y),r,0,7); ctx.fill(); } }
+ function label(txt,x,y,color){ ctx.fillStyle=color; ctx.font='600 13px -apple-system,Segoe UI,Roboto';
+   ctx.fillText(txt, PX(x), PY(y)); }
+ function draw(f,showBoundary){
+   ctx.clearRect(0,0,W,H);
+   drawField(f); drawAxes();
+   drawCloud(experts,'rgba(199,146,234,.85)',2.6);
+   drawCloud(agents,'rgba(78,161,255,.8)',2.6);
+   const ma=mean(agents);
+   label('ESPERTO',EXP.x-0.05,EXP.y+0.09,'#e3c9ff');
+   label('AGENTE',clamp(ma.x-0.06,0,0.9),clamp(ma.y-0.09,0.04,1),'#bcd9ff');
+   if(showBoundary){
+     // dashed separator midway in y between the two centroids
+     const ym=(ma.y+EXP.y)/2;
+     ctx.setLineDash([6,5]); ctx.strokeStyle='rgba(230,237,243,.45)'; ctx.lineWidth=1.4;
+     ctx.beginPath(); ctx.moveTo(PX(0.46),PY(ym-0.02)); ctx.lineTo(PX(1.0),PY(ym+0.02)); ctx.stroke(); ctx.setLineDash([]);
+     ctx.fillStyle='rgba(230,237,243,.7)'; ctx.font='11.5px '+'-apple-system';
+     ctx.fillText('confine discriminatore — ancora separabile', PX(0.50), PY(ym-0.035));
+   }
+ }
+
+ // ---------- simulation loop ----------
+ let raf=null, frame=0, mode=null, curField=field2;
+ const elS=document.getElementById('status'),
+       kSucc=document.getElementById('kSucc'), kAuc=document.getElementById('kAuc'), kVerd=document.getElementById('kVerd');
+ const bM2=document.getElementById('bM2'),bMC=document.getElementById('bMC'),bReset=document.getElementById('bReset');
+
+ function setKPIs(){
+   const sr=successRate(agents), auc=computeAUC(agents,experts);
+   kSucc.textContent=(sr*100).toFixed(0)+'%';
+   kAuc.textContent=auc.toFixed(2);
+   const imit=auc<0.57;
+   kAuc.className='v '+(imit?'good':'bad');
+   kVerd.textContent=imit?'imita':'NON imita';
+   kVerd.className='v '+(imit?'good':'bad');
+   return {sr,auc};
+ }
+ const TOTAL=300;
+ function step(){
+   frame++;
+   const sigma=0.013*Math.max(0.18,1-frame/210);   // annealed exploration noise
+   const dt=0.013;
+   for(const p of agents){
+     const [gx,gy]=grad(curField,p.x,p.y);
+     p.x=clamp(p.x+dt*gx+gauss(0,sigma),0,1);
+     p.y=clamp(p.y+dt*gy+gauss(0,sigma),0,1);
+   }
+   const m=setKPIs();
+   const done = frame>=TOTAL;
+   draw(curField, mode==='m2' && frame>TOTAL*0.6);
+   if(mode==='m2'){
+     elS.innerHTML = done
+       ? 'Fatto. L’agente è <b>competente</b> (success alto) ma resta su uno <b>stile diverso</b>: le occupancy sono separabili → <b style="color:var(--bad)">AUC '+m.auc.toFixed(2)+' &gt; 0.5</b>, non imita.'
+       : 'Allenamento <code>maxent_2</code>… l’agente sale verso destra (risolve il task) ma il reward è piatto in verticale: non viene tirato verso l’esperto.';
+   } else {
+     elS.innerHTML = done
+       ? 'Fatto. Il peso $1/q$ crea un picco sull’esperto: l’agente vi <b>converge</b>, le occupancy si sovrappongono → <b style="color:var(--good)">AUC '+m.auc.toFixed(2)+' ≈ 0.5</b>, imita.'
+       : 'Allenamento <code>maxent_corrected</code>… dopo aver risolto il task l’agente viene incanalato sull’occupancy dell’esperto.';
+     if(window.MathJax&&MathJax.typesetPromise&&done) MathJax.typesetPromise([elS]);
+   }
+   if(!done) raf=requestAnimationFrame(step); else { raf=null; bM2.disabled=bMC.disabled=false; }
+ }
+ function start(m){
+   if(raf) cancelAnimationFrame(raf);
+   mode=m; curField=(m==='m2')?field2:fieldC; frame=0; initAgents();
+   bM2.disabled=bMC.disabled=true;
+   raf=requestAnimationFrame(step);
+ }
+ function reset(){
+   if(raf){cancelAnimationFrame(raf);raf=null;}
+   mode=null; curField=field2; frame=0; initAgents();
+   bM2.disabled=bMC.disabled=false;
+   setKPIs(); draw(field2,false);
+   elS.innerHTML='Premi un pulsante. L’agente parte nella zona di <b>fallimento</b> (reward basso), lontano dall’esperto.';
+ }
+ bM2.onclick=()=>start('m2'); bMC.onclick=()=>start('mc'); bReset.onclick=reset;
+ // initial paint
+ setKPIs(); draw(field2,false);
+
+ // ---------- cross-section SVG (§2) ----------
+ (function(){
+   const svg=document.getElementById('xsec'); const w=920,h=360, l=60,r=24,t=28,b=66;
+   const NS='http://www.w3.org/2000/svg';
+   function el(n,a){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);return e;}
+   // path: seg1 move in x (0.10->0.85) at y=0.42 ; seg2 move in y (0.42->0.66) at x=0.85
+   const pts=[]; const N1=70,N2=50;
+   for(let i=0;i<=N1;i++){const u=i/N1; pts.push({t:u*0.55, x:0.10+u*0.75, y:0.42, seg:1});}
+   for(let i=1;i<=N2;i++){const u=i/N2; pts.push({t:0.55+u*0.45, x:0.85, y:0.42+u*0.24, seg:2});}
+   const r2=pts.map(p=>field2(p.x,p.y)), rc=pts.map(p=>fieldC(p.x,p.y));
+   let mn=Math.min(...r2,...rc), mx=Math.max(...r2,...rc); const pad=(mx-mn)*0.12; mn-=pad; mx+=pad;
+   const X=tt=>l+tt*(w-l-r), Y=v=>t+(1-(v-mn)/(mx-mn))*(h-t-b);
+   // axes
+   svg.appendChild(el('line',{x1:l,y1:t,x2:l,y2:h-b,stroke:'rgba(154,167,180,.35)'}));
+   svg.appendChild(el('line',{x1:l,y1:h-b,x2:w-r,y2:h-b,stroke:'rgba(154,167,180,.35)'}));
+   // divider between segments
+   svg.appendChild(el('line',{x1:X(0.55),y1:t,x2:X(0.55),y2:h-b,stroke:'rgba(154,167,180,.3)','stroke-dasharray':'5 5'}));
+   function poly(arr,color,wd){ let d=''; for(let i=0;i<pts.length;i++){d+=(i?'L':'M')+X(pts[i].t).toFixed(1)+' '+Y(arr[i]).toFixed(1)+' ';}
+     svg.appendChild(el('path',{d:d,fill:'none',stroke:color,'stroke-width':wd,'stroke-linejoin':'round','stroke-linecap':'round'})); }
+   poly(rc,'#37d67a',3);       // maxent_corrected
+   poly(r2,'#4ea1ff',3);       // maxent_2
+   function txt(x,y,s,fill,sz,anch,wt){const e=el('text',{x:x,y:y,fill:fill,'font-size':sz||13,'font-family':'-apple-system,Segoe UI,Roboto','text-anchor':anch||'start'});if(wt)e.setAttribute('font-weight',wt);e.textContent=s;svg.appendChild(e);}
+   // segment labels
+   txt(X(0.05),h-b+22,'esci dal fallimento  →  (verso destra)','rgba(154,167,180,.9)',12.5);
+   txt(X(0.58),h-b+22,'avvicìnati allo stile dell’esperto  →  (verso l’alto)','rgba(154,167,180,.9)',12.5);
+   txt(l-8,Y(mx)+4,'reward','rgba(154,167,180,.9)',12,'end');
+   // annotation seg1
+   txt(X(0.27),Y(field2(0.45,0.42))-14,'segnale FORTE','#ffb454',13,'middle','700');
+   txt(X(0.27),Y(field2(0.45,0.42))+4,'SAC lo segue → task risolto','rgba(214,222,230,.85)',12,'middle');
+   // maxent_2 flat label
+   txt(X(0.78),Y(r2[pts.length-1])-12,'maxent_2: PIATTO','#4ea1ff',13,'middle','700');
+   txt(X(0.78),Y(r2[pts.length-1])+6,'niente che tiri verso l’esperto','rgba(188,217,255,.9)',12,'middle');
+   // maxent_corrected peak label
+   txt(X(0.82),Y(rc[pts.length-1])-10,'maxent_corrected: PICCO (1/q)','#37d67a',13,'middle','700');
+   // endpoint dots
+   svg.appendChild(el('circle',{cx:X(1),cy:Y(r2[pts.length-1]),r:4.5,fill:'#4ea1ff'}));
+   svg.appendChild(el('circle',{cx:X(1),cy:Y(rc[pts.length-1]),r:4.5,fill:'#37d67a'}));
+   svg.appendChild(el('circle',{cx:X(0.55),cy:Y(r2[Math.round(N1)]),r:4,fill:'#ffb454'}));
+ })();
+ })();
+</script>
+</body>
+</html>

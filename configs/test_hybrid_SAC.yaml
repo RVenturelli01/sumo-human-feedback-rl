@@ -1,0 +1,96 @@
+
+run:
+  seed: 0
+  output_dir: Null
+
+wandb:
+  entity: Null
+  project: Null
+  tags: Null
+
+env:
+  id: "HighwayEgo-v0"
+  # SAC is off-policy; a single env is standard.
+  n_envs: 1
+  kwargs:
+    ego: "continuous"
+    reward: "fast"
+
+agent:
+  kwargs:
+    policy: "MlpPolicy"
+    buffer_size: 100000
+    learning_starts: 2000
+    batch_size: 256
+    learning_rate: 0.0003
+    gamma: 0.997
+    tau: 0.005
+    ent_coef: "auto"
+    train_freq: 1
+    gradient_steps: 1
+    policy_kwargs:
+      net_arch: [64, 64]
+    device: "cpu"
+
+algo:
+  kwargs:
+    # ------------------------------------------------------------------
+    # Experimental mode is selected purely by these two weights:
+    #   pref_only : lambda_demo = 0, lambda_pref > 0
+    #   demo_only : lambda_demo > 0, lambda_pref = 0
+    #   hybrid    : lambda_demo > 0, lambda_pref > 0
+    # total_loss = lambda_demo * gcl_loss + lambda_pref * preference_loss + l2
+    # ------------------------------------------------------------------
+    lambda_demo: 1.0
+    lambda_pref: 1.0
+
+    # --- demonstration (Guided Cost Learning / MaxEnt IRL) branch ---
+    # maxent_2 is the GCL-style expert+model partition surrogate.
+    loss_type: maxent_2
+    batch_size_expert: 32
+    batch_size_model: 64
+
+    # --- preference (Bradley-Terry) branch ---
+    pref_fragmenter_type: "random"      # or "active" (ensemble-variance based)
+    pref_labels_type: "binary"          # binary | soft | binary_bernulli
+    pref_fragment_length: 1
+    pref_temperature: 1.0               # softness of synthetic preference labels
+    pref_batch_size: 32
+    queries_per_iteration: 200
+    pref_train_frac: 0.8
+    pref_queue_size: 1000000
+
+    # --- shared reward-model optimization ---
+    lr_rew: 0.001
+    gradient_steps_rew: 100
+    l2_rew: 0.01
+    temperature: 1.0
+    fragment_length: null
+
+    # --- policy / rollout ---
+    relabel_rewards: true
+    normalize_agent_reward: true
+    initial_agent_timesteps: 10000
+    exploration_frac: 0.0
+    exploration_eps: 0.5
+    reward_model_kwargs:
+      n_ensembles: 3
+      net_arch: [32, 32]
+      activation_fn: tanh
+      alpha: 1
+
+train:
+  kwargs:
+    total_timesteps: 2000000
+    timesteps_per_iteration: 10000
+    log_interval: 100
+    checkpoint_interval: 10
+    imitation_diagnostics_interval: 10
+    scatter_interval: null
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
+  output_subdir: null

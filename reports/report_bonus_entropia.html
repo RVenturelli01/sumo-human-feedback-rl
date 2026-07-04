@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bonus di entropia: diagnosi e risultati</title>
+  <style>
+    :root{
+      --ink:#1f2933;--muted:#52616b;--line:#d9e2ec;--paper:#fff;--soft:#f5f7fa;
+      --good:#0f766e;--bad:#b4232c;--warn:#b45309;--blue:#2563eb;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      color:var(--ink);background:#edf2f7;line-height:1.6}
+    main{max-width:920px;margin:0 auto;padding:44px 20px 72px}
+    article{background:var(--paper);border:1px solid var(--line);border-radius:10px;
+      padding:40px;box-shadow:0 18px 45px rgba(15,23,42,.08)}
+    h1{font-size:2rem;margin:0 0 6px}
+    h2{font-size:1.3rem;margin:34px 0 0;padding-top:20px;border-top:1px solid var(--line)}
+    h3{font-size:1.05rem;margin:20px 0 4px}
+    .sub{color:var(--muted);font-size:1.05rem;margin:6px 0 22px}
+    p{margin:12px 0}
+    .tldr{border-left:4px solid var(--blue);background:var(--soft);padding:16px 18px;border-radius:0 8px 8px 0;margin:18px 0}
+    .good{border-left:4px solid var(--good);background:#f0f7f5;padding:16px 18px;border-radius:0 8px 8px 0;margin:18px 0}
+    .warn{border-left:4px solid var(--warn);background:#fff8f0;padding:16px 18px;border-radius:0 8px 8px 0;margin:18px 0}
+    .analogy{border-left:4px solid var(--warn);background:#fff8f0;padding:16px 18px;border-radius:0 8px 8px 0;margin:18px 0}
+    table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.94rem}
+    th,td{border:1px solid var(--line);padding:8px 10px;text-align:left}
+    th{background:var(--soft)}
+    td.n{font-variant-numeric:tabular-nums;text-align:right}
+    .up{color:var(--bad);font-weight:600}
+    .down{color:var(--good);font-weight:600}
+    .flat{color:var(--blue);font-weight:600}
+    code{font-family:ui-monospace,Menlo,Consolas,monospace;background:#eef2f7;padding:.08rem .3rem;border-radius:4px}
+    .legend{font-size:.85rem;color:var(--muted)}
+    ol li,ul li{margin:7px 0}
+    .cycle{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;margin:18px 0;justify-content:center}
+    .node{flex:1 1 150px;min-width:140px;background:var(--soft);border:1px solid var(--line);
+      border-radius:10px;padding:12px;text-align:center;font-size:.86rem}
+    .node b{display:block;margin-bottom:3px;color:var(--bad)}
+    .arrow{align-self:center;font-size:1.3rem;color:var(--muted)}
+    .badge{display:inline-block;font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:20px;color:#fff}
+    .b-ok{background:var(--good)} .b-no{background:var(--bad)} .b-mid{background:var(--warn)}
+  </style>
+</head>
+<body>
+<main>
+<article>
+  <h1>Il crollo dei successi e il bonus di entropia</h1>
+  <p class="sub">Diagnosi del problema, il rimedio implementato, e i risultati del run <code>demo2_weighted_bc</code> con <code>ent_coef=0.03</code>.</p>
+
+  <div class="tldr">
+    <strong>In una frase.</strong> Il tasso di successo crollava perché la policy si
+    <em>irrigidiva</em> (diventava troppo deterministica) e perdeva la capacità di correggere.
+    Il <strong>bonus di entropia</strong> le impone di restare stocastica: nel nuovo run il crollo
+    <strong>è sparito</strong> — il successo resta a plateau stabile. Prezzo: il plateau è per ora
+    più basso (~0.72 invece di 0.85), segno che il bonus va tarato meglio.
+  </div>
+
+  <h2>1. Il problema di partenza</h2>
+  <p>
+    Nell'algoritmo di weighted behavior cloning il successo saliva fino a ~0.84, poi <strong>crollava
+    a ~0.61</strong> con le collisioni in aumento. La cosa contro-intuitiva: mentre <em>guidava</em>
+    peggio, la policy <em>imitava</em> l'esperto sempre meglio (errore sull'azione in calo).
+  </p>
+
+  <h2>2. La diagnosi: due meccanismi</h2>
+
+  <h3>a. Copiare ≠ saper guidare <span class="badge b-mid">covariate shift</span></h3>
+  <div class="analogy">
+    <strong>Il funambolo.</strong> Copiare la <em>posa media</em> di un funambolo perfetto non ti evita
+    di cadere: camminare sulla fune è <strong>correggere i micro-errori prima che si accumulino</strong>.
+    Copiare la media perde proprio quelle correzioni → piccoli errori si sommano fino alla collisione.
+  </div>
+
+  <h3>b. Spirale di auto-clonazione <span class="badge b-no">specifico dell'algoritmo</span></h3>
+  <p>
+    L'algoritmo studia anche i <strong>propri rollout</strong>, pesati dal reward. Appena arrivano
+    collisioni e il reward smette di distinguerle, comincia a clonarle → più collisioni → si ripete.
+  </p>
+  <div class="cycle">
+    <div class="node"><b>più collisioni</b>nei rollout</div><div class="arrow">→</div>
+    <div class="node"><b>reward le separa peggio</b></div><div class="arrow">→</div>
+    <div class="node"><b>la BC le clona</b></div><div class="arrow">→</div>
+    <div class="node"><b>ancora più collisioni</b></div>
+  </div>
+
+  <h3>c. Irrigidimento della policy <span class="badge b-no">la causa del declino tardivo</span></h3>
+  <p>
+    La weighted BC è pura "copia il più probabile": a forza di copiare, la policy stringe la propria
+    incertezza (<code>std → 0</code>) fino a diventare quasi deterministica. Una policy deterministica
+    è <strong>fragile</strong>: in uno stato un po' nuovo non ha margine per correggere → sbanda.
+  </p>
+
+  <div class="warn">
+    <strong>Prova nei dati (run precedente).</strong> L'entropia della policy scendeva in modo monotono
+    (0.99 → −0.11) e il successo <strong>cedeva esattamente quando l'entropia andava negativa</strong>.
+    Intanto la massa di clonazione sulle collisioni era già ~0.001 (spirale <em>b</em> già spenta dalla
+    quota esperta alta). Restava quindi <em>c</em> — l'irrigidimento — come causa del declino.
+  </div>
+
+  <h2>3. Il rimedio: bonus di entropia</h2>
+  <p>
+    Abbiamo aggiunto alla loss un premio per "restare incerta". Si crea un <strong>tiro alla fune</strong>:
+  </p>
+  <ul>
+    <li>il termine di <em>copia</em> tira verso l'azione precisa dell'esperto;</li>
+    <li>il termine di <em>entropia</em> tira verso il mantenere un po' di variabilità.</li>
+  </ul>
+  <p>
+    Il risultato voluto: una policy che imita bene <strong>ma resta stocastica</strong>, conservando
+    il margine di manovra per recuperare dagli stati imprevisti invece di irrigidirsi e schiantarsi.
+    Reintroduce la stocasticità che il target teorico <code>q_t·e^R</code> ha già, ma che la
+    massima verosimiglianza su una gaussiana buttava via. Controllato dal parametro <code>ent_coef</code>.
+  </p>
+
+  <h2>4. Risultati del run con <code>ent_coef=0.03</code></h2>
+  <table>
+    <thead>
+      <tr><th>iter</th><th class="n">successo</th><th class="n">collisioni</th><th class="n">entropia</th><th class="n">std</th><th class="n">massa BC collisioni</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>20–39</td><td class="n">0.71</td><td class="n">0.23</td><td class="n">1.31</td><td class="n">0.619</td><td class="n">0.0035</td></tr>
+      <tr><td>40–59</td><td class="n">0.71</td><td class="n">0.23</td><td class="n">1.27</td><td class="n">0.633</td><td class="n">0.0033</td></tr>
+      <tr><td>60–79</td><td class="n">0.73</td><td class="n">0.21</td><td class="n">1.25</td><td class="n">0.627</td><td class="n">0.0028</td></tr>
+      <tr><td>80–84</td><td class="n">0.72</td><td class="n">0.22</td><td class="n flat">1.24</td><td class="n flat">0.629</td><td class="n">0.0039</td></tr>
+    </tbody>
+  </table>
+
+  <div class="good">
+    <strong>✓ Il bonus funziona.</strong> L'entropia ora è <strong>piatta</strong> (~1.25, std ~0.63)
+    invece di crollare. <strong>Il declino tardivo è sparito</strong>: il successo è un plateau stabile
+    da it 20 a it 84. Il meccanismo dell'irrigidimento è neutralizzato — l'obiettivo "far rimanere a
+    plateau" è raggiunto.
+  </div>
+
+  <div class="warn">
+    <strong>⚠ Prezzo da pagare.</strong> Il plateau è a <strong>~0.72</strong>, sotto lo 0.85 raggiunto
+    prima (che però poi crollava). Le collisioni sono ~0.22 contro ~0.12 del plateau buono precedente:
+    la policy è tenuta <em>troppo</em> stocastica (std 0.63 contro il punto dolce ~0.5), e il rumore
+    stesso causa parte delle collisioni. In più questo run usa <code>lr_policy=0.001</code> e
+    <code>gradient_steps_policy=64</code> (aggressivi), che rendono l'ottimizzazione più erratica.
+  </div>
+
+  <h3>Confronto sintetico</h3>
+  <table>
+    <thead><tr><th>Run</th><th>bonus</th><th class="n">plateau successo</th><th>andamento</th></tr></thead>
+    <tbody>
+      <tr><td>vecchio (config gentile)</td><td>no</td><td class="n">0.85 → 0.76</td><td class="up">picco alto ma <strong>declina</strong></td></tr>
+      <tr><td>attuale (<code>ent_coef=0.03</code>)</td><td>sì</td><td class="n">~0.72</td><td class="down"><strong>stabile</strong>, non declina</td></tr>
+    </tbody>
+  </table>
+  <p class="legend">
+    Abbiamo scambiato "picco alto poi crollo" con "stabile ma più basso". Ora è un problema di
+    <em>taratura</em>, non più di un meccanismo rotto.
+  </p>
+
+  <h2>5. Cosa provare adesso (tuning)</h2>
+  <p>Il bonus ha risolto il collasso; va calibrato per non sacrificare il successo:</p>
+  <table>
+    <thead><tr><th>Parametro</th><th>Ora</th><th>Consigliato</th><th>Perché</th></tr></thead>
+    <tbody>
+      <tr><td><code>ent_coef</code></td><td class="n">0.03</td><td class="n">0.01</td><td>lascia assestare la policy verso std~0.5 (meno rumore → meno collisioni)</td></tr>
+      <tr><td><code>lr_policy</code></td><td class="n">0.001</td><td class="n">0.0003</td><td>evita la sovra-ottimizzazione per round</td></tr>
+      <tr><td><code>gradient_steps_policy</code></td><td class="n">64</td><td class="n">20</td><td>meno passi = update più stabile</td></tr>
+      <tr><td><code>log_std_bounds</code></td><td class="n">[−0.9, 2]</td><td class="n">[−1.5, 2]</td><td>floor più basso: è <code>ent_coef</code> a fissare l'equilibrio, non il tappo</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6. Quanto è affidabile questa analisi</h2>
+  <ul>
+    <li><strong>Fatti misurati</strong> (curve, entropia, collisioni): alta confidenza.</li>
+    <li><strong>"Il bonus stabilizza l'entropia"</strong>: confermato dai dati (entropia piatta). ~90%.</li>
+    <li><strong>"Il plateau più basso è dovuto a troppa entropia + lr/steps aggressivi"</strong>:
+      ipotesi ragionata, non provata. Il confronto non è pulito (4 parametri cambiati insieme,
+      seed diversi, run a metà — it 84 di 200). ~55–60%.</li>
+  </ul>
+  <p>
+    Per chiudere servirebbe uno <strong>sweep di <code>ent_coef</code></strong> (es. 0.005 / 0.01 / 0.02)
+    con lr e steps gentili, su 2–3 seed, per trovare il punto che massimizza il successo mantenendo il
+    plateau stabile.
+  </p>
+</article>
+</main>
+</body>
+</html>

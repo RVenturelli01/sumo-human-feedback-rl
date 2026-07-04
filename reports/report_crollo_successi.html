@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Perché i successi crollano da 0.8 a 0.6</title>
+  <style>
+    :root{
+      --ink:#1f2933; --muted:#52616b; --line:#d9e2ec; --paper:#fff; --soft:#f5f7fa;
+      --good:#0f766e; --bad:#b4232c; --warn:#b45309; --blue:#2563eb;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      color:var(--ink);background:#edf2f7;line-height:1.6}
+    main{max-width:900px;margin:0 auto;padding:44px 20px 72px}
+    article{background:var(--paper);border:1px solid var(--line);border-radius:10px;
+      padding:40px;box-shadow:0 18px 45px rgba(15,23,42,.08)}
+    h1{font-size:2rem;margin:0 0 6px}
+    h2{font-size:1.3rem;margin:34px 0 0;padding-top:20px;border-top:1px solid var(--line)}
+    h3{font-size:1.05rem;margin:22px 0 6px}
+    .sub{color:var(--muted);font-size:1.05rem;margin:6px 0 22px}
+    p{margin:12px 0}
+    .tldr{border-left:4px solid var(--blue);background:var(--soft);padding:16px 18px;border-radius:0 8px 8px 0;margin:18px 0}
+    .analogy{border-left:4px solid var(--warn);background:#fff8f0;padding:16px 18px;border-radius:0 8px 8px 0;margin:18px 0}
+    .key{border-left:4px solid var(--bad);background:#fdf2f2;padding:16px 18px;border-radius:0 8px 8px 0;margin:18px 0}
+    table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.95rem}
+    th,td{border:1px solid var(--line);padding:9px 11px;text-align:left}
+    th{background:var(--soft)}
+    td.n{font-variant-numeric:tabular-nums;text-align:right}
+    .up{color:var(--bad);font-weight:600}
+    .down{color:var(--good);font-weight:600}
+    .cycle{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:20px 0;justify-content:center}
+    .node{flex:1 1 180px;min-width:160px;background:var(--soft);border:1px solid var(--line);
+      border-radius:10px;padding:14px;text-align:center;font-size:.92rem}
+    .node b{display:block;margin-bottom:4px;color:var(--bad)}
+    .arrow{align-self:center;font-size:1.5rem;color:var(--muted)}
+    code{font-family:ui-monospace,Menlo,Consolas,monospace;background:#eef2f7;padding:.08rem .3rem;border-radius:4px}
+    .legend{font-size:.85rem;color:var(--muted)}
+    ol li,ul li{margin:7px 0}
+    .fix{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:6px 18px;margin:14px 0}
+  </style>
+</head>
+<body>
+<main>
+<article>
+  <h1>Perché il tasso di successo crolla da 0.8 a 0.6</h1>
+  <p class="sub">Diagnosi della run <code>demo2_weighted_bc</code> (seed 4) — algoritmo di weighted behavior cloning.</p>
+
+  <div class="tldr">
+    <strong>In una frase.</strong> La policy impara a <em>copiare</em> l'esperto sempre meglio,
+    ma <em>guidare</em> peggiora: iniziano collisioni, e l'algoritmo — copiando anche i propri
+    rollout — finisce per <strong>clonare le proprie collisioni</strong>, innescando una spirale
+    che stabilizza il successo intorno a 0.6.
+  </div>
+
+  <h2>1. Che cosa è successo, in breve</h2>
+  <p>
+    Nelle prime ~45 iterazioni l'agente migliora e arriva a destinazione l'<strong>84%</strong> delle volte.
+    Poi qualcosa si inverte: il successo scende e le <strong>collisioni triplicano</strong>.
+    Gli episodi finiscono prima — cioè l'auto si schianta prima di arrivare.
+  </p>
+
+  <h2>2. Il paradosso che confonde</h2>
+  <p>
+    La cosa contro-intuitiva è questa: <strong>mentre il successo crolla, l'imitazione migliora.</strong>
+    L'errore tra l'azione dell'agente e quella dell'esperto (stesso stato) <em>scende</em>,
+    e la policy assegna probabilità sempre più alta alle azioni dell'esperto.
+  </p>
+  <p>Quindi il problema <em>non</em> è che l'agente "dimentica" l'esperto. Anzi: lo copia sempre più preciso.</p>
+
+  <div class="analogy">
+    <strong>Analogia — il funambolo.</strong>
+    Immagina di imparare a camminare su una fune copiando la <em>posa media</em> di un funambolo esperto,
+    fotogramma per fotogramma. Puoi diventare bravissimo a riprodurre la posa media…
+    e cadere lo stesso. Perché camminare sulla fune non è "avere la posa giusta in media":
+    è <strong>correggere i piccoli errori prima che si accumulino</strong>.
+    Copiare la media ti fa perdere proprio le micro-correzioni che tengono in equilibrio.
+    Piccoli errori, da soli innocui, si <strong>sommano</strong> fino alla caduta (= collisione).
+  </div>
+  <p class="legend">
+    In gergo si chiama <em>covariate shift</em> / accumulo di errori: è il problema classico
+    del pure imitation learning in closed-loop.
+  </p>
+
+  <h2>3. La spirale specifica di questo algoritmo</h2>
+  <p>
+    Qui c'è un secondo ingrediente che rende la caduta <strong>auto-rinforzante</strong>, ed è tipico
+    del nostro metodo. Ricorda come funziona la weighted behavior cloning: ad ogni iterazione
+    mette nel "materiale di studio" <strong>anche le traiettorie prodotte dall'agente stesso</strong>,
+    pesate da un punteggio (il reward) tramite <code>peso ∝ e^{reward}</code>.
+  </p>
+  <p>
+    Finché l'agente non si schianta quasi mai, tutto bene. Ma appena iniziano le collisioni,
+    succede questo:
+  </p>
+
+  <div class="cycle">
+    <div class="node"><b>1. Più collisioni</b>nei rollout dell'agente (per il covariate shift)</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>2. Il reward le distingue peggio</b>il punteggio delle collisioni <em>sale</em>, il divario con gli arrivi si assottiglia</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>3. La BC le copia</b>traiettorie-collisione ricevono peso e vengono clonate</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>4. Ancora più collisioni</b>e si ricomincia dal punto 1</div>
+  </div>
+
+  <div class="key">
+    <strong>La prova nei dati.</strong> Il punteggio (reward) assegnato alle traiettorie che
+    <em>collidono</em> più che raddoppia (0.63 → 1.54), mentre quello degli <em>arrivi</em> resta ~5.6.
+    Il reward, allenato "on-policy" su un mondo sempre più pieno di collisioni, smette di
+    separarle bene — e la BC comincia a imitarle.
+  </div>
+
+  <h2>4. I numeri</h2>
+  <table>
+    <thead>
+      <tr><th>Metrica</th><th class="n">Picco (it 35–55)</th><th class="n">Crollo (60–95)</th><th class="n">Fase finale (120–190)</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Tasso di successo</td><td class="n">0.84</td><td class="n">0.74</td><td class="n up">0.61 ↓</td></tr>
+      <tr><td>Collisioni</td><td class="n">0.11</td><td class="n">0.25</td><td class="n up">0.39 ↑</td></tr>
+      <tr><td>Uscite di strada</td><td class="n">0.05</td><td class="n">0.02</td><td class="n">0.01</td></tr>
+      <tr><td>Lunghezza episodio</td><td class="n">152</td><td class="n">144</td><td class="n up">130 ↓</td></tr>
+      <tr><td>Errore azione vs esperto (RMSE)</td><td class="n">0.20</td><td class="n">0.084</td><td class="n down">0.054 ✓</td></tr>
+      <tr><td>Verosimiglianza azioni esperte</td><td class="n">−3.47</td><td class="n">−5.25</td><td class="n down">−6.52 ✓</td></tr>
+      <tr><td>Reward degli <em>arrivi</em></td><td class="n">6.63</td><td class="n">5.25</td><td class="n">5.62</td></tr>
+      <tr><td>Reward delle <em>collisioni</em></td><td class="n">0.63</td><td class="n">1.14</td><td class="n up">1.54 ↑</td></tr>
+      <tr><td>N. collisioni nel batch</td><td class="n">15</td><td class="n">36</td><td class="n up">61 ↑</td></tr>
+    </tbody>
+  </table>
+  <p class="legend">
+    Verde = "migliora"; rosso = "peggiora". Nota il cuore del paradosso: le righe verdi (imitazione)
+    e quelle rosse (successo) si muovono in direzioni <em>opposte</em>.
+  </p>
+
+  <h2>5. In sintesi</h2>
+  <p>
+    Il crollo <strong>non è un bug</strong>: è la combinazione di due effetti noti.
+  </p>
+  <ol>
+    <li><strong>Copiare ≠ saper guidare</strong> (covariate shift): imitare l'azione media alla perfezione
+      non evita che i piccoli errori si accumulino in collisioni.</li>
+    <li><strong>Spirale di auto-clonazione</strong>: siccome l'algoritmo studia anche i propri rollout pesati
+      dal reward, e il reward smette di penalizzare bene le collisioni, l'agente comincia a
+      imitare i propri incidenti — e la cosa si auto-alimenta fino al plateau a 0.6.</li>
+  </ol>
+
+  <h2>6. Cosa possiamo fare</h2>
+  <div class="fix"><strong>a. Fermarsi al picco.</strong> Il successo pica a ~it 45–50 e poi scende in modo regolare.
+    Basterebbe salvare/scegliere il modello migliore per tasso di successo invece di prendere l'ultimo.</div>
+  <div class="fix"><strong>b. Studiare più esperto e meno sé stesso.</strong> Aumentare la quota di traiettorie
+    esperte nel batch riduce la clonazione dei propri incidenti (frena la spirale).</div>
+  <div class="fix"><strong>c. Penalizzare meglio le collisioni nel reward.</strong> Oggi il reward quasi non
+    "punisce" lo stato di collisione: rinforzare quel segnale rimette gli incidenti in fondo alla classifica.</div>
+  <div class="fix"><strong>d. Non irrigidire troppo la policy.</strong> Meno passi di clonazione per iterazione
+    (o un minimo di variabilità) mantengono le micro-correzioni che evitano gli schianti.</div>
+
+  <p class="legend" style="margin-top:22px">
+    Per confermare al 100% la spirale si potrebbero aggiungere due log: l'entropia della policy
+    (per vedere se si "irrigidisce") e quanta parte del peso di clonazione finisce sulle traiettorie
+    che collidono.
+  </p>
+</article>
+</main>
+</body>
+</html>
