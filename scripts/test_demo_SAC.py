@@ -24,10 +24,12 @@ def main(cfg: DictConfig) -> None:
     seed = cfg.run.seed
     rng = seed_everything(seed)
 
-    group_name = "sac_demo_irl"
     loss_type = cfg.algo.kwargs.loss_type
     relabel_rewards = cfg.algo.kwargs.relabel_rewards
-    run_name = f"{group_name} loss={loss_type} relabel={relabel_rewards} seed={seed}"
+    # Include loss_type in the group so different demo losses aggregate into
+    # separate W&B groups (one band per loss across seeds).
+    group_name = f"sac_demo_irl_{loss_type}"
+    run_name = f"{group_name} relabel={relabel_rewards} seed={seed}"
     run_dir = make_run_dir(cfg.run.output_dir, run_name)
     init_wandb_run(cfg, group_name, run_name, run_dir)
 
