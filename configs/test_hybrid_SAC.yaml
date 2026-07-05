@@ -43,6 +43,12 @@ algo:
     # ------------------------------------------------------------------
     lambda_demo: 1.0
     lambda_pref: 1.0
+    # Equalize the GCL and Bradley-Terry gradient norms on the shared reward net
+    # before combining (the raw GCL gradient is ~1000x larger and otherwise buries
+    # the preference signal). With this on, lambda_demo/lambda_pref weight the
+    # *equalized* gradients. max_grad_balance caps the pref rescale factor.
+    balance_reward_grads: true
+    max_grad_balance: 100000.0
 
     # --- demonstration (Guided Cost Learning / MaxEnt IRL) branch ---
     # maxent_2 is the GCL-style expert+model partition surrogate.
@@ -63,7 +69,10 @@ algo:
     # --- shared reward-model optimization ---
     lr_rew: 0.001
     gradient_steps_rew: 100
-    l2_rew: 0.01
+    # 0.01 decays the reward weights to zero when preferences are active (the BT
+    # gradient is weaker than the weight decay); 0.0001 matches the working
+    # Christiano preference recipe. See report_reward_learning.md.
+    l2_rew: 0.0001
     temperature: 1.0
     fragment_length: null
 

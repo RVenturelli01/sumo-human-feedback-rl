@@ -55,7 +55,13 @@ REWARD_LR=0.001
 REWARD_GRADIENT_STEPS=100
 EXPERT_BATCH_SIZE=32
 MODEL_BATCH_SIZE=64
-REWARD_L2=0.01
+# 0.0001 (not 0.01): with preferences active the BT gradient is weaker than a
+# 0.01 weight decay, which collapses the reward net to a constant. Matches the
+# working Christiano recipe.
+REWARD_L2=0.0001
+# Equalize GCL vs BT gradient norms on the shared reward net.
+BALANCE_REWARD_GRADS=true
+MAX_GRAD_BALANCE=1e5
 TEMPERATURE=1.0
 INITIAL_AGENT_TIMESTEPS=10000
 EXPLORATION_FRAC=0.0
@@ -101,6 +107,8 @@ cmd=(
   agent.kwargs.device="$DEVICE"
   algo.kwargs.lambda_demo="$LAMBDA_DEMO"
   algo.kwargs.lambda_pref="$LAMBDA_PREF"
+  algo.kwargs.balance_reward_grads="$BALANCE_REWARD_GRADS"
+  algo.kwargs.max_grad_balance="$MAX_GRAD_BALANCE"
   algo.kwargs.loss_type="$LOSS_TYPE"
   algo.kwargs.relabel_rewards="$RELABEL_REWARDS"
   algo.kwargs.normalize_agent_reward="$NORMALIZE_AGENT_REWARD"
