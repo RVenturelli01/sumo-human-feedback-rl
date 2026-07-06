@@ -46,9 +46,9 @@ ARCH_VALS=("[128,128]" "[32,32]")
 # initial_queries = 2 × total_queries / 100  (= 2 queries-per-iteration)
 LABEL_TQ_PAIRS=(
     "soft:10000:200"
-    "binary_bernulli:100000:2000"
-    "binary_bernulli:50000:1000"
-    "binary_bernulli:10000:200"
+    "binary_bernoulli:100000:2000"
+    "binary_bernoulli:50000:1000"
+    "binary_bernoulli:10000:200"
 )
 
 # ── Build experiment list ────────────────────────────────────────────────────

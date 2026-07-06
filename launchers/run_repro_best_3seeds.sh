@@ -8,7 +8,7 @@ set -euo pipefail
 #   2. demo               (SAC)  -> scripts/test_demo_SAC.py
 #   3. maxent_corrected   (SAC)  -> scripts/test_demo_SAC.py
 #   4. chri_soft          (PPO)  -> scripts/test_chri_PPO.py
-#   5. chri_binary_bernulli (PPO)-> scripts/test_chri_PPO.py
+#   5. chri_binary_bernoulli (PPO)-> scripts/test_chri_PPO.py
 #
 # 5 configs x 3 seeds = 15 runs, logged to a NEW W&B project, each config in its
 # own W&B *group* (seeds aggregate) so a grouped plot with x-axis
@@ -56,7 +56,7 @@ export MKL_NUM_THREADS="$CORES_PER_JOB"
 export OPENBLAS_NUM_THREADS="$CORES_PER_JOB"
 export NUMEXPR_NUM_THREADS="$CORES_PER_JOB"
 
-CONFIGS=(maxent_2 demo maxent_corrected chri_soft chri_binary_bernulli)
+CONFIGS=(maxent_2 demo maxent_corrected chri_soft chri_binary_bernoulli)
 
 # Populate globals SCRIPT and OVERRIDES (array) for a given config name.
 build_cmd() {
@@ -112,10 +112,10 @@ build_cmd() {
         train.kwargs.total_timesteps=2000000 train.kwargs.total_queries=10000
         train.kwargs.timesteps_per_iteration=20000
       ) ;;
-    chri_binary_bernulli)
+    chri_binary_bernoulli)
       SCRIPT="scripts/test_chri_PPO.py"
       OVERRIDES+=(
-        algo.kwargs.labels_type=binary_bernulli
+        algo.kwargs.labels_type=binary_bernoulli
         algo.kwargs.lr_rew=0.0003 algo.kwargs.gradient_steps_rew=100 algo.kwargs.l2_rew=0.0001
         algo.kwargs.temperature=20 algo.kwargs.fragment_length=2
         algo.kwargs.fragmenter_type=active algo.kwargs.initial_queries=2000

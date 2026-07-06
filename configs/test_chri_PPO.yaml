@@ -46,7 +46,7 @@ algo:
     train_comparison_frac: 0.8
     temperature: 20.0
     fragmenter_type: "active"
-    labels_type: "binary_bernulli"
+    labels_type: "binary_bernoulli"
     reward_model_kwargs:
       n_ensembles: 3
       net_arch: [32, 32]

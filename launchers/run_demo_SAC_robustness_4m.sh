@@ -53,7 +53,6 @@ TOTAL_TIMESTEPS="${TOTAL_TIMESTEPS:-4000000}"
 TIMESTEPS_PER_ITERATION="${TIMESTEPS_PER_ITERATION:-20000}"
 LOG_INTERVAL=100 # SAC log per episode, PPO per rollout.
 CHECKPOINT_INTERVAL=10
-IMITATION_DIAGNOSTICS_INTERVAL=5
 
 cmd=(
   "$PYTHON_BIN" scripts/test_demo_SAC.py
@@ -94,7 +93,6 @@ cmd=(
   train.kwargs.timesteps_per_iteration="$TIMESTEPS_PER_ITERATION"
   train.kwargs.log_interval="$LOG_INTERVAL"
   train.kwargs.checkpoint_interval="$CHECKPOINT_INTERVAL"
-  train.kwargs.imitation_diagnostics_interval="$IMITATION_DIAGNOSTICS_INTERVAL"
 )
 
 printf 'Running:'

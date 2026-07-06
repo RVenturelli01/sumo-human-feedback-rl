@@ -22,8 +22,14 @@ class _Member(RewardNet):
 
 
 def _infer_arch(sd: dict, member_idx: int = 0):
-    """Return (input_dim, hidden_dims, has_bias_last) by inspecting state dict keys."""
+    """Return (input_dim, hidden_dims, has_bias_last) by inspecting state dict keys.
+
+    Supports both the old per-member-normalized layout ("members.i.net.net.*")
+    and the current flat layout ("members.i.net.*").
+    """
     prefix = f"members.{member_idx}.net.net."
+    if not any(k.startswith(prefix) for k in sd):
+        prefix = f"members.{member_idx}.net."
     weight_keys = sorted(
         [k for k in sd if k.startswith(prefix) and k.endswith(".weight")],
         key=lambda k: int(k[len(prefix):].split(".")[0]),
@@ -84,11 +90,11 @@ def load_reward_ensemble(path: str, obs_space, act_space, device: str = "cpu") -
     fixed_sd = {}
 
     for k, v in sd.items():
-        # durante il training ogni reward network era normalizzata individualmente (NormalizedRewardNet);
-        # il checkpoint contiene ancora i buffer _mean e _std di ogni membro;
-        # il RewardEnsemble invece usa direttamente i reward raw dei membri, quindi quei buffer sono inutili;
-        # un’eventuale normalizzazione globale residua viene comunque compensata dall’affine alignment successivo;
-        # quindi i buffer vengono rimossi dal checkpoint per poter ricostruire correttamente l’ensemble “grezzo”.
+        # Old checkpoints wrapped each member in a NormalizedRewardNet, leaving
+        # per-member _mean/_std buffers and an extra "net." nesting level. The
+        # raw RewardEnsemble rebuilt here does not use them (any residual global
+        # normalization is compensated by the later affine alignment), so the
+        # buffers are dropped and the nesting flattened.
         if k.endswith("._mean") or k.endswith("._std"):
             continue
         fixed_key = k.replace(".net.net.", ".net.")

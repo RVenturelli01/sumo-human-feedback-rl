@@ -74,10 +74,8 @@ train:
     # How often (in agent episodes) SB3 logs during agent training.
     log_interval: 100
     checkpoint_interval: 10
-    # Set to 0 to disable the state-action occupancy AUC diagnostic.
-    imitation_diagnostics_interval: 10
     # How often (in iterations) to log the debug-dataset true-vs-predicted
-    # return scatter to W&B. null -> use imitation_diagnostics_interval; 0 disables.
+    # return scatter to W&B. null -> default (10); 0 disables.
     scatter_interval: null
 
 hydra:
