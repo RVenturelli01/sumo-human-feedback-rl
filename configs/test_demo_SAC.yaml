@@ -61,6 +61,11 @@ algo:
     initial_agent_timesteps: 10000
     exploration_frac: 0.0
     exploration_eps: 0.5
+    # Dump agent/* logs every N env timesteps instead of every log_interval
+    # episodes. Seeds share the same timestep grid, so W&B grouped panels with
+    # x=agent/time/total_timesteps can draw min/max bands across seeds.
+    # null = SB3's native episode-based dumps (per-seed x values, no bands).
+    agent_log_timestep_interval: 10000
     reward_model_kwargs:
       n_ensembles: 3
       net_arch: [32, 32]
