@@ -2,6 +2,8 @@
 SAC baseline trained on the environment's TRUE reward (no reward model).
 """
 
+import hashlib
+
 import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
@@ -26,19 +28,29 @@ from _common import init_wandb_run, make_run_dir, seed_everything
 
 def get_name():
     group_name = "sac_baseline"
-    # Name each run after the Hydra overrides it received. Under a sweep these are
-    # exactly the swept hyperparameters for this trial, so every trial gets a
-    # distinct, informative name (e.g. "learning_rate=0.0003_gamma=0.997") that
-    # works automatically at every stage, whatever that stage sweeps. Standalone
-    # runs (no overrides) fall back to the group name. All runs share the group,
-    # so baseline runs stay together and separable from the demo-IRL experiments.
+    # Keep the filesystem/W&B run name short. The full resolved config is stored
+    # in W&B; the hash only disambiguates override-heavy launcher or sweep runs.
     overrides = HydraConfig.get().overrides.task
+    if not overrides:
+        return group_name, group_name
+
+    digest = hashlib.sha1("|".join(overrides).encode("utf-8")).hexdigest()[:8]
+    visible_keys = {
+        "learning_rate",
+        "gamma",
+        "tau",
+        "ent_coef",
+        "train_freq",
+        "gradient_steps",
+    }
     parts = []
-    for o in overrides:
-        key, _, value = o.partition("=")
-        # keep only the leaf of the dotpath to keep names short
-        parts.append(f"{key.split('.')[-1]}={value}")
-    run_name = "_".join(parts) if parts else group_name
+    for override in overrides:
+        key, _, value = override.partition("=")
+        leaf = key.split(".")[-1]
+        if leaf in visible_keys:
+            parts.append(f"{leaf}={value}")
+    label = "_".join(parts[:4])
+    run_name = f"{group_name}_{label}_{digest}" if label else f"{group_name}_{digest}"
     return group_name, run_name
 
 
