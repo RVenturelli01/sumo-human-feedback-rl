@@ -1,0 +1,84 @@
+run:
+  seed: 0
+  output_dir: Null
+
+wandb:
+  entity: Null
+  project: Null
+  tags: Null
+
+env:
+  id: "HighwayEgo-v0"
+  n_envs: 4
+  kwargs:
+    ego: "continuous"
+    reward: "fast"
+
+agent:
+  kwargs:
+    policy: "MlpPolicy"
+    buffer_size: 100000
+    learning_starts: 2000
+    batch_size: 256
+    learning_rate: 0.0003
+    gamma: 0.997
+    tau: 0.005
+    ent_coef: "auto"
+    train_freq: 8
+    gradient_steps: 64
+    policy_kwargs:
+      net_arch: [64, 64]
+    device: "cpu"
+
+algo:
+  kwargs:
+    # Demo side: maxent, maxent_2, demo, demo_corrected, maxent_corrected.
+    loss_type: maxent_2
+    # Preference side.
+    labels_type: "soft"
+    fragmenter_type: "active"
+    preference_fragment_length: 1
+    batch_size_pref: 128
+    comparison_queue_size: 1000000
+    train_comparison_frac: 0.8
+    total_queries: 10000
+    initial_queries: 1000
+    query_schedule: "constant"
+    # Gradient balancing: effective demo gradient ~= demo_weight * BT gradient.
+    demo_weight: 1.0
+    max_balance_scale: 100.0
+    balance_eps: 1e-8
+    # Shared reward model / SAC reward handling.
+    relabel_rewards: false
+    normalize_agent_reward: false
+    lr_rew: 0.001
+    gradient_steps_rew: 100
+    batch_size_expert: 64
+    batch_size_model: 64
+    l2_rew: 0.01
+    temperature: 1.0
+    fragment_length: null
+    initial_agent_timesteps: 10000
+    exploration_frac: 0.0
+    exploration_eps: 0.5
+    agent_log_timestep_interval: 10000
+    reward_model_kwargs:
+      n_ensembles: 3
+      net_arch: [32, 32]
+      activation_fn: tanh
+      alpha: 1
+
+train:
+  kwargs:
+    total_timesteps: 2000000
+    timesteps_per_iteration: 10000
+    log_interval: 100
+    checkpoint_interval: 10
+    scatter_interval: null
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
+  output_subdir: null
