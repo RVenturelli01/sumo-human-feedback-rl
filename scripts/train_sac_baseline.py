@@ -8,11 +8,15 @@ from omegaconf import DictConfig, OmegaConf
 
 import numpy as np
 
-import sumo_rl_ego as sre
+import sumo_gym_ego as sge
 from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import VecMonitor
-from sumo_rl_ego.utils import CustomLoggingCallback
+from human_feedback_rl.common.custom_logging_callback import (
+    CustomLoggingCallback,
+    FixedIntervalDumpCallback,
+)
 from sumo_gym_ego import EgoStatus
+from sumo_rl_ego.utils import run_episode
 import wandb
 
 from human_feedback_rl.common.loggers import WandbWriter, PrefixedLogger, Logger
@@ -39,7 +43,7 @@ def get_name():
 
 
 class _SB3PolicyAdapter:
-    """Wraps an SB3 model to match the sre policy interface used by run_episode."""
+    """Wraps an SB3 model to match the policy interface used by run_episode."""
 
     def __init__(self, model):
         self.model = model
@@ -54,14 +58,14 @@ class _SB3PolicyAdapter:
 
 def evaluate(model, env_id: str, env_kwargs: dict, n_episodes: int, seed: int) -> dict:
     """Run `n_episodes` deterministic episodes on a fresh env; return mean metrics."""
-    env = sre.make_env(env_id, seed=seed, **env_kwargs)
+    env = sge.make_env(env_id, seed=seed, **env_kwargs)
     policy = _SB3PolicyAdapter(model)
     fast_returns, comfort_returns, speeds, lengths = [], [], [], []
     successes, collisions, off_roads, timeouts = [], [], [], []
     try:
         for ep in range(n_episodes):
             # Vary the eval seed per episode so we average over distinct scenarios.
-            info = sre.run_episode(env, policy, seed=seed + ep)
+            info = run_episode(env, policy, seed=seed + ep)
             ep_metrics = info.get("metrics", {}).get("episode", {})
             fast_returns.append(float(ep_metrics.get("rewards/ep_fast_return", np.nan)))
             comfort_returns.append(float(ep_metrics.get("rewards/ep_comfort_return", np.nan)))
@@ -100,17 +104,24 @@ def train_and_eval_one_seed(cfg, seed: int, env_kwargs: dict):
     """
     seed_everything(seed)
 
-    env = sre.make_vec_env(cfg.env.id, n_envs=cfg.env.n_envs, base_seed=seed, **env_kwargs)
+    env = sge.make_vec_env(cfg.env.id, n_envs=cfg.env.n_envs, base_seed=seed, **env_kwargs)
     agent = SAC(env=env, seed=seed, **OmegaConf.to_container(cfg.agent.kwargs, resolve=True))
 
     agent.set_env(VecMonitor(env))
     logger = Logger(folder=None, output_formats=[WandbWriter()])
     agent.set_logger(PrefixedLogger(logger, f"agent_seed{seed}"))
 
+    callbacks = [CustomLoggingCallback()]
+    log_interval = cfg.train.kwargs.log_interval
+    dump_interval = cfg.train.get("agent_log_timestep_interval", None)
+    if dump_interval is not None:
+        callbacks.append(FixedIntervalDumpCallback(dump_interval))
+        log_interval = None
+
     agent.learn(
         total_timesteps=cfg.train.kwargs.total_timesteps,
-        log_interval=cfg.train.kwargs.log_interval,
-        callback=CustomLoggingCallback(),
+        log_interval=log_interval,
+        callback=callbacks,
     )
 
     # Release the single global SUMO instance before opening the eval env.

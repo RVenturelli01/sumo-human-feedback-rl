@@ -10,7 +10,8 @@ run:
 
 wandb:
   entity: "andrea02polimi-politecnico-di-milano"
-  project: "sac-baseline-tuning"
+  project: "preference+demonstration"
+  tags: Null
 
 env:
   id: "HighwayEgo-v0"
@@ -23,15 +24,15 @@ env:
 agent:
   kwargs:
     policy: "MlpPolicy"
-    buffer_size: 100000
+    buffer_size: 300000
     learning_starts: 2000
     batch_size: 256
-    learning_rate: 0.0003
+    learning_rate: 0.000124298330
     gamma: 0.997
-    tau: 0.005
+    tau: 0.00311
     ent_coef: "auto"
-    train_freq: 1
-    gradient_steps: 1
+    train_freq: 8
+    gradient_steps: 8
     policy_kwargs:
       net_arch: [64, 64]
     device: "cpu"
@@ -45,9 +46,12 @@ eval:
   seed: 1000         # distinct from training seed to avoid evaluating on train scenarios
 
 train:
+  # Same optional fixed-grid agent logging used by DemoAlgorithm.
+  # null = SB3's native episode-based dumps.
+  agent_log_timestep_interval: null
   kwargs:
-    total_timesteps: 1000000
-    log_interval: 4    # SB3 logs every `log_interval` episodes
+    total_timesteps: 2000000
+    log_interval: 100    # SB3 logs every `log_interval` episodes
 
 hydra:
   job:
