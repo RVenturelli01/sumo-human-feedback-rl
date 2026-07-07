@@ -111,8 +111,8 @@ def train_and_eval_one_seed(cfg, seed: int, env_kwargs: dict):
 
     Each seed gets its own env that is fully closed before evaluation, since
     libsumo holds a single global SUMO instance — only one env may be open at a
-    time. Training metrics are logged under an `agent_seed{seed}` prefix so the
-    per-seed learning curves stay separate in W&B.
+    time. Training metrics use the same `agent` prefix as DemoAlgorithm runs so
+    W&B panels can compare the baseline against learned-reward agents.
     """
     seed_everything(seed)
 
@@ -121,7 +121,7 @@ def train_and_eval_one_seed(cfg, seed: int, env_kwargs: dict):
 
     agent.set_env(VecMonitor(env))
     logger = Logger(folder=None, output_formats=[WandbWriter()])
-    agent.set_logger(PrefixedLogger(logger, f"agent_seed{seed}"))
+    agent.set_logger(PrefixedLogger(logger, "agent"))
 
     callbacks = [CustomLoggingCallback()]
     log_interval = cfg.train.kwargs.log_interval
