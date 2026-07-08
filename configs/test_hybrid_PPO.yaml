@@ -1,0 +1,98 @@
+run:
+  seed: 0
+  output_dir: Null
+
+wandb:
+  entity: Null
+  project: Null
+  tags: Null
+
+env:
+  id: "HighwayEgo-v0"
+  n_envs: 4
+  kwargs:
+    ego: "continuous"
+    reward: "fast"
+
+agent:
+  kwargs:
+    policy: "MlpPolicy"
+    n_steps: 1000
+    n_epochs: 10
+    learning_rate: 0.0003
+    batch_size: 64
+    ent_coef: 0
+    gae_lambda: 0.95
+    gamma: 0.997
+    policy_kwargs:
+      net_arch: [64, 64]
+    device: "cpu"
+
+algo:
+  kwargs:
+    # How demonstrations enter the reward model:
+    #   gcl         -> demo IRL loss + BT preference loss on the shared net
+    #   preferences -> demos become expert>agent preference pairs (Ibarz 2018 baseline)
+    demo_mode: "gcl"
+    # Demo side: maxent, maxent_2, demo, demo_corrected, maxent_corrected.
+    loss_type: maxent_2
+    # Conflict resolution between demo and preference gradients (gcl mode):
+    #   none | gate | project (preference-priority) | pcgrad
+    conflict_mode: "none"
+    conflict_threshold: 0.0
+    # Preference side.
+    labels_type: "soft"
+    # Oracle label softness. 20 is the validated Christiano recipe; distinct
+    # from `temperature`, which scales the demo IRL loss only.
+    pref_temperature: 20.0
+    fragmenter_type: "active"
+    preference_fragment_length: 1
+    batch_size_pref: 128
+    comparison_queue_size: 1000000
+    train_comparison_frac: 0.8
+    total_queries: 10000
+    initial_queries: 1000
+    query_schedule: "constant"
+    # Gradient balancing: effective demo gradient ~= demo_weight * BT gradient.
+    demo_weight: 1.0
+    max_balance_scale: 100.0
+    balance_eps: 1e-8
+    # demos-as-preferences baseline (demo_mode=preferences only).
+    demo_pref_pairs_per_iteration: 64
+    demo_pref_batch_fraction: 0.5
+    # Shared reward model / PPO reward handling.
+    relabel_rewards: false
+    normalize_agent_reward: true
+    lr_rew: 0.0003
+    gradient_steps_rew: 300
+    batch_size_expert: 64
+    batch_size_model: 64
+    # Keep small for the preference branch; 1e-2 can overwhelm BT gradients.
+    l2_rew: 0.0001
+    temperature: 1.0
+    fragment_length: null
+    initial_agent_timesteps: 20000
+    exploration_frac: 0.0
+    exploration_eps: 0.5
+    agent_log_timestep_interval: null
+    reward_model_kwargs:
+      n_ensembles: 3
+      net_arch: [128, 128]
+      activation_fn: tanh
+      alpha: 1
+
+train:
+  kwargs:
+    total_timesteps: 2000000
+    timesteps_per_iteration: 20000
+    log_interval: 1
+    checkpoint_interval: 10
+    scatter_interval: null
+    total_queries: 10000
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
+  output_subdir: null
