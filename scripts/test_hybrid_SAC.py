@@ -26,8 +26,15 @@ def main(cfg: DictConfig) -> None:
 
     loss_type = cfg.algo.kwargs.loss_type
     demo_weight = cfg.algo.kwargs.demo_weight
+    demo_weight_schedule = cfg.algo.kwargs.get("demo_weight_schedule", {})
+    schedule_label = ""
+    if demo_weight_schedule.get("enabled", False):
+        schedule_label = (
+            f" {demo_weight_schedule.type}DemoWeight"
+            f"->{demo_weight_schedule.final}"
+        )
     group_name = f"sac_hybrid_{loss_type}"
-    run_name = f"{group_name} demo_weight={demo_weight} seed={seed}"
+    run_name = f"{group_name} demo_weight={demo_weight}{schedule_label} seed={seed}"
     run_dir = make_run_dir(cfg.run.output_dir, run_name)
     init_wandb_run(cfg, group_name, run_name, run_dir)
 
