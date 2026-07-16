@@ -17,13 +17,11 @@ from human_feedback_rl.common.custom_logging_callback import (
     CustomLoggingCallback,
     FixedIntervalDumpCallback,
 )
-from sumo_gym_ego import EgoStatus
-from sumo_rl_ego.utils import run_episode
 import wandb
 
 from human_feedback_rl.common.loggers import WandbWriter, PrefixedLogger, Logger
 
-from _common import init_wandb_run, make_run_dir, seed_everything
+from _common import evaluate, init_wandb_run, make_run_dir, seed_everything
 
 
 def get_name():
@@ -52,58 +50,6 @@ def get_name():
     label = "_".join(parts[:4])
     run_name = f"{group_name}_{label}_{digest}" if label else f"{group_name}_{digest}"
     return group_name, run_name
-
-
-class _SB3PolicyAdapter:
-    """Wraps an SB3 model to match the policy interface used by run_episode."""
-
-    def __init__(self, model):
-        self.model = model
-
-    def reset(self):
-        pass
-
-    def predict(self, obs):
-        action, _ = self.model.predict(obs, deterministic=True)
-        return action
-
-
-def evaluate(model, env_id: str, env_kwargs: dict, n_episodes: int, seed: int) -> dict:
-    """Run `n_episodes` deterministic episodes on a fresh env; return mean metrics."""
-    env = sge.make_env(env_id, seed=seed, **env_kwargs)
-    policy = _SB3PolicyAdapter(model)
-    fast_returns, comfort_returns, speeds, lengths = [], [], [], []
-    successes, collisions, off_roads, timeouts = [], [], [], []
-    try:
-        for ep in range(n_episodes):
-            # Vary the eval seed per episode so we average over distinct scenarios.
-            info = run_episode(env, policy, seed=seed + ep)
-            ep_metrics = info.get("metrics", {}).get("episode", {})
-            fast_returns.append(float(ep_metrics.get("rewards/ep_fast_return", np.nan)))
-            comfort_returns.append(float(ep_metrics.get("rewards/ep_comfort_return", np.nan)))
-            speeds.append(float(ep_metrics.get("performance/ep_avg_speed", np.nan)))
-            lengths.append(float(info.get("step", 0)))
-
-            # The four terminal statuses are mutually exclusive and partition the
-            # outcomes, so their rates characterise *how* the agent fails, not just
-            # that it does.
-            status = info.get("ego_status", EgoStatus.RUNNING)
-            successes.append(int(status == EgoStatus.ARRIVED.value))
-            collisions.append(int(status == EgoStatus.COLLIDED.value))
-            off_roads.append(int(status == EgoStatus.OFF_ROAD.value))
-            timeouts.append(int(status == EgoStatus.TIMEOUT.value))
-    finally:
-        env.close()
-    return {
-        "eval/mean_fast_return": float(np.nanmean(fast_returns)),
-        "eval/mean_comfort_return": float(np.nanmean(comfort_returns)),
-        "eval/mean_speed": float(np.nanmean(speeds)),
-        "eval/mean_ep_length": float(np.mean(lengths)),
-        "eval/success_rate": float(np.mean(successes)),
-        "eval/collision_rate": float(np.mean(collisions)),
-        "eval/off_road_rate": float(np.mean(off_roads)),
-        "eval/timeout_rate": float(np.mean(timeouts)),
-    }
 
 
 def train_and_eval_one_seed(cfg, seed: int, env_kwargs: dict):

@@ -36,10 +36,6 @@ algo:
     demo_mode: "gcl"
     # Demo side: maxent, maxent_2, demo, demo_corrected, maxent_corrected.
     loss_type: maxent_2
-    # Conflict resolution between demo and preference gradients (gcl mode):
-    #   none | gate | project (preference-priority) | pcgrad
-    conflict_mode: "none"
-    conflict_threshold: 0.0
     # Preference side.
     labels_type: "soft"
     # Oracle label softness. 20 is the validated Christiano recipe; distinct

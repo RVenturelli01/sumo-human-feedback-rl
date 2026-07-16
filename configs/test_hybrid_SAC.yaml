@@ -1,6 +1,11 @@
 run:
   seed: 0
   output_dir: Null
+  # Demo budget: null = full dataset. Subsampling keeps the prefix of one
+  # seeded permutation, so smaller budgets are nested inside larger ones.
+  n_expert_trajectories: null
+  # null = follow run.seed (multi-seed runs then also vary the demo draw).
+  demo_subsample_seed: null
 
 wandb:
   entity: Null
@@ -38,10 +43,6 @@ algo:
     demo_mode: "gcl"
     # Demo side: maxent, maxent_2, demo, demo_corrected, maxent_corrected.
     loss_type: maxent_2
-    # Conflict resolution between demo and preference gradients (gcl mode):
-    #   none | gate | project (preference-priority) | pcgrad
-    conflict_mode: "none"
-    conflict_threshold: 0.0
     # Preference side.
     labels_type: "soft"
     # Oracle label softness. 20 is the validated Christiano recipe; distinct
@@ -55,14 +56,8 @@ algo:
     total_queries: 10000
     initial_queries: 1000
     query_schedule: "constant"
-    # Gradient balancing: effective demo gradient ~= current demo_weight * BT gradient.
+    # Gradient balancing: effective demo gradient ~= demo_weight * BT gradient.
     demo_weight: 1.0
-    # Optional outer-iteration schedule for demo_weight. When enabled, demo_weight
-    # is the initial value and `final` is reached on the last training iteration.
-    demo_weight_schedule:
-      enabled: false
-      type: "linear"  # constant | linear | cosine
-      final: 0.0
     max_balance_scale: 100.0
     balance_eps: 1e-8
     # demos-as-preferences baseline (demo_mode=preferences only).
@@ -90,6 +85,12 @@ algo:
       net_arch: [128, 128]
       activation_fn: tanh
       alpha: 1
+
+# Final held-out evaluation: deterministic episodes on a fresh env, same
+# convention as train_sac_baseline (seed 1000 is disjoint from training seeds).
+eval:
+  n_episodes: 20
+  seed: 1000
 
 train:
   kwargs:

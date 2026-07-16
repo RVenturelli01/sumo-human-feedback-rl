@@ -5,9 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Experiment arm. Sets demo_mode/conflict_mode/demo_weight/queries presets:
-#   pref_only | demo_only | hybrid_v0 | hybrid_conflict | demos_as_pref
-MODE="${MODE:-hybrid_conflict}"
+# Experiment arm. Sets demo_mode/demo_weight/queries presets:
+#   pref_only | demo_only | hybrid_v0 | demos_as_pref
+MODE="${MODE:-hybrid_v0}"
 
 # Runtime and logging
 PYTHON_BIN="${PYTHON_BIN:-python}"
@@ -37,8 +37,6 @@ DEVICE="${DEVICE:-cpu}"
 # Demo side: maxent, maxent_2, demo, demo_corrected, maxent_corrected.
 LOSS_TYPE="${LOSS_TYPE:-demo}"
 DEMO_MODE="${DEMO_MODE:-gcl}"
-CONFLICT_MODE="${CONFLICT_MODE:-none}"
-CONFLICT_THRESHOLD="${CONFLICT_THRESHOLD:-0.0}"
 RELABEL_REWARDS="${RELABEL_REWARDS:-true}"
 NORMALIZE_AGENT_REWARD="${NORMALIZE_AGENT_REWARD:-true}"
 REWARD_LR="${REWARD_LR:-0.0003}"
@@ -48,7 +46,7 @@ MODEL_BATCH_SIZE="${MODEL_BATCH_SIZE:-64}"
 PREF_BATCH_SIZE="${PREF_BATCH_SIZE:-128}"
 # Validated 2026-07-05: 0.01 collapses the preference branch (weight decay
 # ~2x the BT gradient). Keep at 1e-4.
-REWARD_L2="${REWARD_L2:-0.001}"
+REWARD_L2="${REWARD_L2:-0.0001}"
 TEMPERATURE="${TEMPERATURE:-1.0}"
 PREF_TEMPERATURE="${PREF_TEMPERATURE:-20.0}"
 FRAGMENT_LENGTH="${FRAGMENT_LENGTH:-null}"
@@ -61,9 +59,6 @@ TOTAL_QUERIES="${TOTAL_QUERIES:-10000}"
 INITIAL_QUERIES="${INITIAL_QUERIES:-200}"
 QUERY_SCHEDULE="${QUERY_SCHEDULE:-constant}"
 DEMO_WEIGHT="${DEMO_WEIGHT:-1.0}"
-DEMO_WEIGHT_SCHEDULE_ENABLED="${DEMO_WEIGHT_SCHEDULE_ENABLED:-false}"
-DEMO_WEIGHT_SCHEDULE_TYPE="${DEMO_WEIGHT_SCHEDULE_TYPE:-linear}"
-DEMO_WEIGHT_SCHEDULE_FINAL="${DEMO_WEIGHT_SCHEDULE_FINAL:-0.0}"
 MAX_BALANCE_SCALE="${MAX_BALANCE_SCALE:-100.0}"
 BALANCE_EPS="${BALANCE_EPS:-1e-8}"
 DEMO_PREF_PAIRS_PER_ITERATION="${DEMO_PREF_PAIRS_PER_ITERATION:-256}"
@@ -72,16 +67,13 @@ DEMO_PREF_BATCH_FRACTION="${DEMO_PREF_BATCH_FRACTION:-0.5}"
 # ---- MODE presets (override the defaults above) -----------------------------
 case "$MODE" in
   pref_only)
-    DEMO_WEIGHT=0.0; DEMO_MODE=gcl; CONFLICT_MODE=none ;;
+    DEMO_WEIGHT=0.0; DEMO_MODE=gcl ;;
   demo_only)
-    TOTAL_QUERIES=0; INITIAL_QUERIES=0; DEMO_MODE=gcl; CONFLICT_MODE=none ;;
+    TOTAL_QUERIES=0; INITIAL_QUERIES=0; DEMO_MODE=gcl ;;
   hybrid_v0)
-    DEMO_MODE=gcl; CONFLICT_MODE=none ;;
-  hybrid_conflict)
-    DEMO_MODE=gcl
-    [[ "$CONFLICT_MODE" == "none" ]] && CONFLICT_MODE=project ;;
+    DEMO_MODE=gcl ;;
   demos_as_pref)
-    DEMO_MODE=preferences; CONFLICT_MODE=none ;;
+    DEMO_MODE=preferences ;;
   *) echo "unknown MODE: $MODE" >&2; exit 1 ;;
 esac
 INITIAL_AGENT_TIMESTEPS="${INITIAL_AGENT_TIMESTEPS:-20000}"
@@ -121,8 +113,6 @@ cmd=(
   agent.kwargs.device="$DEVICE"
   algo.kwargs.loss_type="$LOSS_TYPE"
   algo.kwargs.demo_mode="$DEMO_MODE"
-  algo.kwargs.conflict_mode="$CONFLICT_MODE"
-  algo.kwargs.conflict_threshold="$CONFLICT_THRESHOLD"
   algo.kwargs.pref_temperature="$PREF_TEMPERATURE"
   algo.kwargs.demo_pref_pairs_per_iteration="$DEMO_PREF_PAIRS_PER_ITERATION"
   algo.kwargs.demo_pref_batch_fraction="$DEMO_PREF_BATCH_FRACTION"
@@ -145,9 +135,6 @@ cmd=(
   algo.kwargs.initial_queries="$INITIAL_QUERIES"
   algo.kwargs.query_schedule="$QUERY_SCHEDULE"
   algo.kwargs.demo_weight="$DEMO_WEIGHT"
-  algo.kwargs.demo_weight_schedule.enabled="$DEMO_WEIGHT_SCHEDULE_ENABLED"
-  algo.kwargs.demo_weight_schedule.type="$DEMO_WEIGHT_SCHEDULE_TYPE"
-  algo.kwargs.demo_weight_schedule.final="$DEMO_WEIGHT_SCHEDULE_FINAL"
   algo.kwargs.max_balance_scale="$MAX_BALANCE_SCALE"
   algo.kwargs.balance_eps="$BALANCE_EPS"
   algo.kwargs.initial_agent_timesteps="$INITIAL_AGENT_TIMESTEPS"
