@@ -1,76 +1,83 @@
-# Guida: tuning delle baseline hybrid (SAC) sul server
+# Guida: campagna di tuning e run finali (SAC) sul server
 
-Campagna Optuna per trovare le migliori configurazioni dei 4 bracci baseline
-di `HybridAlgorithm`, minimizzando i campioni di preferenza/dimostrazione:
+Campagna Optuna per i 6 bracci di `HybridAlgorithm`, seguita dalle curve di
+budget e dalle run finali a 5 seed per la tesi:
 
 | Braccio | Significato | Preset |
 |---|---|---|
 | `pref_soft` | solo preferenze, etichette soft | `demo_weight=0`, `labels_type=soft` |
 | `pref_bernoulli` | solo preferenze, etichette binarie campionate | `demo_weight=0`, `labels_type=binary_bernoulli` |
-| `demo_demo` | solo dimostrazioni, loss difference-of-means | `total_queries=0`, `loss_type=demo` |
-| `demo_maxent2` | solo dimostrazioni, loss MaxEnt-2 | `total_queries=0`, `loss_type=maxent_2` |
+| `demo_1` | solo dimostrazioni, differenza di medie | `total_queries=0`, `loss_type=demo_1` |
+| `demo_2` | solo dimostrazioni, surrogato MaxEnt | `total_queries=0`, `loss_type=demo_2` |
+| `hybrid_demo_1` | preferenze + dimostrazioni, loss demo_1 | budget pref+demo, `demo_weight` tunato |
+| `hybrid_demo_2` | preferenze + dimostrazioni, loss demo_2 | budget pref+demo, `demo_weight` tunato |
 
-Tutto gira sul server (`ssh fis3@10.79.4.125`, repo in
-`/work/fis3/sumo-human-feedback-rl/`), **core consentiti 33–47** (15 core →
-5 worker × 3 core). Ogni trial è una run `test_hybrid_SAC.py` con `n_envs=2`
-(2 processi SUMO + learner single-thread = 3 core).
+Progetti W&B: **`tuning-thesis`** (trial Optuna + curve di budget),
+**`thesis`** (run finali a 5 seed, raggruppate per braccio).
 
-## 0. Prerequisiti (una tantum, sul server)
+Server: `ssh fis3@10.79.4.125`, repo `/work/fis3/sumo-human-feedback-rl/`,
+**core 33–47** (15 core = 5 slot × 3 core; ogni run usa `n_envs=2` → 2 processi
+SUMO + learner single-thread).
+
+## 0. Prerequisiti (dopo ogni pull)
 
 ```bash
 cd /work/fis3/sumo-human-feedback-rl
-git pull                          # e git pull nei submoduli se necessario
-pip install optuna                # nell'env sumo-rlhf
-python -c "import optuna, libsumo; print('ok')"
-ls datasets/expert_trajectories_no_collision.pkl   # altrimenti: python scripts/download_datasets.py
-wandb login --verify              # deve già essere loggato
+git pull && git -C human-feedback-rl pull   # oppure: git submodule update --remote
+pip install -e human-feedback-rl            # il package è cambiato (v0.3.0)
 mkdir -p logs outputs/optuna
+# se ci sono ancora worker della vecchia campagna:
+pkill -f tune_hybrid_sac; pkill -f test_hybrid_SAC
 ```
 
-## 1. Scelta dell'orizzonte (Fase B)
+## 1. Tuning: tutti i bracci in parallelo, 1 trial alla volta per braccio
 
-```bash
-python scripts/find_horizon.py
-```
-
-Analizza le run W&B storiche pref_only/demo_only e stampa `T_final` e
-`T_tune = T_final/2`. Se non trova storia usabile: `T_final=2M`, `T_tune=1M`
-(default del tuner). Usa il valore stampato come `--total-timesteps` sotto.
-
-## 2. Ricerca Optuna (Fase C) — un braccio alla volta
-
-Dentro `tmux` (una sessione per braccio, in sequenza):
+Un worker sequenziale per braccio: dopo gli 8 trial casuali di startup, ogni
+trial successivo è informato da **tutti** quelli completati (TPE al meglio).
 
 ```bash
 tmux new -s tuning
-./launchers/run_optuna_workers.sh pref_soft      40 5 33 --total-timesteps 1000000
-# quando finisce:
-./launchers/run_optuna_workers.sh pref_bernoulli 40 5 33 --total-timesteps 1000000
-./launchers/run_optuna_workers.sh demo_demo      40 5 33 --total-timesteps 1000000
-./launchers/run_optuna_workers.sh demo_maxent2   40 5 33 --total-timesteps 1000000
+./launchers/run_optuna_parallel_arms.sh 30
+# = 30 trial per braccio, core da 33, bracci di default:
+#   pref_soft pref_bernoulli demo_1 demo_2 hybrid_demo_1  (5 slot)
 ```
 
-Argomenti: `<arm> <n_trial_totali> [n_worker=5] [primo_core=33] [extra...]`.
-I 40 trial sono divisi tra i 5 worker; ogni worker pinna il suo trial su 3
-core (33-35, 36-38, 39-41, 42-44, 45-47). Budget di campioni durante la
-ricerca: `--pref-budget 5000` query per i bracci pref, `--demo-budget 500`
-traiettorie per i bracci demo (default del tuner).
+Quando un braccio finisce i suoi trial e libera i 3 core, lancia il sesto:
 
-Cosa fa ogni trial: campiona gli iperparametri (lr_rew, gradient_steps_rew,
-batch size, query schedule / net_arch, initial_agent_timesteps), lancia il
-training, viene **potato** (MedianPruner) se `rollout/mean_true_reward` è
-sotto la mediana dopo il 40% delle iterazioni, e a fine run l'objective è
-`eval/mean_fast_return` da 20 episodi deterministici held-out.
+```bash
+./launchers/run_optuna_workers.sh hybrid_demo_2 30 1 <primo_core_libero>
+```
+
+Suggerimento per `hybrid_demo_2` (e volendo anche per rifinire `hybrid_demo_1`):
+riparti a caldo dai vincitori delle baseline già completate:
+
+```bash
+python scripts/export_best_config.py --arm pref_soft --format params > /tmp/warm.json
+# (unisci a mano i param demo del vincitore demo_2 e un demo_weight=1.0, poi)
+./launchers/run_optuna_workers.sh hybrid_demo_2 30 1 45 --enqueue-params /tmp/warm.json
+```
+
+Parametri tunati per trial: `lr_rew`, `gradient_steps_rew`, `l2_rew`,
+`net_arch` reward ([8,8]…[128,128]), `initial_agent_timesteps`; per i bracci
+pref anche `batch_size_pref`, `query_schedule`, `initial_queries`,
+`fragmenter_type`; per i demo anche `batch_size_expert`, `batch_size_model`;
+per gli hybrid anche `demo_weight` (0.1–10 log). Fissi: oracolo
+(`pref_temperature=20`, `preference_fragment_length=1`), SAC (con
+`gradient_steps=32` = replay ratio storico 2.0 a `n_envs=2`), `n_ensembles=3`.
+Budget di tuning: 5000 query / 500 traiettorie.
+
+Durata attesa: ~2.2h/trial a 1M timesteps → 30 trial ≈ 2.5–3 giorni per
+braccio, tutti in parallelo (meno con il pruning). Nomi run: `pref_soft-t012`,
+group `tune_pref_soft`, tag `[optuna, <arm>]`.
 
 ### Monitoraggio
 
 ```bash
-tail -f logs/optuna_pref_soft_w*.log        # log dei worker
-ls outputs/optuna/hybrid_sac_pref_soft/     # un dir per trial (train.log, command.txt)
+tail -f logs/optuna_*.log
+python scripts/export_best_config.py --arm pref_soft --format summary --top-k 5
 ```
 
-Ogni trial è anche una run W&B taggata `[optuna, <arm>]` nel progetto
-`preference+demonstration`. Stato dello studio:
+Stato completo degli studi:
 
 ```bash
 python - << 'EOF'
@@ -78,76 +85,81 @@ import optuna
 from optuna.storages import JournalStorage
 from optuna.storages.journal import JournalFileBackend
 storage = JournalStorage(JournalFileBackend("outputs/optuna/journal.log"))
-for arm in ("pref_soft", "pref_bernoulli", "demo_demo", "demo_maxent2"):
+for arm in ("pref_soft","pref_bernoulli","demo_1","demo_2","hybrid_demo_1","hybrid_demo_2"):
     try:
         s = optuna.load_study(study_name=f"hybrid_sac_{arm}", storage=storage)
     except KeyError:
         continue
-    df = s.trials_dataframe()
-    print(f"\n== {arm}: {len(df)} trial ==")
-    print(df[["number", "state", "value"]].tail(10).to_string(index=False))
+    states = [t.state.name for t in s.trials]
     done = [t for t in s.trials if t.value is not None]
+    line = f"{arm}: {len(s.trials)} trial ({states.count('COMPLETE')} ok, {states.count('PRUNED')} pruned, {states.count('FAIL')} fail)"
     if done:
-        print("best:", s.best_trial.number, s.best_trial.value, s.best_trial.params)
+        best = max(done, key=lambda t: t.value)
+        line += f"  best #{best.number}: {best.value:.2f}"
+    print(line)
 EOF
 ```
 
 ### Interrompere / riprendere
 
-Lo stato vive in `outputs/optuna/journal.log`: si può uccidere tutto
-(`pkill -f tune_hybrid_sac`) e rilanciare `run_optuna_workers.sh` con i trial
-residui — lo studio riparte da dov'era (`load_if_exists`). Il trial in corso
-al momento del kill risulta FAIL e viene semplicemente rimpiazzato.
+Lo stato vive in `outputs/optuna/journal.log`: `pkill -f tune_hybrid_sac;
+pkill -f test_hybrid_SAC`, poi rilancia con i trial residui — gli studi
+riprendono da dove erano (`load_if_exists`).
 
-## 3. Validazione multi-seed dei top-3 (Fase D)
+## 2. Curve di budget (dopo il tuning delle 4 baseline)
 
-Per ogni braccio, prendi i 3 trial migliori (dal riepilogo sopra, scartando
-config quasi identiche) e rilancia ognuno su seed 1,2,3 a T_final con il
-launcher, passando i parametri del trial come override extra. Esempio per un
-trial `pref_soft` con `lr_rew=0.0004, gradient_steps_rew=150,
-batch_size_pref=128, query_schedule=hyperbolic, initial_queries=250,
-initial_agent_timesteps=20000`:
+Griglia 1D per asse (nessun ottimizzatore): livelli × 3 seed con la config
+migliore. Per rispettare la scadenza puoi limitarti a `pref_soft` e ai due
+bracci demo, o ridurre i livelli con `LEVELS=...`.
 
 ```bash
-for SEED in 1 2 3; do
-  MODE=pref_only LABELS_TYPE=soft SEED=$SEED N_ENVS=2 \
-  TOTAL_TIMESTEPS=2000000 TOTAL_QUERIES=5000 INITIAL_QUERIES=250 \
-  QUERY_SCHEDULE=hyperbolic PREF_BATCH_SIZE=128 REWARD_LR=0.0004 \
-  REWARD_GRADIENT_STEPS=150 INITIAL_AGENT_TIMESTEPS=20000 \
-  WANDB_TAGS="[topk_validation,pref_soft]" \
-  taskset -c 33-35 ./launchers/run_hybrid_SAC.sh &
-done
+./launchers/run_budget_curves.sh pref_soft        # total_queries: 10000..500
+./launchers/run_budget_curves.sh demo_1           # n_traiettorie: 2723..50
+./launchers/run_budget_curves.sh demo_2
 ```
 
-(Per i bracci demo: `MODE=demo_only LOSS_TYPE=... EXPERT_BATCH_SIZE=...
-MODEL_BATCH_SIZE=... REWARD_ARCH=...` e aggiungi in coda l'override
-`run.n_expert_trajectories=500`.) Con 3 core per run, sui core 33–47 girano 5
-run in parallelo. Selezione: media a 3 seed di `sweep/mean_fast_return` più
-alta; a parità entro 1 std, std minore, poi collision rate minore.
+**Budget minimo (X per le preferenze, Y per le demo)** = il livello più
+piccolo con media a 3 seed di `sweep/mean_fast_return` **e**
+`sweep/success_rate` ≥ 90% del livello massimo, con anche il livello
+successivo che passa. Le run vanno su `tuning-thesis` con group
+`budget_<arm>_<livello>` e tag `budget_curve`.
 
-## 4. Curve di budget (Fase E)
+## 3. Run finali a 5 seed (project `thesis`)
 
-Con la config vincitrice di ogni braccio, 3 seed × livelli di budget a
-T_final, tag `budget_curve`:
+Baseline (usa i budget minimi trovati al punto 2, qui a titolo d'esempio
+X=2000, Y=200; senza indicazioni usa i default 5000/500):
 
-- bracci pref: `TOTAL_QUERIES ∈ {10000, 5000, 2000, 1000, 500}` con
-  `INITIAL_QUERIES = min(valore tunato, TOTAL_QUERIES/5)`;
-- bracci demo: `run.n_expert_trajectories ∈ {2723, 1000, 500, 200, 100, 50}`
-  (il sottoinsieme varia col seed: di default segue `run.seed`).
+```bash
+PREF_BUDGET=2000 ./launchers/run_final_5seeds.sh pref_soft
+PREF_BUDGET=2000 ./launchers/run_final_5seeds.sh pref_bernoulli
+DEMO_BUDGET=200  ./launchers/run_final_5seeds.sh demo_1
+DEMO_BUDGET=200  ./launchers/run_final_5seeds.sh demo_2
+```
 
-**Budget minimo** = il livello più piccolo la cui media a 3 seed di
-`sweep/mean_fast_return` **e** `sweep/success_rate` è ≥ 90% del livello
-full-budget, con anche il livello immediatamente superiore che passa.
+Hybrid, due strategie di budget (X, Y = budget delle baseline):
+
+```bash
+# Strategia A: metà budget per fonte (X/2 preferenze + Y/2 demo)
+PREF_BUDGET=1000 DEMO_BUDGET=100 ./launchers/run_final_5seeds.sh hybrid_demo_1 _A
+PREF_BUDGET=1000 DEMO_BUDGET=100 ./launchers/run_final_5seeds.sh hybrid_demo_2 _A
+# Strategia B: budget pieni (X preferenze + Y demo)
+PREF_BUDGET=2000 DEMO_BUDGET=200 ./launchers/run_final_5seeds.sh hybrid_demo_1 _B
+PREF_BUDGET=2000 DEMO_BUDGET=200 ./launchers/run_final_5seeds.sh hybrid_demo_2 _B
+```
+
+Ogni chiamata lancia 5 run (una per seed, 3 core l'una, tutte insieme sui
+core 33–47) a 2M timesteps, group W&B `<arm><suffisso>`, nomi
+`hybrid_demo_1_A-seed3`. La config viene letta dal journal Optuna al volo.
 
 ## Note tecniche
 
-- `n_envs=1` non funziona: DummyVecEnv + 2 vec-env nello stesso processo
-  rompono libsumo (una simulazione per processo). Minimo `n_envs=2`.
-- `l2_rew` resta a `1e-4`: `1e-2` collassa la reward net (diagnosi 2026-07-05).
-- `pref_temperature=20` e `preference_fragment_length=1` definiscono
-  l'oracolo sintetico (il problema), non si tunano.
-- I file per-run: `metrics.jsonl` (metriche per iterazione, usato dal pruner),
-  `final_eval.json` (objective), `agent_final.zip` dentro
-  `outputs/optuna/hybrid_sac_<arm>/trial_NNNN/<run name>/`.
-- Il journal Optuna non è condivisibile tra macchine (serve un filesystem
-  comune): i worker girano solo sul server.
+- `n_envs=1` non funziona (libsumo = una simulazione per processo); minimo 2.
+- I nomi storici delle loss sono cambiati: `demo`→`demo_1`, `maxent_2`→`demo_2`;
+  le altre (maxent, corrected) sono state rimosse. `PreferenceAlgorithm` e
+  `DemoAlgorithm` non esistono più: tutto passa da `HybridAlgorithm`.
+- File per run: `metrics.jsonl` (per il pruner), `final_eval.json` (objective),
+  `agent_final.zip`.
+- Il journal Optuna non è condivisibile tra macchine: tutto gira sul server.
+- `run_optuna_workers.sh <arm> <trial> <n_worker> <primo_core>` resta
+  disponibile per mettere più worker su un singolo braccio (trial concorrenti,
+  TPE meno informato).

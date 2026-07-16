@@ -34,12 +34,11 @@ algo:
     #   gcl         -> demo IRL loss + BT preference loss on the shared net
     #   preferences -> demos become expert>agent preference pairs (Ibarz 2018 baseline)
     demo_mode: "gcl"
-    # Demo side: maxent, maxent_2, demo, demo_corrected, maxent_corrected.
-    loss_type: maxent_2
+    # Demo side: demo_1 (difference of means) | demo_2 (MaxEnt surrogate).
+    loss_type: demo_2
     # Preference side.
     labels_type: "soft"
-    # Oracle label softness. 20 is the validated Christiano recipe; distinct
-    # from `temperature`, which scales the demo IRL loss only.
+    # Oracle label softness. 20 is the validated Christiano recipe.
     pref_temperature: 20.0
     fragmenter_type: "active"
     preference_fragment_length: 1
@@ -65,8 +64,6 @@ algo:
     batch_size_model: 64
     # Keep small for the preference branch; 1e-2 can overwhelm BT gradients.
     l2_rew: 0.0001
-    temperature: 1.0
-    fragment_length: null
     initial_agent_timesteps: 20000
     exploration_frac: 0.0
     exploration_eps: 0.5

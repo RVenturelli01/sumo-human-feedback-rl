@@ -34,8 +34,8 @@ AGENT_ARCH="${AGENT_ARCH:-[64,64]}"
 DEVICE="${DEVICE:-cpu}"
 
 # Hybrid reward learning
-# Demo side: maxent, maxent_2, demo, demo_corrected, maxent_corrected.
-LOSS_TYPE="${LOSS_TYPE:-demo}"
+# Demo side: demo_1 (difference of means) | demo_2 (MaxEnt surrogate).
+LOSS_TYPE="${LOSS_TYPE:-demo_2}"
 DEMO_MODE="${DEMO_MODE:-gcl}"
 RELABEL_REWARDS="${RELABEL_REWARDS:-true}"
 NORMALIZE_AGENT_REWARD="${NORMALIZE_AGENT_REWARD:-true}"
@@ -47,9 +47,7 @@ PREF_BATCH_SIZE="${PREF_BATCH_SIZE:-128}"
 # Validated 2026-07-05: 0.01 collapses the preference branch (weight decay
 # ~2x the BT gradient). Keep at 1e-4.
 REWARD_L2="${REWARD_L2:-0.0001}"
-TEMPERATURE="${TEMPERATURE:-1.0}"
 PREF_TEMPERATURE="${PREF_TEMPERATURE:-20.0}"
-FRAGMENT_LENGTH="${FRAGMENT_LENGTH:-null}"
 PREFERENCE_FRAGMENT_LENGTH="${PREFERENCE_FRAGMENT_LENGTH:-1}"
 FRAGMENTER_TYPE="${FRAGMENTER_TYPE:-active}"
 LABELS_TYPE="${LABELS_TYPE:-soft}"
@@ -124,8 +122,6 @@ cmd=(
   algo.kwargs.batch_size_model="$MODEL_BATCH_SIZE"
   algo.kwargs.batch_size_pref="$PREF_BATCH_SIZE"
   algo.kwargs.l2_rew="$REWARD_L2"
-  algo.kwargs.temperature="$TEMPERATURE"
-  algo.kwargs.fragment_length="$FRAGMENT_LENGTH"
   algo.kwargs.preference_fragment_length="$PREFERENCE_FRAGMENT_LENGTH"
   algo.kwargs.fragmenter_type="$FRAGMENTER_TYPE"
   algo.kwargs.labels_type="$LABELS_TYPE"

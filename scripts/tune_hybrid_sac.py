@@ -1,11 +1,13 @@
-"""Optuna hyperparameter search for the HybridAlgorithm SAC baseline arms.
+"""Optuna hyperparameter search for the HybridAlgorithm SAC arms.
 
-Four arms, one Optuna study each (sharing one journal file):
+Six arms, one Optuna study each (sharing one journal file):
 
 * ``pref_soft``      — preferences only, soft oracle labels
 * ``pref_bernoulli`` — preferences only, sampled binary oracle labels
-* ``demo_demo``      — demonstrations only, difference-of-means loss
-* ``demo_maxent2``   — demonstrations only, MaxEnt-2 loss
+* ``demo_1``         — demonstrations only, difference-of-means loss
+* ``demo_2``         — demonstrations only, MaxEnt-surrogate loss
+* ``hybrid_demo_1``  — preferences + demonstrations, demo loss demo_1
+* ``hybrid_demo_2``  — preferences + demonstrations, demo loss demo_2
 
 Each trial runs ``scripts/test_hybrid_SAC.py`` as a subprocess (libsumo, W&B
 and SubprocVecEnv state are all cleaned up by process exit), follows the
@@ -13,10 +15,11 @@ per-iteration ``metrics.jsonl`` written by the training run for median
 pruning, and reads the final held-out ``final_eval.json`` as the objective
 (``eval/mean_fast_return``, maximized).
 
-Multiple workers can run in parallel against the same ``--storage-path``
-(JournalStorage); pin each worker with ``--cores`` on Linux (taskset).
-Every override is passed explicitly so trials never depend on yaml/launcher
-default drift.
+Recommended setup: ONE worker per arm (see run_optuna_parallel_arms.sh) so
+every study is fully sequential — after the random startup trials, each new
+trial is informed by all completed ones. Multiple workers on the same arm are
+also supported (shared journal). Every override is passed explicitly so
+trials never depend on yaml/launcher default drift.
 """
 
 import argparse
@@ -36,16 +39,17 @@ from optuna.storages.journal import JournalFileBackend, JournalFileOpenLock
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TRAIN_SCRIPT = REPO_ROOT / "scripts" / "test_hybrid_SAC.py"
 
-ARMS = ("pref_soft", "pref_bernoulli", "demo_demo", "demo_maxent2")
+ARMS = ("pref_soft", "pref_bernoulli", "demo_1", "demo_2", "hybrid_demo_1", "hybrid_demo_2")
 PRUNE_METRIC = "rollout/mean_true_reward"
 OBJECTIVE_METRIC = "eval/mean_fast_return"
 POLL_SECONDS = 30
 KILL_GRACE_SECONDS = 30
 
-# Values fixed across all arms and trials. l2_rew MUST stay at 1e-4 (1e-2
-# collapses the reward net, diagnosed 2026-07-05); pref_temperature and
+# Values fixed across all arms and trials. pref_temperature and
 # preference_fragment_length define the synthetic oracle, i.e. the problem,
-# not the learner. SAC kwargs are the tuned launcher values.
+# not the learner. SAC kwargs come from the true-reward baseline tuning;
+# gradient_steps=32 preserves the historical replay ratio of 2.0 at n_envs=2
+# (train_freq=8 -> 16 transitions per cycle).
 FIXED_OVERRIDES = [
     "env.kwargs.ego=continuous",
     "env.kwargs.reward=fast",
@@ -57,17 +61,14 @@ FIXED_OVERRIDES = [
     "agent.kwargs.tau=0.005",
     "agent.kwargs.ent_coef=auto",
     "agent.kwargs.train_freq=8",
-    "agent.kwargs.gradient_steps=64",
+    "agent.kwargs.gradient_steps=32",
     "agent.kwargs.policy_kwargs.net_arch=[64,64]",
     "agent.kwargs.device=cpu",
     "algo.kwargs.demo_mode=gcl",
     "algo.kwargs.relabel_rewards=true",
     "algo.kwargs.normalize_agent_reward=true",
-    "algo.kwargs.l2_rew=0.0001",
-    "algo.kwargs.temperature=1.0",
     "algo.kwargs.pref_temperature=20.0",
     "algo.kwargs.preference_fragment_length=1",
-    "algo.kwargs.fragmenter_type=active",
     "algo.kwargs.train_comparison_frac=0.8",
     "algo.kwargs.exploration_frac=0.0",
     "algo.kwargs.agent_log_timestep_interval=10000",
@@ -79,77 +80,124 @@ FIXED_OVERRIDES = [
     "train.kwargs.scatter_interval=0",
 ]
 
+NET_ARCH_CHOICES = ["[8,8]", "[16,16]", "[32,32]", "[64,64]", "[128,128]"]
 
-def arm_overrides(arm: str, args) -> list:
+
+def uses_preferences(arm: str) -> bool:
+    return arm.startswith("pref_") or arm.startswith("hybrid_")
+
+
+def uses_demos(arm: str) -> bool:
+    return arm.startswith("demo_") or arm.startswith("hybrid_")
+
+
+def arm_overrides(arm: str, pref_budget: int, demo_budget: int) -> list:
     """Arm-defining overrides (the launcher MODE presets, made explicit)."""
-    if arm.startswith("pref_"):
-        labels = "soft" if arm == "pref_soft" else "binary_bernoulli"
-        return [
-            "algo.kwargs.demo_weight=0.0",
-            "algo.kwargs.loss_type=maxent_2",  # inert with demo_weight=0
-            f"algo.kwargs.labels_type={labels}",
-            f"algo.kwargs.total_queries={args.pref_budget}",
-            f"train.kwargs.total_queries={args.pref_budget}",
-            # Pref arms use the yaml reward net; demo arms search it.
-            "algo.kwargs.reward_model_kwargs.net_arch=[128,128]",
-        ]
-    loss = "demo" if arm == "demo_demo" else "maxent_2"
-    return [
-        "algo.kwargs.demo_weight=1.0",
-        f"algo.kwargs.loss_type={loss}",
-        "algo.kwargs.labels_type=soft",  # inert with zero queries
-        "algo.kwargs.total_queries=0",
-        "algo.kwargs.initial_queries=0",
-        "train.kwargs.total_queries=0",
-        "algo.kwargs.query_schedule=constant",
-        "algo.kwargs.batch_size_pref=128",  # inert with zero queries
-        f"run.n_expert_trajectories={args.demo_budget}",
-    ]
-
-
-def suggest_overrides(trial: optuna.Trial, arm: str, args) -> list:
-    """Trial-sampled overrides: the per-arm search space."""
-    lr_rew = trial.suggest_float("lr_rew", 3e-5, 3e-3, log=True)
-    gradient_steps_rew = trial.suggest_int("gradient_steps_rew", 50, 400, log=True)
-    initial_agent_timesteps = trial.suggest_categorical(
-        "initial_agent_timesteps", [10000, 20000, 40000]
-    )
-    overrides = [
-        f"algo.kwargs.lr_rew={lr_rew}",
-        f"algo.kwargs.gradient_steps_rew={gradient_steps_rew}",
-        f"algo.kwargs.initial_agent_timesteps={initial_agent_timesteps}",
-    ]
-    if arm.startswith("pref_"):
-        batch_size_pref = trial.suggest_categorical("batch_size_pref", [64, 128, 256])
-        query_schedule = trial.suggest_categorical(
-            "query_schedule", ["constant", "hyperbolic", "inverse_quadratic"]
-        )
-        initial_queries = trial.suggest_categorical(
-            "initial_queries", [100, 250, 500, 1000]
-        )
+    overrides = []
+    if uses_preferences(arm):
+        labels = "binary_bernoulli" if arm == "pref_bernoulli" else "soft"
         overrides += [
-            f"algo.kwargs.batch_size_pref={batch_size_pref}",
-            f"algo.kwargs.query_schedule={query_schedule}",
-            f"algo.kwargs.initial_queries={initial_queries}",
-            # Inert with demo_weight=0, pinned for a clean config record.
-            "algo.kwargs.batch_size_expert=64",
-            "algo.kwargs.batch_size_model=64",
+            f"algo.kwargs.labels_type={labels}",
+            f"algo.kwargs.total_queries={pref_budget}",
+            f"train.kwargs.total_queries={pref_budget}",
         ]
     else:
-        batch_size_expert = trial.suggest_categorical(
-            "batch_size_expert", [16, 32, 64, 128]
-        )
-        batch_size_model = trial.suggest_categorical("batch_size_model", [32, 64, 128])
-        net_arch = trial.suggest_categorical("reward_net_arch", ["[64,64]", "[128,128]"])
         overrides += [
-            f"algo.kwargs.batch_size_expert={batch_size_expert}",
-            f"algo.kwargs.batch_size_model={batch_size_model}",
-            f"algo.kwargs.reward_model_kwargs.net_arch={net_arch}",
+            "algo.kwargs.labels_type=soft",  # inert with zero queries
+            "algo.kwargs.total_queries=0",
+            "algo.kwargs.initial_queries=0",
+            "train.kwargs.total_queries=0",
+            "algo.kwargs.query_schedule=constant",
+            "algo.kwargs.fragmenter_type=active",
+            "algo.kwargs.batch_size_pref=128",  # inert with zero queries
+        ]
+    if uses_demos(arm):
+        loss = "demo_1" if arm.endswith("demo_1") else "demo_2"
+        overrides += [
+            f"algo.kwargs.loss_type={loss}",
+            f"run.n_expert_trajectories={demo_budget}",
+        ]
+        if arm.startswith("demo_"):
+            overrides.append("algo.kwargs.demo_weight=1.0")
+    else:
+        overrides += [
+            "algo.kwargs.demo_weight=0.0",
+            "algo.kwargs.loss_type=demo_2",  # inert with demo_weight=0
+            "algo.kwargs.batch_size_expert=64",  # inert with demo_weight=0
+            "algo.kwargs.batch_size_model=64",
+        ]
+    if arm.startswith("hybrid_"):
+        # Kept small for the hybrid arms so the search stays tractable
+        # (~8 sampled params); revisit with --override if needed.
+        overrides += [
+            "algo.kwargs.query_schedule=constant",
+            "algo.kwargs.initial_queries=500",
+            "algo.kwargs.fragmenter_type=active",
+            "algo.kwargs.batch_size_model=64",
         ]
     return overrides
 
 
-def build_command(trial_dir: Path, trial_overrides: list, args) -> list:
+def suggest_params(trial: optuna.Trial, arm: str) -> dict:
+    """Sample the per-arm search space; returns {param_name: value}."""
+    params = {
+        "lr_rew": trial.suggest_float("lr_rew", 3e-5, 3e-3, log=True),
+        "gradient_steps_rew": trial.suggest_int("gradient_steps_rew", 20, 400, log=True),
+        "l2_rew": trial.suggest_float("l2_rew", 1e-6, 1e-3, log=True),
+        "reward_net_arch": trial.suggest_categorical("reward_net_arch", NET_ARCH_CHOICES),
+        "initial_agent_timesteps": trial.suggest_categorical(
+            "initial_agent_timesteps", [10000, 20000, 40000]
+        ),
+    }
+    if uses_preferences(arm):
+        params["batch_size_pref"] = trial.suggest_categorical(
+            "batch_size_pref", [64, 128, 256]
+        )
+    if arm.startswith("pref_"):
+        params["query_schedule"] = trial.suggest_categorical(
+            "query_schedule", ["constant", "hyperbolic", "inverse_quadratic"]
+        )
+        params["initial_queries"] = trial.suggest_categorical(
+            "initial_queries", [100, 250, 500, 1000]
+        )
+        params["fragmenter_type"] = trial.suggest_categorical(
+            "fragmenter_type", ["active", "random"]
+        )
+    if uses_demos(arm):
+        params["batch_size_expert"] = trial.suggest_categorical(
+            "batch_size_expert", [16, 32, 64, 128]
+        )
+    if arm.startswith("demo_"):
+        params["batch_size_model"] = trial.suggest_categorical(
+            "batch_size_model", [32, 64, 128]
+        )
+    if arm.startswith("hybrid_"):
+        params["demo_weight"] = trial.suggest_float("demo_weight", 0.1, 10.0, log=True)
+    return params
+
+
+PARAM_TO_OVERRIDE = {
+    "lr_rew": "algo.kwargs.lr_rew",
+    "gradient_steps_rew": "algo.kwargs.gradient_steps_rew",
+    "l2_rew": "algo.kwargs.l2_rew",
+    "reward_net_arch": "algo.kwargs.reward_model_kwargs.net_arch",
+    "initial_agent_timesteps": "algo.kwargs.initial_agent_timesteps",
+    "batch_size_pref": "algo.kwargs.batch_size_pref",
+    "query_schedule": "algo.kwargs.query_schedule",
+    "initial_queries": "algo.kwargs.initial_queries",
+    "fragmenter_type": "algo.kwargs.fragmenter_type",
+    "batch_size_expert": "algo.kwargs.batch_size_expert",
+    "batch_size_model": "algo.kwargs.batch_size_model",
+    "demo_weight": "algo.kwargs.demo_weight",
+}
+
+
+def params_to_overrides(params: dict) -> list:
+    """Map sampled/best params to Hydra overrides (shared with export_best_config)."""
+    return [f"{PARAM_TO_OVERRIDE[name]}={value}" for name, value in params.items()]
+
+
+def build_command(trial_dir: Path, run_name: str, trial_overrides: list, args) -> list:
     cmd = []
     if args.cores:
         cmd += ["taskset", "-c", args.cores]
@@ -158,6 +206,8 @@ def build_command(trial_dir: Path, trial_overrides: list, args) -> list:
         str(TRAIN_SCRIPT),
         f"run.seed={args.seed}",
         f"run.output_dir={trial_dir}",
+        f"run.name={run_name}",
+        f"run.group=tune_{args.arm}",
         f"wandb.entity={args.wandb_entity}",
         f"wandb.project={args.wandb_project}",
         f"wandb.tags=[optuna,{args.arm}]",
@@ -209,10 +259,13 @@ def make_objective(args):
     def objective(trial: optuna.Trial) -> float:
         trial_dir = out_root / f"trial_{trial.number:04d}"
         trial_dir.mkdir(parents=True, exist_ok=True)
-        trial_overrides = arm_overrides(args.arm, args) + suggest_overrides(
-            trial, args.arm, args
+        run_name = f"{args.arm}-t{trial.number:03d}"
+        params = suggest_params(trial, args.arm)
+        trial_overrides = (
+            arm_overrides(args.arm, args.pref_budget, args.demo_budget)
+            + params_to_overrides(params)
         )
-        cmd = build_command(trial_dir, trial_overrides, args)
+        cmd = build_command(trial_dir, run_name, trial_overrides, args)
         (trial_dir / "command.txt").write_text(" ".join(cmd) + "\n")
 
         env = {
@@ -289,17 +342,22 @@ def parse_args():
     parser.add_argument("--total-timesteps", type=int, default=1_000_000)
     parser.add_argument("--timesteps-per-iteration", type=int, default=20_000)
     parser.add_argument("--pref-budget", type=int, default=5000,
-                        help="total_queries for the pref arms.")
+                        help="total_queries for the pref/hybrid arms.")
     parser.add_argument("--demo-budget", type=int, default=500,
-                        help="n_expert_trajectories for the demo arms.")
+                        help="n_expert_trajectories for the demo/hybrid arms.")
     parser.add_argument("--eval-episodes", type=int, default=20)
     parser.add_argument("--trial-timeout", type=int, default=12 * 3600)
     parser.add_argument("--wandb-entity", default="andrea02polimi-politecnico-di-milano")
-    parser.add_argument("--wandb-project", default="preference+demonstration")
+    parser.add_argument("--wandb-project", default="tuning-thesis")
+    parser.add_argument("--sampler-startup-trials", type=int, default=8,
+                        help="Random trials before TPE starts modelling.")
     parser.add_argument("--pruner-warmup-frac", type=float, default=0.4,
                         help="Fraction of iterations before pruning may trigger.")
     parser.add_argument("--pruner-startup-trials", type=int, default=8,
                         help="Completed trials required before pruning may trigger.")
+    parser.add_argument("--enqueue-params", default=None,
+                        help="JSON file with a list of param dicts to enqueue as "
+                             "warm-start trials (e.g. baseline winners for hybrid arms).")
     parser.add_argument("--override", action="append", default=[],
                         help="Extra Hydra override appended last (wins over fixed "
                              "and sampled values). Repeatable.")
@@ -323,7 +381,9 @@ def main():
         study_name=f"hybrid_sac_{args.arm}",
         storage=storage,
         direction="maximize",
-        sampler=optuna.samplers.TPESampler(multivariate=True, n_startup_trials=10),
+        sampler=optuna.samplers.TPESampler(
+            multivariate=True, n_startup_trials=args.sampler_startup_trials
+        ),
         pruner=optuna.pruners.MedianPruner(
             n_startup_trials=args.pruner_startup_trials,
             n_warmup_steps=int(args.pruner_warmup_frac * n_iterations),
@@ -331,6 +391,9 @@ def main():
         ),
         load_if_exists=True,
     )
+    if args.enqueue_params:
+        for params in json.loads(Path(args.enqueue_params).read_text()):
+            study.enqueue_trial(params, skip_if_exists=True)
     study.optimize(make_objective(args), n_trials=args.n_trials)
 
     best = study.best_trial

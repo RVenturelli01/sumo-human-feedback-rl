@@ -36,8 +36,11 @@ def main(cfg: DictConfig) -> None:
 
     loss_type = cfg.algo.kwargs.loss_type
     demo_weight = cfg.algo.kwargs.demo_weight
-    group_name = f"sac_hybrid_{loss_type}"
-    run_name = f"{group_name} demo_weight={demo_weight} seed={seed}"
+    group_name = cfg.run.get("group", None) or f"sac_hybrid_{loss_type}"
+    run_name = (
+        cfg.run.get("name", None)
+        or f"{group_name} demo_weight={demo_weight} seed={seed}"
+    )
     run_dir = make_run_dir(cfg.run.output_dir, run_name)
     init_wandb_run(cfg, group_name, run_name, run_dir)
 
