@@ -42,11 +42,19 @@ tmux new -s tuning
 #   pref_soft pref_bernoulli demo_1 demo_2 hybrid_demo_1  (5 slot)
 ```
 
-Quando un braccio finisce i suoi trial e libera i 3 core, lancia il sesto:
+Il sesto braccio non deve aspettare uno slot libero: ogni trial usa in
+pratica ~1 core (il collo di bottiglia è il loop di update SAC single-thread,
+non SUMO — misurato: pool al 35%, processi env a ~0%), quindi si può
+sovrapporre all'intero pool e lo scheduler lo piazza nei cicli liberi:
 
 ```bash
-./launchers/run_optuna_workers.sh hybrid_demo_2 30 1 <primo_core_libero>
+nohup python scripts/tune_hybrid_sac.py --arm hybrid_demo_2 --n-trials 30 \
+    --cores 33-47 --total-timesteps 1000000 > logs/optuna_hybrid_demo_2.log 2>&1 &
 ```
+
+Per lo stesso motivo NON conviene alzare `n_envs` (2 basta: lo stepping SUMO
+è ~10-30s su ~2-3 min di iterazione) né dare più thread a torch (reti troppo
+piccole: +13% misurato, non ripaga un riavvio).
 
 Suggerimento per `hybrid_demo_2` (e volendo anche per rifinire `hybrid_demo_1`):
 riparti a caldo dai vincitori delle baseline già completate:
