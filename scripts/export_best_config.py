@@ -11,13 +11,22 @@ best trial in the requested format:
   is valid input for ``tune_hybrid_sac.py --enqueue-params`` (warm starts).
 * ``summary``  — human-readable report of the top-k trials.
 
+With ``--save-dir`` the best trial is also archived as a self-contained JSON
+(params, full overrides, objective, run metadata) — the durable record of the
+selected hyperparameters, independent of the Optuna journal. Recommended at
+the end of the tuning phase:
+
+    python scripts/export_best_config.py --arm pref_soft --save-dir configs/best
+
 Usage:
     python scripts/export_best_config.py --arm pref_soft
     python scripts/export_best_config.py --arm demo_2 --format params --top-k 3 > warm.json
 """
 
 import argparse
+import datetime
 import json
+from pathlib import Path
 
 import optuna
 from optuna.storages import JournalStorage
@@ -49,6 +58,9 @@ def main():
     parser.add_argument("--top-k", type=int, default=1)
     parser.add_argument("--pref-budget", type=int, default=5000)
     parser.add_argument("--demo-budget", type=int, default=500)
+    parser.add_argument("--save-dir", default=None,
+                        help="Also archive the best trial as <dir>/<arm><suffix>.json "
+                             "(params + full overrides + metadata).")
     args = parser.parse_args()
 
     storage = JournalStorage(
@@ -60,6 +72,31 @@ def main():
     trials = completed_trials_sorted(study)[: args.top_k]
     if not trials:
         raise SystemExit(f"No completed trials for arm {args.arm}.")
+
+    if args.save_dir:
+        best = trials[0]
+        record = {
+            "arm": args.arm,
+            "study": f"hybrid_sac_{args.arm}{args.study_suffix}",
+            "trial_number": best.number,
+            "objective": best.value,
+            "params": best.params,
+            "overrides": (
+                FIXED_OVERRIDES
+                + arm_overrides(args.arm, args.pref_budget, args.demo_budget)
+                + params_to_overrides(best.params)
+            ),
+            "pref_budget": args.pref_budget,
+            "demo_budget": args.demo_budget,
+            "eval": {k: v for k, v in best.user_attrs.items() if k.startswith("eval/")},
+            "run_dir": best.user_attrs.get("run_dir"),
+            "exported_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        }
+        save_dir = Path(args.save_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
+        path = save_dir / f"{args.arm}{args.study_suffix}.json"
+        path.write_text(json.dumps(record, indent=2) + "\n")
+        print(f"saved: {path}")
 
     if args.format == "params":
         payload = [t.params for t in trials]
