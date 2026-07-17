@@ -131,14 +131,19 @@ def arm_overrides(arm: str, pref_budget: int, demo_budget: int) -> list:
         # (~8 sampled params); revisit with --override if needed.
         overrides += [
             "algo.kwargs.query_schedule=constant",
-            "algo.kwargs.initial_queries=500",
+            f"algo.kwargs.initial_queries={max(100, round(0.1 * pref_budget))}",
             "algo.kwargs.fragmenter_type=active",
             "algo.kwargs.batch_size_model=64",
         ]
     return overrides
 
 
-def suggest_params(trial: optuna.Trial, arm: str) -> dict:
+def initial_queries_choices(pref_budget: int) -> list:
+    """Bootstrap-chunk choices as 2-20% of the budget (=[100,250,500,1000] at 5k)."""
+    return sorted({max(100, round(pref_budget * f)) for f in (0.02, 0.05, 0.1, 0.2)})
+
+
+def suggest_params(trial: optuna.Trial, arm: str, pref_budget: int = 5000) -> dict:
     """Sample the per-arm search space; returns {param_name: value}."""
     params = {
         "lr_rew": trial.suggest_float("lr_rew", 3e-5, 3e-3, log=True),
@@ -158,7 +163,7 @@ def suggest_params(trial: optuna.Trial, arm: str) -> dict:
             "query_schedule", ["constant", "hyperbolic", "inverse_quadratic"]
         )
         params["initial_queries"] = trial.suggest_categorical(
-            "initial_queries", [100, 250, 500, 1000]
+            "initial_queries", initial_queries_choices(pref_budget)
         )
         params["fragmenter_type"] = trial.suggest_categorical(
             "fragmenter_type", ["active", "random"]
@@ -207,7 +212,7 @@ def build_command(trial_dir: Path, run_name: str, trial_overrides: list, args) -
         f"run.seed={args.seed}",
         f"run.output_dir={trial_dir}",
         f"run.name={run_name}",
-        f"run.group=tune_{args.arm}",
+        f"run.group=tune_{args.arm}{args.study_suffix}",
         f"wandb.entity={args.wandb_entity}",
         f"wandb.project={args.wandb_project}",
         f"wandb.tags=[optuna,{args.arm}]",
@@ -254,13 +259,13 @@ def terminate_process_group(process) -> None:
 
 
 def make_objective(args):
-    out_root = Path(args.output_root) / f"hybrid_sac_{args.arm}"
+    out_root = Path(args.output_root) / f"hybrid_sac_{args.arm}{args.study_suffix}"
 
     def objective(trial: optuna.Trial) -> float:
         trial_dir = out_root / f"trial_{trial.number:04d}"
         trial_dir.mkdir(parents=True, exist_ok=True)
-        run_name = f"{args.arm}-t{trial.number:03d}"
-        params = suggest_params(trial, args.arm)
+        run_name = f"{args.arm}{args.study_suffix}-t{trial.number:03d}"
+        params = suggest_params(trial, args.arm, args.pref_budget)
         trial_overrides = (
             arm_overrides(args.arm, args.pref_budget, args.demo_budget)
             + params_to_overrides(params)
@@ -355,6 +360,10 @@ def parse_args():
                         help="Fraction of iterations before pruning may trigger.")
     parser.add_argument("--pruner-startup-trials", type=int, default=8,
                         help="Completed trials required before pruning may trigger.")
+    parser.add_argument("--study-suffix", default="",
+                        help="Suffix appended to the study/run names (e.g. '_q100k') to "
+                             "start a FRESH study when the arm is re-tuned at a "
+                             "different budget. Never mix budgets in one study.")
     parser.add_argument("--enqueue-params", default=None,
                         help="JSON file with a list of param dicts to enqueue as "
                              "warm-start trials (e.g. baseline winners for hybrid arms).")
@@ -378,7 +387,7 @@ def main():
     )
     n_iterations = args.total_timesteps // args.timesteps_per_iteration
     study = optuna.create_study(
-        study_name=f"hybrid_sac_{args.arm}",
+        study_name=f"hybrid_sac_{args.arm}{args.study_suffix}",
         storage=storage,
         direction="maximize",
         sampler=optuna.samplers.TPESampler(

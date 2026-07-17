@@ -44,6 +44,8 @@ def main():
     parser.add_argument("--storage-path", default="outputs/optuna/journal.log")
     parser.add_argument("--format", choices=["overrides", "full", "params", "summary"],
                         default="overrides")
+    parser.add_argument("--study-suffix", default="",
+                        help="Suffix of the study to read (e.g. '_q100k').")
     parser.add_argument("--top-k", type=int, default=1)
     parser.add_argument("--pref-budget", type=int, default=5000)
     parser.add_argument("--demo-budget", type=int, default=500)
@@ -52,7 +54,9 @@ def main():
     storage = JournalStorage(
         JournalFileBackend(args.storage_path, lock_obj=JournalFileOpenLock(args.storage_path))
     )
-    study = optuna.load_study(study_name=f"hybrid_sac_{args.arm}", storage=storage)
+    study = optuna.load_study(
+        study_name=f"hybrid_sac_{args.arm}{args.study_suffix}", storage=storage
+    )
     trials = completed_trials_sorted(study)[: args.top_k]
     if not trials:
         raise SystemExit(f"No completed trials for arm {args.arm}.")

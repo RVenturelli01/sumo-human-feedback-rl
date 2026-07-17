@@ -37,6 +37,7 @@ FIRST_CORE="${FIRST_CORE:-33}"
 CORES_PER_RUN="${CORES_PER_RUN:-3}"
 MAX_PARALLEL="${MAX_PARALLEL:-5}"
 STORAGE="${STORAGE:-outputs/optuna/journal.log}"
+STUDY_SUFFIX="${STUDY_SUFFIX:-}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 GROUP="${ARM}${SUFFIX}"
@@ -44,7 +45,7 @@ mkdir -p logs "outputs/final/${GROUP}"
 
 echo "Exporting best config for $ARM (pref=$PREF_BUDGET, demo=$DEMO_BUDGET)..."
 OVERRIDES="$(cd scripts && "$PYTHON_BIN" export_best_config.py \
-    --arm "$ARM" --format full --storage-path "../$STORAGE" \
+    --arm "$ARM" --study-suffix "$STUDY_SUFFIX" --format full --storage-path "../$STORAGE" \
     --pref-budget "$PREF_BUDGET" --demo-budget "$DEMO_BUDGET")"
 echo "  $OVERRIDES"
 

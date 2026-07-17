@@ -22,8 +22,11 @@ cd "$REPO_ROOT"
 ARM="${1:?usage: run_budget_curves.sh <arm>}"
 
 case "$ARM" in
-  pref_soft|pref_bernoulli) AXIS="pref";  DEFAULT_LEVELS="10000 5000 2000 1000 500" ;;
-  demo_1|demo_2)            AXIS="demo";  DEFAULT_LEVELS="2723 1000 500 200 100 50" ;;
+  pref_soft)      AXIS="pref";  DEFAULT_LEVELS="10000 5000 2000 1000 500" ;;
+  # Bernoulli labels are sampled (noisy): the viable range sits ~1-2 orders of
+  # magnitude above soft (validated in reward_label_experiments, rescaled to 1M).
+  pref_bernoulli) AXIS="pref";  DEFAULT_LEVELS="250000 100000 50000 25000 10000" ;;
+  demo_1|demo_2)  AXIS="demo";  DEFAULT_LEVELS="2723 1000 500 200 100 50" ;;
   *) echo "budget curves are defined for the 4 baseline arms, got: $ARM" >&2; exit 1 ;;
 esac
 
@@ -38,6 +41,7 @@ FIRST_CORE="${FIRST_CORE:-33}"
 CORES_PER_RUN="${CORES_PER_RUN:-3}"
 MAX_PARALLEL="${MAX_PARALLEL:-5}"
 STORAGE="${STORAGE:-outputs/optuna/journal.log}"
+STUDY_SUFFIX="${STUDY_SUFFIX:-}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 mkdir -p logs
@@ -45,9 +49,9 @@ mkdir -p logs
 # Best config at the tuning budgets; per-level budget overrides are appended
 # afterwards, so they win (later Hydra overrides take precedence).
 OVERRIDES="$(cd scripts && "$PYTHON_BIN" export_best_config.py \
-    --arm "$ARM" --format full --storage-path "../$STORAGE")"
+    --arm "$ARM" --study-suffix "$STUDY_SUFFIX" --format full --storage-path "../$STORAGE")"
 BEST_INITIAL_QUERIES="$(cd scripts && "$PYTHON_BIN" export_best_config.py \
-    --arm "$ARM" --format params --storage-path "../$STORAGE" \
+    --arm "$ARM" --study-suffix "$STUDY_SUFFIX" --format params --storage-path "../$STORAGE" \
     | "$PYTHON_BIN" -c 'import json,sys; print(json.load(sys.stdin).get("initial_queries", 500))')"
 
 slot=0

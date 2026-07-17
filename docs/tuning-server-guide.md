@@ -59,12 +59,33 @@ python scripts/export_best_config.py --arm pref_soft --format params > /tmp/warm
 
 Parametri tunati per trial: `lr_rew`, `gradient_steps_rew`, `l2_rew`,
 `net_arch` reward ([8,8]…[128,128]), `initial_agent_timesteps`; per i bracci
-pref anche `batch_size_pref`, `query_schedule`, `initial_queries`,
-`fragmenter_type`; per i demo anche `batch_size_expert`, `batch_size_model`;
-per gli hybrid anche `demo_weight` (0.1–10 log). Fissi: oracolo
-(`pref_temperature=20`, `preference_fragment_length=1`), SAC (con
+pref anche `batch_size_pref`, `query_schedule`, `initial_queries` (scelte =
+2–20% del budget), `fragmenter_type`; per i demo anche `batch_size_expert`,
+`batch_size_model`; per gli hybrid anche `demo_weight` (0.1–10 log). Fissi:
+oracolo (`pref_temperature=20`, `preference_fragment_length=1`), SAC (con
 `gradient_steps=32` = replay ratio storico 2.0 a `n_envs=2`), `n_ensembles=3`.
-Budget di tuning: 5000 query / 500 traiettorie.
+Budget di tuning: 5000 query / 500 traiettorie, **tranne `pref_bernoulli`:
+100000 query** (etichette campionate = rumorose; in reward_label_experiments
+a 2M step servivano ≥200K query, riscalate a 100K per 1M — a 5K il braccio
+non impara affatto).
+
+### Ri-tunare un braccio con un budget diverso
+
+Mai mescolare budget diversi nello stesso studio (i valori objective non sono
+confrontabili e il TPE si corrompe): usa `--study-suffix` per crearne uno
+nuovo. Esempio, bernoulli a 100K (dopo aver fermato SOLO il suo worker):
+
+```bash
+pkill -f "arm pref_[b]ernoulli"; sleep 2; pkill -f "optuna,pref_[b]ernoulli"
+nohup python scripts/tune_hybrid_sac.py --arm pref_bernoulli --n-trials 30 \
+    --cores 36-38 --pref-budget 100000 --study-suffix _q100k \
+    --total-timesteps 1000000 > logs/optuna_pref_bernoulli_q100k.log 2>&1 &
+```
+
+Le run W&B diventano `pref_bernoulli_q100k-t000` (group
+`tune_pref_bernoulli_q100k`); per leggere il best trial aggiungi
+`--study-suffix _q100k` a `export_best_config.py`, o `STUDY_SUFFIX=_q100k`
+per `run_final_5seeds.sh` / `run_budget_curves.sh`.
 
 Durata attesa: ~2.2h/trial a 1M timesteps → 30 trial ≈ 2.5–3 giorni per
 braccio, tutti in parallelo (meno con il pruning). Nomi run: `pref_soft-t012`,
@@ -85,11 +106,9 @@ import optuna
 from optuna.storages import JournalStorage
 from optuna.storages.journal import JournalFileBackend
 storage = JournalStorage(JournalFileBackend("outputs/optuna/journal.log"))
-for arm in ("pref_soft","pref_bernoulli","demo_1","demo_2","hybrid_demo_1","hybrid_demo_2"):
-    try:
-        s = optuna.load_study(study_name=f"hybrid_sac_{arm}", storage=storage)
-    except KeyError:
-        continue
+for name in optuna.get_all_study_names(storage):
+    s = optuna.load_study(study_name=name, storage=storage)
+    arm = name.removeprefix("hybrid_sac_")
     states = [t.state.name for t in s.trials]
     done = [t for t in s.trials if t.value is not None]
     line = f"{arm}: {len(s.trials)} trial ({states.count('COMPLETE')} ok, {states.count('PRUNED')} pruned, {states.count('FAIL')} fail)"
@@ -114,6 +133,7 @@ bracci demo, o ridurre i livelli con `LEVELS=...`.
 
 ```bash
 ./launchers/run_budget_curves.sh pref_soft        # total_queries: 10000..500
+STUDY_SUFFIX=_q100k ./launchers/run_budget_curves.sh pref_bernoulli  # 250000..10000
 ./launchers/run_budget_curves.sh demo_1           # n_traiettorie: 2723..50
 ./launchers/run_budget_curves.sh demo_2
 ```
