@@ -1,6 +1,5 @@
 import numpy as np
 import hydra
-import wandb
 import sumo_rl_ego as sre
 
 from collections import defaultdict
@@ -14,36 +13,7 @@ from sumo_rl_ego.utils import (
     check_source_cfg,
     load_policy_from_cfg,
 )
-from sumo_rl_ego.utils.config_utils import load_cfg_from_model_path
-from human_feedback_rl.common import BCPolicy
 
-
-class _BCPolicyAdapter:
-    """Wraps BCPolicy to match the sre.Policy interface expected by run_episode."""
-
-    def __init__(self, bc_policy: BCPolicy):
-        self._policy = bc_policy
-
-    def reset(self):
-        pass
-
-    def predict(self, obs):
-        action, _ = self._policy.predict(obs, deterministic=True)
-        return action
-
-
-def _load_policy(cfg: DictConfig, env=None):
-    """Load policy, handling DAgger BCPolicy models in addition to standard sre models."""
-    if cfg.source.model_path is not None:
-        try:
-            source_cfg = load_cfg_from_model_path(cfg.source.model_path)
-            if OmegaConf.select(source_cfg, "algo.name") == "dagger":
-                bc_policy = BCPolicy.load(cfg.source.model_path, env=env)
-                return _BCPolicyAdapter(bc_policy)
-        except FileNotFoundError:
-            pass
-    return load_policy_from_cfg(cfg, env=env)
-    
 
 class EvalMetrics:
 
@@ -126,7 +96,7 @@ class EvalMetrics:
 
 
 def print_eval_cfg(cfg):
-    print(f"\n========== EVAL CONFIG ==========\n")
+    print("\n========== EVAL CONFIG ==========\n")
     print(OmegaConf.to_yaml(cfg, resolve=True))
     print("================== Summary ==================\n")
     print(f"Environment: {cfg.env.id}")
@@ -167,7 +137,7 @@ def main(cfg: DictConfig):
         )
 
         print("Loading policy...")
-        policy = _load_policy(cfg, env=env)
+        policy = load_policy_from_cfg(cfg, env=env)
 
         metrics = EvalMetrics()
 

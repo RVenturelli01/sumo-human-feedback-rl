@@ -1,3 +1,12 @@
+"""Train HybridAlgorithm with a SAC agent (the single training entry point).
+
+Configured by configs/train_hybrid_sac.yaml plus Hydra overrides. Covers every
+experiment arm: hybrid (both sources), pref-only (``demo_weight=0``) and
+demo-only (``total_queries=0``). Writes per-iteration ``metrics.jsonl``, a
+final held-out ``final_eval.json`` and ``agent_final.zip`` in the run dir,
+and mirrors the final evaluation as ``sweep/*`` metrics on W&B.
+"""
+
 import json
 
 import hydra
@@ -29,7 +38,7 @@ from _common import (
 )
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="test_hybrid_SAC")
+@hydra.main(version_base=None, config_path="../configs", config_name="train_hybrid_sac")
 def main(cfg: DictConfig) -> None:
     seed = cfg.run.seed
     rng = seed_everything(seed)

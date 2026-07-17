@@ -1,5 +1,18 @@
 # Guida: campagna di tuning e run finali (SAC) sul server
 
+> **Politica branch/server (refactoring 2026-07):** `main` è il branch della
+> campagna in corso; il refactoring vive sul branch `refactor` (che rinomina
+> `test_hybrid_SAC.py` → `train_hybrid_sac.py` e `run_hybrid_SAC.sh` →
+> `run_hybrid_sac.sh` — questa guida usa i nomi nuovi). **Non fare pull/merge
+> di `refactor` sul server finché tuning, curve di budget e run finali a 5
+> seed non sono completati**: i worker Optuna lanciano ogni nuovo trial dallo
+> script su disco, quindi un pull cambia il codice dei trial successivi a
+> metà studio. Prima del merge: esporta i best params
+> (`export_best_config.py --save-dir configs/best`, committali), archivia
+> `outputs/optuna/` (journal + trial), poi merge, `pip install -e
+> human-feedback-rl`, pytest e smoke. Il commit della campagna è taggato
+> `campaign-v2`.
+
 Campagna Optuna per i 6 bracci di `HybridAlgorithm`, seguita dalle curve di
 budget e dalle run finali a 5 seed per la tesi:
 
@@ -24,10 +37,10 @@ SUMO + learner single-thread).
 ```bash
 cd /work/fis3/sumo-human-feedback-rl
 git pull && git -C human-feedback-rl pull   # oppure: git submodule update --remote
-pip install -e human-feedback-rl            # il package è cambiato (v0.3.0)
+pip install -e human-feedback-rl            # se il package è cambiato
 mkdir -p logs outputs/optuna
 # se ci sono ancora worker della vecchia campagna:
-pkill -f tune_hybrid_sac; pkill -f test_hybrid_SAC
+pkill -f tune_hybrid_sac; pkill -f train_hybrid_sac
 ```
 
 ## 1. Tuning: tutti i bracci in parallelo, 1 trial alla volta per braccio
@@ -130,7 +143,7 @@ EOF
 ### Interrompere / riprendere
 
 Lo stato vive in `outputs/optuna/journal.log`: `pkill -f tune_hybrid_sac;
-pkill -f test_hybrid_SAC`, poi rilancia con i trial residui — gli studi
+pkill -f train_hybrid_sac`, poi rilancia con i trial residui — gli studi
 riprendono da dove erano (`load_if_exists`).
 
 ## 2. Curve di budget (dopo il tuning delle 4 baseline)

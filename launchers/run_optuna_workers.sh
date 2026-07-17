@@ -2,7 +2,7 @@
 # Launch N Optuna workers for one tuning arm, each pinned to its own core slice.
 #
 # Each worker runs scripts/tune_hybrid_sac.py, which spawns one training
-# subprocess at a time (test_hybrid_SAC.py with n_envs=2). A trial keeps busy
+# subprocess at a time (train_hybrid_sac.py with n_envs=2). A trial keeps busy
 # the 2 SUMO subprocesses during rollouts and the single-threaded learner
 # during gradient steps, so 3 pinned cores per worker is the right ratio.
 #

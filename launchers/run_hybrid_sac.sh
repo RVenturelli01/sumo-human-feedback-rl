@@ -91,7 +91,7 @@ SCATTER_INTERVAL="${SCATTER_INTERVAL:-10}"
 AGENT_LOG_TIMESTEP_INTERVAL="${AGENT_LOG_TIMESTEP_INTERVAL:-10000}"
 
 cmd=(
-  "$PYTHON_BIN" scripts/test_hybrid_SAC.py
+  "$PYTHON_BIN" scripts/train_hybrid_sac.py
   run.seed="$SEED"
   run.output_dir="$OUTPUT_DIR"
   wandb.entity="$WANDB_ENTITY"
