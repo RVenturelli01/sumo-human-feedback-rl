@@ -16,6 +16,9 @@
 #   TOTAL_TIMESTEPS=2000000, TIMESTEPS_PER_ITERATION=20000, N_ENVS=2,
 #   WANDB_PROJECT=thesis, FIRST_CORE=33, MAX_PARALLEL=5,
 #   STORAGE=outputs/optuna/journal.log
+#   CORE_SLOTS="33-35 39-41"  -> pin runs to these explicit core ranges instead
+#   of the FIRST_CORE arithmetic (used by the orchestrator to avoid slots that
+#   are still busy with tuning workers); implies MAX_PARALLEL=#slots.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,7 +41,20 @@ CORES_PER_RUN="${CORES_PER_RUN:-3}"
 MAX_PARALLEL="${MAX_PARALLEL:-5}"
 STORAGE="${STORAGE:-outputs/optuna/journal.log}"
 STUDY_SUFFIX="${STUDY_SUFFIX:-}"
+CORE_SLOTS="${CORE_SLOTS:-}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
+
+# Explicit slot list wins over the FIRST_CORE arithmetic.
+if [[ -n "$CORE_SLOTS" ]]; then
+    read -r -a SLOTS <<< "$CORE_SLOTS"
+    MAX_PARALLEL=${#SLOTS[@]}
+else
+    SLOTS=()
+    for ((i = 0; i < MAX_PARALLEL; i++)); do
+        lo=$((FIRST_CORE + i * CORES_PER_RUN))
+        SLOTS+=("${lo}-$((lo + CORES_PER_RUN - 1))")
+    done
+fi
 
 GROUP="${ARM}${SUFFIX}"
 mkdir -p logs "outputs/final/${GROUP}"
@@ -49,14 +65,27 @@ OVERRIDES="$(cd scripts && "$PYTHON_BIN" export_best_config.py \
     --pref-budget "$PREF_BUDGET" --demo-budget "$DEMO_BUDGET")"
 echo "  $OVERRIDES"
 
+# Pref arms: the tuned initial_queries was chosen at the TUNING budget; clamp
+# it to the final budget so the bootstrap chunk never exceeds it (same
+# min(tuned, budget/5) rule as run_budget_curves.sh).
+EXTRA=()
+if [[ "$ARM" == pref_* ]]; then
+    BEST_IQ="$(cd scripts && "$PYTHON_BIN" export_best_config.py \
+        --arm "$ARM" --study-suffix "$STUDY_SUFFIX" --format params --storage-path "../$STORAGE" \
+        | "$PYTHON_BIN" -c 'import json,sys; print(json.load(sys.stdin).get("initial_queries", 500))')"
+    IQ=$(( BEST_IQ < PREF_BUDGET / 5 ? BEST_IQ : PREF_BUDGET / 5 ))
+    EXTRA+=( "algo.kwargs.initial_queries=$IQ" )
+    echo "  initial_queries: tuned=$BEST_IQ -> used=$IQ (budget $PREF_BUDGET)"
+fi
+
 slot=0
 for SEED in $SEEDS; do
-    lo=$((FIRST_CORE + slot * CORES_PER_RUN))
-    hi=$((lo + CORES_PER_RUN - 1))
+    range="${SLOTS[$slot]}"
     # shellcheck disable=SC2086
     OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
-        nohup taskset -c "${lo}-${hi}" "$PYTHON_BIN" scripts/test_hybrid_SAC.py \
+        nohup taskset -c "$range" "$PYTHON_BIN" scripts/test_hybrid_SAC.py \
             $OVERRIDES \
+            ${EXTRA[@]+"${EXTRA[@]}"} \
             run.seed="$SEED" \
             run.output_dir="outputs/final/${GROUP}" \
             run.name="${GROUP}-seed${SEED}" \
@@ -68,7 +97,7 @@ for SEED in $SEEDS; do
             train.kwargs.total_timesteps="$TOTAL_TIMESTEPS" \
             train.kwargs.timesteps_per_iteration="$TIMESTEPS_PER_ITERATION" \
             > "logs/final_${GROUP}_seed${SEED}.log" 2>&1 &
-    echo "  seed $SEED on cores ${lo}-${hi} (pid $!)"
+    echo "  seed $SEED on cores ${range} (pid $!)"
     slot=$(( (slot + 1) % MAX_PARALLEL ))
     # When all slots are busy, wait for the whole wave before reusing cores.
     if [[ "$slot" -eq 0 ]]; then wait; fi

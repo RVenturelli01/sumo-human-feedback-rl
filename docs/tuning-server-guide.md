@@ -133,6 +133,24 @@ Lo stato vive in `outputs/optuna/journal.log`: `pkill -f tune_hybrid_sac;
 pkill -f test_hybrid_SAC`, poi rilancia con i trial residui — gli studi
 riprendono da dove erano (`load_if_exists`).
 
+## 1-bis. Orchestratore automatico post-tuning (consigliato)
+
+Le fasi 2 e 3 possono essere eseguite automaticamente da
+`scripts/post_tuning_orchestrator.py` (in tmux): per ogni braccio attende la
+fine del suo tuning (>=30 trial + worker uscito), lancia la curva di budget
+sugli slot liberi (evitando quelli ancora occupati dai worker), calcola il
+budget minimo con la regola del 90% (`compute_min_budget.py` →
+`outputs/post_tuning/budgets.json`) e poi le finali 5-seed; le finali hybrid
+partono solo quando esistono X_pref_soft e Y_demo_k e il loro tuning è
+completo. Un solo stage pesante alla volta (lock), stage completati marcati in
+`outputs/post_tuning/state/`, log per stage in `outputs/post_tuning/logs/`.
+
+```bash
+python scripts/post_tuning_orchestrator.py --dry-run   # mostra il piano
+tmux new -s post_tuning
+python scripts/post_tuning_orchestrator.py             # esegue tutto
+```
+
 ## 2. Curve di budget (dopo il tuning delle 4 baseline)
 
 Griglia 1D per asse (nessun ottimizzatore): livelli × 3 seed con la config

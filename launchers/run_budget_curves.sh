@@ -42,7 +42,21 @@ CORES_PER_RUN="${CORES_PER_RUN:-3}"
 MAX_PARALLEL="${MAX_PARALLEL:-5}"
 STORAGE="${STORAGE:-outputs/optuna/journal.log}"
 STUDY_SUFFIX="${STUDY_SUFFIX:-}"
+CORE_SLOTS="${CORE_SLOTS:-}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
+
+# Explicit slot list ("33-35 39-41") wins over the FIRST_CORE arithmetic; used
+# by the orchestrator to avoid slots still busy with tuning workers.
+if [[ -n "$CORE_SLOTS" ]]; then
+    read -r -a SLOTS <<< "$CORE_SLOTS"
+    MAX_PARALLEL=${#SLOTS[@]}
+else
+    SLOTS=()
+    for ((i = 0; i < MAX_PARALLEL; i++)); do
+        lo=$((FIRST_CORE + i * CORES_PER_RUN))
+        SLOTS+=("${lo}-$((lo + CORES_PER_RUN - 1))")
+    done
+fi
 
 mkdir -p logs
 
@@ -69,11 +83,10 @@ for LEVEL in $LEVELS; do
     else
       EXTRA+=( "run.n_expert_trajectories=$LEVEL" )
     fi
-    lo=$((FIRST_CORE + slot * CORES_PER_RUN))
-    hi=$((lo + CORES_PER_RUN - 1))
+    range="${SLOTS[$slot]}"
     # shellcheck disable=SC2086
     OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
-        nohup taskset -c "${lo}-${hi}" "$PYTHON_BIN" scripts/test_hybrid_SAC.py \
+        nohup taskset -c "$range" "$PYTHON_BIN" scripts/test_hybrid_SAC.py \
             $OVERRIDES \
             "${EXTRA[@]}" \
             run.seed="$SEED" \
@@ -87,7 +100,7 @@ for LEVEL in $LEVELS; do
             train.kwargs.total_timesteps="$TOTAL_TIMESTEPS" \
             train.kwargs.timesteps_per_iteration="$TIMESTEPS_PER_ITERATION" \
             > "logs/budget_${ARM}_${LEVEL}_seed${SEED}.log" 2>&1 &
-    echo "  $ARM budget=$LEVEL seed=$SEED on cores ${lo}-${hi} (pid $!)"
+    echo "  $ARM budget=$LEVEL seed=$SEED on cores ${range} (pid $!)"
     slot=$(( (slot + 1) % MAX_PARALLEL ))
     if [[ "$slot" -eq 0 ]]; then wait; fi
   done
