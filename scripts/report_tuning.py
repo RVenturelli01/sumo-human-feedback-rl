@@ -17,7 +17,6 @@ Usage:
 import argparse
 from collections import defaultdict
 
-import numpy as np
 import pandas as pd
 
 from _report_common import (
@@ -28,7 +27,6 @@ from _report_common import (
     new_axes,
     save_figure,
     save_table,
-    style_axes,
 )
 
 PARAM_KEYS = (

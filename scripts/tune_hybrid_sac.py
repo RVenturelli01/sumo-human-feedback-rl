@@ -9,7 +9,7 @@ Six arms, one Optuna study each (sharing one journal file):
 * ``hybrid_demo_1``  — preferences + demonstrations, demo loss demo_1
 * ``hybrid_demo_2``  — preferences + demonstrations, demo loss demo_2
 
-Each trial runs ``scripts/test_hybrid_SAC.py`` as a subprocess (libsumo, W&B
+Each trial runs ``scripts/train_hybrid_sac.py`` as a subprocess (libsumo, W&B
 and SubprocVecEnv state are all cleaned up by process exit), follows the
 per-iteration ``metrics.jsonl`` written by the training run for median
 pruning, and reads the final held-out ``final_eval.json`` as the objective
@@ -37,9 +37,21 @@ from optuna.storages import JournalStorage
 from optuna.storages.journal import JournalFileBackend, JournalFileOpenLock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TRAIN_SCRIPT = REPO_ROOT / "scripts" / "test_hybrid_SAC.py"
+TRAIN_SCRIPT = REPO_ROOT / "scripts" / "train_hybrid_sac.py"
 
 ARMS = ("pref_soft", "pref_bernoulli", "demo_1", "demo_2", "hybrid_demo_1", "hybrid_demo_2")
+# --- EXTENSION PLACEHOLDER: literature hybrid baseline (Ibarz 2018) ---------
+# "Demonstrations as implicit preferences" is already implemented and tested
+# in HybridAlgorithm as demo_mode="preferences" (expert>agent pairs mixed into
+# one Bradley-Terry objective). To compare against it, add an "ibarz" arm:
+#   * ARMS += ("ibarz",)
+#   * arm_overrides: like the hybrid arms but with
+#       algo.kwargs.demo_mode=preferences (instead of gcl),
+#       algo.kwargs.demo_pref_pairs_per_iteration=<budget-derived>,
+#       algo.kwargs.demo_pref_batch_fraction=0.5 (or tuned),
+#     and no demo_weight (unused in that mode);
+#   * suggest_params: pref-side params + demo_pref_batch_fraction.
+# Everything downstream (pruning, export, final runs, reports) works as-is.
 PRUNE_METRIC = "rollout/mean_true_reward"
 OBJECTIVE_METRIC = "eval/mean_fast_return"
 POLL_SECONDS = 30

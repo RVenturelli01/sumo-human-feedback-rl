@@ -96,7 +96,7 @@ def live_run_names() -> dict:
     """{run_name: pid} for every live training run (any launcher)."""
     runs = {}
     for pid, cmd in _iter_cmdlines():
-        if "test_hybrid_SAC.py" in cmd:
+        if "test_hybrid_SAC.py" in cmd or "train_hybrid_sac.py" in cmd:
             m = re.search(r"run\.name=(\S+)", cmd)
             if m:
                 runs[m.group(1)] = pid

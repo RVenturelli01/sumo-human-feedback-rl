@@ -83,7 +83,7 @@ for SEED in $SEEDS; do
     range="${SLOTS[$slot]}"
     # shellcheck disable=SC2086
     OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
-        nohup taskset -c "$range" "$PYTHON_BIN" scripts/test_hybrid_SAC.py \
+        nohup taskset -c "$range" "$PYTHON_BIN" scripts/train_hybrid_sac.py \
             $OVERRIDES \
             ${EXTRA[@]+"${EXTRA[@]}"} \
             run.seed="$SEED" \

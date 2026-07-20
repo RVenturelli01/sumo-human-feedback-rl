@@ -78,7 +78,19 @@ def load_expert_trajectories(
             f"n_trajectories must be in [1, {len(trajectories)}], got {n_trajectories}."
         )
     order = np.random.default_rng(seed).permutation(len(trajectories))
-    return [trajectories[i] for i in order[:n_trajectories]]
+    subset = [trajectories[i] for i in order[:n_trajectories]]
+    # --- EXTENSION PLACEHOLDER: demonstration noise -------------------------
+    # Planned experiment ("rumore sulle dimostrazioni"): corrupt the expert
+    # data right here, after subsampling, via a new knob, e.g.
+    # ``demo_noise: float = 0.0`` (seeded with the same rng):
+    #   * action noise — add clipped Gaussian noise to each transition's
+    #     action (std = demo_noise * action range), i.e. a sloppier expert;
+    #   * or trajectory swap — replace a demo_noise fraction of expert
+    #     trajectories with random agent-quality ones (mislabeled demos).
+    # Loading is the single choke point every consumer goes through, so the
+    # corruption applies uniformly to the IRL losses AND to the
+    # demos-as-preferences pairs. With demo_noise=0.0 behaviour is unchanged.
+    return subset
 
 
 def load_debug_dataset(name: str = "debug_dataset.pkl"):

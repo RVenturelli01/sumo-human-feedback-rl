@@ -4,7 +4,7 @@ Reads the shared journal, loads the study of the given arm and prints the
 best trial in the requested format:
 
 * ``overrides`` (default) — space-separated Hydra overrides (arm presets +
-  best params), ready to append to a ``test_hybrid_SAC.py`` command line.
+  best params), ready to append to a ``train_hybrid_sac.py`` command line.
 * ``full``     — like ``overrides`` but prefixed with the tuner's fixed
   overrides too: a complete, self-contained config for final runs.
 * ``params``   — the raw Optuna param dict as JSON. A list of the top-k dicts

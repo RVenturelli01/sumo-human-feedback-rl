@@ -24,10 +24,10 @@ SUMO + learner single-thread).
 ```bash
 cd /work/fis3/sumo-human-feedback-rl
 git pull && git -C human-feedback-rl pull   # oppure: git submodule update --remote
-pip install -e human-feedback-rl            # il package è cambiato (v0.3.0)
+pip install -e human-feedback-rl            # se il package è cambiato
 mkdir -p logs outputs/optuna
 # se ci sono ancora worker della vecchia campagna:
-pkill -f tune_hybrid_sac; pkill -f test_hybrid_SAC
+pkill -f tune_hybrid_sac; pkill -f train_hybrid_sac
 ```
 
 ## 1. Tuning: tutti i bracci in parallelo, 1 trial alla volta per braccio
@@ -130,7 +130,7 @@ EOF
 ### Interrompere / riprendere
 
 Lo stato vive in `outputs/optuna/journal.log`: `pkill -f tune_hybrid_sac;
-pkill -f test_hybrid_SAC`, poi rilancia con i trial residui — gli studi
+pkill -f train_hybrid_sac`, poi rilancia con i trial residui — gli studi
 riprendono da dove erano (`load_if_exists`).
 
 ## 1-bis. Orchestratore automatico post-tuning (consigliato)
