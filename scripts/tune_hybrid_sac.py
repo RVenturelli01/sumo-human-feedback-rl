@@ -170,6 +170,10 @@ def suggest_params(trial: optuna.Trial, arm: str, pref_budget: int = 5000) -> di
         params["batch_size_pref"] = trial.suggest_categorical(
             "batch_size_pref", [64, 128, 256]
         )
+        if arm == "pref_bernoulli":
+            params["pref_temperature"] = trial.suggest_float(
+                "pref_temperature", 1.0, 50.0, log=True
+            )
     if arm.startswith("pref_"):
         params["query_schedule"] = trial.suggest_categorical(
             "query_schedule", ["constant", "hyperbolic", "inverse_quadratic"]
@@ -206,6 +210,7 @@ PARAM_TO_OVERRIDE = {
     "batch_size_expert": "algo.kwargs.batch_size_expert",
     "batch_size_model": "algo.kwargs.batch_size_model",
     "demo_weight": "algo.kwargs.demo_weight",
+    "pref_temperature": "algo.kwargs.pref_temperature",
 }
 
 
