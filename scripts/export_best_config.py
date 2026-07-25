@@ -36,8 +36,10 @@ from tune_hybrid_sac import (
     ARMS,
     FIXED_OVERRIDES,
     OBJECTIVE_METRIC,
+    PREFERENCE_LABEL_CHOICES,
     arm_overrides,
     params_to_overrides,
+    resolve_preference_labels,
 )
 
 
@@ -58,6 +60,15 @@ def main():
     parser.add_argument("--top-k", type=int, default=1)
     parser.add_argument("--pref-budget", type=int, default=5000)
     parser.add_argument("--demo-budget", type=int, default=500)
+    parser.add_argument(
+        "--preference-labels",
+        choices=PREFERENCE_LABEL_CHOICES,
+        default="auto",
+        help=(
+            "Preference labels used by the study. With 'auto', read the study "
+            "metadata when available, then fall back to the historical arm default."
+        ),
+    )
     parser.add_argument("--save-dir", default=None,
                         help="Also archive the best trial as <dir>/<arm><suffix>.json "
                              "(params + full overrides + metadata).")
@@ -69,6 +80,17 @@ def main():
     study = optuna.load_study(
         study_name=f"hybrid_sac_{args.arm}{args.study_suffix}", storage=storage
     )
+    stored_labels = study.user_attrs.get("preference_labels")
+    requested_labels = resolve_preference_labels(args.arm, args.preference_labels)
+    if args.preference_labels == "auto" and stored_labels is not None:
+        preference_labels = stored_labels
+    else:
+        preference_labels = requested_labels
+    if stored_labels is not None and stored_labels != preference_labels:
+        raise SystemExit(
+            f"Study uses preference_labels={stored_labels!r}, "
+            f"not {preference_labels!r}."
+        )
     trials = completed_trials_sorted(study)[: args.top_k]
     if not trials:
         raise SystemExit(f"No completed trials for arm {args.arm}.")
@@ -83,9 +105,15 @@ def main():
             "params": best.params,
             "overrides": (
                 FIXED_OVERRIDES
-                + arm_overrides(args.arm, args.pref_budget, args.demo_budget)
+                + arm_overrides(
+                    args.arm,
+                    args.pref_budget,
+                    args.demo_budget,
+                    preference_labels,
+                )
                 + params_to_overrides(best.params)
             ),
+            "preference_labels": preference_labels,
             "pref_budget": args.pref_budget,
             "demo_budget": args.demo_budget,
             "eval": {k: v for k, v in best.user_attrs.items() if k.startswith("eval/")},
@@ -114,7 +142,12 @@ def main():
 
     best = trials[0]
     overrides = (
-        arm_overrides(args.arm, args.pref_budget, args.demo_budget)
+        arm_overrides(
+            args.arm,
+            args.pref_budget,
+            args.demo_budget,
+            preference_labels,
+        )
         + params_to_overrides(best.params)
     )
     if args.format == "full":

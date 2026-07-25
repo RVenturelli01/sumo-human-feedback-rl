@@ -9,6 +9,11 @@ Six arms, one Optuna study each (sharing one journal file):
 * ``hybrid_demo_1``  — preferences + demonstrations, demo loss demo_1
 * ``hybrid_demo_2``  — preferences + demonstrations, demo loss demo_2
 
+Hybrid arms use soft labels by default. Pass
+``--preference-labels binary_bernoulli`` with a dedicated ``--study-suffix``
+to tune the Bernoulli variant, including ``pref_temperature`` and the
+bootstrap size ``initial_queries``.
+
 Each trial runs ``scripts/train_hybrid_sac.py`` as a subprocess (libsumo, W&B
 and SubprocVecEnv state are all cleaned up by process exit), follows the
 per-iteration ``metrics.jsonl`` written by the training run for median
@@ -40,6 +45,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TRAIN_SCRIPT = REPO_ROOT / "scripts" / "train_hybrid_sac.py"
 
 ARMS = ("pref_soft", "pref_bernoulli", "demo_1", "demo_2", "hybrid_demo_1", "hybrid_demo_2")
+PREFERENCE_LABEL_CHOICES = ("auto", "soft", "binary_bernoulli")
 # --- EXTENSION PLACEHOLDER: literature hybrid baseline (Ibarz 2018) ---------
 # "Demonstrations as implicit preferences" is already implemented and tested
 # in HybridAlgorithm as demo_mode="preferences" (expert>agent pairs mixed into
@@ -103,11 +109,28 @@ def uses_demos(arm: str) -> bool:
     return arm.startswith("demo_") or arm.startswith("hybrid_")
 
 
-def arm_overrides(arm: str, pref_budget: int, demo_budget: int) -> list:
+def resolve_preference_labels(arm: str, preference_labels: str = "auto") -> str:
+    """Resolve ``auto`` while preserving the historical per-arm defaults."""
+    if preference_labels not in PREFERENCE_LABEL_CHOICES:
+        raise ValueError(
+            f"Unsupported preference labels {preference_labels!r}; "
+            f"choose one of {PREFERENCE_LABEL_CHOICES}."
+        )
+    if preference_labels != "auto":
+        return preference_labels
+    return "binary_bernoulli" if arm == "pref_bernoulli" else "soft"
+
+
+def arm_overrides(
+    arm: str,
+    pref_budget: int,
+    demo_budget: int,
+    preference_labels: str = "auto",
+) -> list:
     """Arm-defining overrides (the launcher MODE presets, made explicit)."""
     overrides = []
     if uses_preferences(arm):
-        labels = "binary_bernoulli" if arm == "pref_bernoulli" else "soft"
+        labels = resolve_preference_labels(arm, preference_labels)
         overrides += [
             f"algo.kwargs.labels_type={labels}",
             f"algo.kwargs.total_queries={pref_budget}",
@@ -155,8 +178,18 @@ def initial_queries_choices(pref_budget: int) -> list:
     return sorted({max(100, round(pref_budget * f)) for f in (0.02, 0.05, 0.1, 0.2)})
 
 
-def suggest_params(trial: optuna.Trial, arm: str, pref_budget: int = 5000) -> dict:
+def suggest_params(
+    trial: optuna.Trial,
+    arm: str,
+    pref_budget: int = 5000,
+    preference_labels: str = "auto",
+) -> dict:
     """Sample the per-arm search space; returns {param_name: value}."""
+    resolved_labels = (
+        resolve_preference_labels(arm, preference_labels)
+        if uses_preferences(arm)
+        else None
+    )
     params = {
         "lr_rew": trial.suggest_float("lr_rew", 3e-5, 3e-3, log=True),
         "gradient_steps_rew": trial.suggest_int("gradient_steps_rew", 20, 400, log=True),
@@ -170,7 +203,7 @@ def suggest_params(trial: optuna.Trial, arm: str, pref_budget: int = 5000) -> di
         params["batch_size_pref"] = trial.suggest_categorical(
             "batch_size_pref", [64, 128, 256]
         )
-        if arm == "pref_bernoulli":
+        if resolved_labels == "binary_bernoulli":
             params["pref_temperature"] = trial.suggest_float(
                 "pref_temperature", 1.0, 50.0, log=True
             )
@@ -183,6 +216,12 @@ def suggest_params(trial: optuna.Trial, arm: str, pref_budget: int = 5000) -> di
         )
         params["fragmenter_type"] = trial.suggest_categorical(
             "fragmenter_type", ["active", "random"]
+        )
+    elif arm.startswith("hybrid_") and resolved_labels == "binary_bernoulli":
+        # Bernoulli labels make the bootstrap size more consequential. Keep
+        # schedule and fragmenter fixed so this adds only one search dimension.
+        params["initial_queries"] = trial.suggest_categorical(
+            "initial_queries", initial_queries_choices(pref_budget)
         )
     if uses_demos(arm):
         params["batch_size_expert"] = trial.suggest_categorical(
@@ -282,9 +321,19 @@ def make_objective(args):
         trial_dir = out_root / f"trial_{trial.number:04d}"
         trial_dir.mkdir(parents=True, exist_ok=True)
         run_name = f"{args.arm}{args.study_suffix}-t{trial.number:03d}"
-        params = suggest_params(trial, args.arm, args.pref_budget)
+        params = suggest_params(
+            trial,
+            args.arm,
+            args.pref_budget,
+            args.preference_labels,
+        )
         trial_overrides = (
-            arm_overrides(args.arm, args.pref_budget, args.demo_budget)
+            arm_overrides(
+                args.arm,
+                args.pref_budget,
+                args.demo_budget,
+                args.preference_labels,
+            )
             + params_to_overrides(params)
         )
         cmd = build_command(trial_dir, run_name, trial_overrides, args)
@@ -367,6 +416,16 @@ def parse_args():
                         help="total_queries for the pref/hybrid arms.")
     parser.add_argument("--demo-budget", type=int, default=500,
                         help="n_expert_trajectories for the demo/hybrid arms.")
+    parser.add_argument(
+        "--preference-labels",
+        choices=PREFERENCE_LABEL_CHOICES,
+        default="auto",
+        help=(
+            "Preference oracle labels. 'auto' preserves the historical defaults "
+            "(Bernoulli only for pref_bernoulli). Selecting binary_bernoulli also "
+            "adds pref_temperature to the Optuna search space."
+        ),
+    )
     parser.add_argument("--eval-episodes", type=int, default=20)
     parser.add_argument("--trial-timeout", type=int, default=12 * 3600)
     parser.add_argument("--wandb-entity", default="andrea02polimi-politecnico-di-milano")
@@ -396,6 +455,17 @@ def main():
         raise SystemExit("--n-envs must be >= 2 (DummyVecEnv + two envs breaks libsumo).")
     if args.cores and shutil.which("taskset") is None:
         raise SystemExit("--cores requires taskset (Linux). Omit it on macOS.")
+    if not uses_preferences(args.arm) and args.preference_labels != "auto":
+        raise SystemExit(
+            "--preference-labels is only meaningful for pref/hybrid arms."
+        )
+    default_labels = resolve_preference_labels(args.arm)
+    effective_labels = resolve_preference_labels(args.arm, args.preference_labels)
+    if effective_labels != default_labels and not args.study_suffix:
+        raise SystemExit(
+            "A non-default --preference-labels value requires --study-suffix "
+            "so incompatible trials cannot be mixed in one Optuna study."
+        )
 
     storage_path = Path(args.storage_path)
     storage_path.parent.mkdir(parents=True, exist_ok=True)
@@ -417,6 +487,14 @@ def main():
         ),
         load_if_exists=True,
     )
+    stored_labels = study.user_attrs.get("preference_labels")
+    if stored_labels is not None and stored_labels != effective_labels:
+        raise SystemExit(
+            f"Study already uses preference_labels={stored_labels!r}, "
+            f"not {effective_labels!r}."
+        )
+    if stored_labels is None:
+        study.set_user_attr("preference_labels", effective_labels)
     if args.enqueue_params:
         for params in json.loads(Path(args.enqueue_params).read_text()):
             study.enqueue_trial(params, skip_if_exists=True)
