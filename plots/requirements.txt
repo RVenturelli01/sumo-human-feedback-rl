@@ -1,0 +1,6 @@
+# Dipendenze del toolkit di plotting (plots/), oltre a quelle gia' installate
+# per il resto della repo (pandas, matplotlib, wandb).
+pyarrow>=14          # formato dell'indice in cache (plots/.cache/run_index.parquet)
+tikzplotlib==0.10.1  # export .tex (pgfplots); ferma al 2022, vedi rtplots/tikz.py:_compat()
+webcolors==1.13      # tikzplotlib usa CSS3_HEX_TO_NAMES, rimosso nelle versioni >=24
+tomli>=2; python_version < "3.11"  # tomllib e' nella stdlib solo da 3.11

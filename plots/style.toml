@@ -1,0 +1,178 @@
+#  ┌──────────────────────────────────────────────────────────────────────────┐
+#  │  Regole dei grafici — si modifica a mano, non lo riscrive nessuno script  │
+#  └──────────────────────────────────────────────────────────────────────────┘
+#
+#  Vale sia per l'anteprima del selettore sia per l'export .tex: quello che vedi
+#  è quello che scarichi. Il file viene riletto a ogni figura, quindi basta
+#  salvare e ridisegnare — niente riavvii.
+#
+#  Le stringhe fra apici singoli sono letterali: i backslash di LaTeX si scrivono
+#  come sono ('$\omega$', non '$\\omega$'). Fra apici doppi invece vanno raddoppiati.
+#
+#  Una riga cancellata torna al default del codice: qui sotto ci sono i default
+#  attuali scritti per esteso, così si vede cosa c'è da toccare.
+
+
+# ── Figura ────────────────────────────────────────────────────────────────────
+[figure]
+panel_size = [3.4, 2.5]      # pollici, per pannello (larghezza, altezza)
+xlabel = "Environment timesteps"   # solo curve di apprendimento (il budget usa il nome dell'asse scelto)
+ylabel = "Mean return"       # "" = quella della metrica scelta nel selettore
+xscale = 1e6                 # divisore dell'asse x delle curve di apprendimento (1e6 = milioni di step)
+share = "row"                # none | row | col | all: quali pannelli condividono la y
+font_scale = 1.0              # moltiplica tutte le dimensioni dei font
+
+
+# ── Curve ─────────────────────────────────────────────────────────────────────
+[lines]
+width = 1.4                  # spessore di default (le regole [[series]] lo sovrascrivono)
+band_alpha = 0.18            # opacità della banda sui seed (curve di apprendimento)
+band = "se"                  # se | std | ci95 | iqr | minmax | none
+smooth = 5                   # finestra della media mobile, 0 = curve grezze
+baseline_color = "#000000"
+baseline_width = 1.6
+
+
+# ── Legenda ───────────────────────────────────────────────────────────────────
+[legend]
+# outside_right (default)  fuori dagli assi, a destra: mai sopra ai dati, bene
+#                          con molte serie in un pannello solo (il caso tipico
+#                          qui: 5-8 arm sovrapposti)
+# outside_bottom           fuori dagli assi, sotto tutta la griglia
+# panel                    dentro ogni pannello, alla posizione di `loc`
+# first                    dentro il primo pannello soltanto
+# figure                   una sola legenda sotto tutta la griglia (alias di outside_bottom)
+# none                     nessuna legenda
+where = "outside_right"
+loc = "best"                 # usato solo con where = "panel" | "first"
+ncol = 1
+frame = true
+font_size = 8.5
+
+
+# ── Palette ───────────────────────────────────────────────────────────────────
+# Usata per le serie che nessuna regola [[series]] colora, nell'ordine scritto.
+# Stessi colori di scripts/_report_common.py:ARM_COLORS, cosi' un braccio ha
+# sempre lo stesso colore in tutte le figure della tesi (report_*.py e questo
+# motore).
+[palette]
+colors = [
+  "#2a78d6",   # blu          pref_soft
+  "#1baf7a",   # verde acqua  pref_bernoulli
+  "#eda100",   # giallo       demo_1
+  "#008300",   # verde        demo_2
+  "#4a3aa7",   # viola        hybrid_demo_1
+  "#e34948",   # rosso        hybrid_demo_2
+  "#8a4b08",   # marrone      (scorta)
+  "#0f7ea6",   # ciano        (scorta)
+]
+
+
+# ── Serie ─────────────────────────────────────────────────────────────────────
+#  Una regola per blocco [[series]]. `match` elenca i valori che la serie deve
+#  avere: si applica la PRIMA regola che combacia, quindi le più specifiche vanno
+#  in alto. Le chiavi di `match` sono le colonne dell'indice — le stesse dei
+#  filtri del selettore: arm, arm_family, demo_loss, pref_labels,
+#  normalize_agent_reward, query_schedule, fragmenter_type, ...
+#
+#  Ogni regola può fissare:
+#    color        colore della curva/dei punti
+#    width        spessore (default: [lines].width)
+#    style        solid | dashed | dotted | dashdot (solo curve di apprendimento)
+#    band_alpha   opacità della banda solo per questa serie
+#    name         nome in legenda nell'anteprima (mathtext di matplotlib)
+#    latex        nome in legenda nel .tex — qui ci vanno le macro della tesi
+#
+#  `name` e `latex` sostituiscono solo la parte iniziale dell'etichetta (il nome
+#  dell'arm): quello che varia fra i pannelli (budget, seed, ...) resta attaccato
+#  dopo, come adesso.
+#
+#  I quattro bracci baseline colorano per `arm` diretto; gli otto combinazioni
+#  di hybrid condividono il colore del loro demo_loss e si distinguono per
+#  tratteggio (soft = continuo, bernoulli = tratteggiato) — cosi' "hybrid con
+#  preferenze soft" e "hybrid con preferenze Bernoulli" restano leggibili anche
+#  in scala di grigi.
+
+[[series]]
+match = { arm = "pref_soft" }
+color = "#2a78d6"
+style = "solid"
+name  = 'pref_soft'
+latex = '\prefsoft'
+
+[[series]]
+match = { arm = "pref_bernoulli" }
+color = "#1baf7a"
+style = "solid"
+name  = 'pref_bernoulli'
+latex = '\prefbern'
+
+[[series]]
+match = { arm = "demo_1" }
+color = "#eda100"
+style = "solid"
+name  = 'demo_1'
+latex = '\demoone'
+
+[[series]]
+match = { arm = "demo_2" }
+color = "#008300"
+style = "solid"
+name  = 'demo_2'
+latex = '\demotwo'
+
+[[series]]
+match = { arm = "hybrid_demo_1_soft" }
+color = "#4a3aa7"
+style = "solid"
+name  = 'hybrid_demo_1 (soft)'
+latex = '\hybridonesoft'
+
+[[series]]
+match = { arm = "hybrid_demo_1_bernoulli" }
+color = "#4a3aa7"
+style = "dashed"
+name  = 'hybrid_demo_1 (bernoulli)'
+latex = '\hybridonebern'
+
+[[series]]
+match = { arm = "hybrid_demo_2_soft" }
+color = "#e34948"
+style = "solid"
+name  = 'hybrid_demo_2 (soft)'
+latex = '\hybridtwosoft'
+
+[[series]]
+match = { arm = "hybrid_demo_2_bernoulli" }
+color = "#e34948"
+style = "dashed"
+name  = 'hybrid_demo_2 (bernoulli)'
+latex = '\hybridtwobern'
+
+
+# ── Solo nel .tex ─────────────────────────────────────────────────────────────
+#  Roba che matplotlib non sa esprimere e che quindi non si vede nell'anteprima.
+[latex]
+# Righe aggiunte dentro \begin{axis}[...] di ogni pannello, in coda alle opzioni
+# scritte da tikzplotlib (le sovrascrivono, perché vengono dopo).
+axis_options = [
+  # 'width=\figurewidth',
+  # 'height=\figureheight',
+  # 'legend style={at={(0.97,0.03)},anchor=south east,draw=lightgray204}',
+]
+
+# Commento di intestazione dei .tex generati: ricorda cosa serve nel preambolo.
+preamble = '\usepackage{pgfplots,amsmath}  \pgfplotsset{compat=1.18}'
+
+# Macro da definire nel documento perché i nomi `latex` qui sopra funzionino.
+# Sono un promemoria: finiscono come commento in cima ad ogni .tex esportato.
+macros = [
+  '\newcommand{\prefsoft}{\mathtt{pref\_soft}}',
+  '\newcommand{\prefbern}{\mathtt{pref\_bernoulli}}',
+  '\newcommand{\demoone}{\mathtt{demo\_1}}',
+  '\newcommand{\demotwo}{\mathtt{demo\_2}}',
+  '\newcommand{\hybridonesoft}{\mathtt{hybrid\_demo\_1}\ (\mathrm{soft})}',
+  '\newcommand{\hybridonebern}{\mathtt{hybrid\_demo\_1}\ (\mathrm{bernoulli})}',
+  '\newcommand{\hybridtwosoft}{\mathtt{hybrid\_demo\_2}\ (\mathrm{soft})}',
+  '\newcommand{\hybridtwobern}{\mathtt{hybrid\_demo\_2}\ (\mathrm{bernoulli})}',
+]
