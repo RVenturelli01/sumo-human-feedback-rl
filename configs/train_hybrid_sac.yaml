@@ -75,6 +75,12 @@ algo:
     demo_weight: 1.0
     max_balance_scale: 100.0
     balance_eps: 1e-8
+    # Gradient fusion in gcl mode. norm_balanced is the historical default;
+    # demo_anchor_reliability leaves g_demo untouched and weights g_pref from
+    # previous-iteration gradient noise statistics.
+    gradient_fusion: "norm_balanced"
+    reliability_ema_beta: 0.9
+    reliability_lambda_max: 1.0
     # Gradient-conflict diagnostics (reward/grad_*): sample every Nth reward
     # gradient step, 0 disables. The gradients are already computed by the
     # step, so 1 costs a few vector ops and no extra backward pass.
