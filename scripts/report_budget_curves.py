@@ -38,6 +38,15 @@ RETURN_METRIC = "sweep/mean_fast_return"
 SUCCESS_METRIC = "sweep/success_rate"
 PASS_RATIO = 0.90
 
+# arm_color() derives the hue from the base arm name, so every hybrid_demo_2*
+# variant comes out the same red. Distinguish the variants by line style.
+LINESTYLES = {
+    "hybrid_demo_2_bern_hom": "--",
+    "hybrid_demo_2_soft_hom": "-",
+    "hybrid_demo_2_bernoulli": ":",
+    "hybrid_demo_2_soft": "-.",
+}
+
 
 def collect(project: str):
     """{arm: {level: [runs]}} from budget_* groups."""
@@ -100,12 +109,13 @@ def plot(per_arm_frames: dict, out_dir: Path):
         ax.set_xlabel("budget (log)")
     for arm, df in sorted(per_arm_frames.items()):
         color = arm_color(arm)
+        linestyle = LINESTYLES.get(arm, "-")
         ax_ret.errorbar(df.index, df["return_mean"], yerr=df["return_std"],
-                        color=color, linewidth=1.8, marker="o", markersize=5,
-                        capsize=3, label=arm)
+                        color=color, linestyle=linestyle, linewidth=1.8,
+                        marker="o", markersize=5, capsize=3, label=arm)
         ax_suc.errorbar(df.index, df["success_mean"], yerr=df["success_std"],
-                        color=color, linewidth=1.8, marker="o", markersize=5,
-                        capsize=3, label=arm)
+                        color=color, linestyle=linestyle, linewidth=1.8,
+                        marker="o", markersize=5, capsize=3, label=arm)
     ax_ret.set_ylabel("mean_fast_return")
     ax_suc.set_ylabel("success_rate")
     ax_suc.set_ylim(-0.02, 1.02)
@@ -118,12 +128,26 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--project", default="tuning-thesis")
     parser.add_argument("--out", default=str(DEFAULT_OUT))
+    parser.add_argument("--arms", default=None,
+                        help="Comma-separated allowlist of arms to plot. Without "
+                             "it every budget_* group in the project is included, "
+                             "which mixes campaigns that are not comparable.")
     args = parser.parse_args()
     out_dir = Path(args.out)
 
     per_arm = collect(args.project)
     if not per_arm:
         raise SystemExit(f"No budget_* groups found in {args.project}.")
+
+    if args.arms:
+        keep = {arm.strip() for arm in args.arms.split(",") if arm.strip()}
+        missing = keep - set(per_arm)
+        if missing:
+            raise SystemExit(
+                f"Arms not found in {args.project}: {sorted(missing)}. "
+                f"Available: {sorted(per_arm)}"
+            )
+        per_arm = {arm: levels for arm, levels in per_arm.items() if arm in keep}
 
     frames = {}
     for arm, levels in sorted(per_arm.items()):

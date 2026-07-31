@@ -19,6 +19,11 @@ import sumo_gym_ego as sge
 from sumo_gym_ego import EgoStatus
 from sumo_rl_ego.utils import run_episode
 
+from human_feedback_rl.common.demo_subsampling import (
+    DEMO_SUBSAMPLE_SEED,
+    select_demo_indices,
+    subsample_manifest,
+)
 from human_feedback_rl.common.loggers import configure_wandb_metrics
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "datasets"
@@ -63,22 +68,43 @@ def load_expert_trajectories(
     name: str = "expert_trajectories_no_collision.pkl",
     n_trajectories: Optional[int] = None,
     seed: Optional[int] = None,
-) -> list:
+    n_transitions: Optional[int] = None,
+    return_manifest: bool = False,
+):
     """Load the expert trajectories pickle from datasets/.
 
     With ``n_trajectories`` set, keep a seeded random subset: the prefix of one
     permutation, so at a fixed seed smaller budgets are nested inside larger
     ones (clean demo-budget curves).
+
+    With ``n_transitions`` set instead, budget the demonstrations in
+    TRANSITIONS rather than trajectories: take whole trajectories from the same
+    seeded permutation while the cumulative length stays within the cap (always
+    at least one). One expert trajectory is ~175 transitions here, so a
+    nominally "homogeneous" split like 500 preferences + 500 trajectories
+    actually feeds the demo channel ~175x more data than the preference one;
+    this knob makes the two channels comparable per transition. Nesting is
+    preserved for this budget too (same permutation prefix).
+
+    The two budgets are mutually exclusive.
+
+    ``seed=None`` means :data:`DEMO_SUBSAMPLE_SEED`, the shared constant that
+    makes the demo-only and hybrid arms read the same demonstrations at the
+    same budget. It is deliberately NOT the run seed. With
+    ``return_manifest=True`` the selection is returned alongside the
+    trajectories as a dict (indices, fingerprint, dataset identity) for the
+    run to persist.
     """
     trajectories = load_pickle(DATA_DIR / name)
-    if n_trajectories is None:
-        return trajectories
-    if not 1 <= n_trajectories <= len(trajectories):
-        raise ValueError(
-            f"n_trajectories must be in [1, {len(trajectories)}], got {n_trajectories}."
-        )
-    order = np.random.default_rng(seed).permutation(len(trajectories))
-    subset = [trajectories[i] for i in order[:n_trajectories]]
+    lengths = [len(trajectory) for trajectory in trajectories]
+    indices = select_demo_indices(
+        n_available=len(trajectories),
+        lengths=lengths,
+        n_trajectories=n_trajectories,
+        n_transitions=n_transitions,
+        seed=seed,
+    )
+    subset = [trajectories[i] for i in indices]
     # --- EXTENSION PLACEHOLDER: demonstration noise -------------------------
     # Planned experiment ("rumore sulle dimostrazioni"): corrupt the expert
     # data right here, after subsampling, via a new knob, e.g.
@@ -90,7 +116,17 @@ def load_expert_trajectories(
     # Loading is the single choke point every consumer goes through, so the
     # corruption applies uniformly to the IRL losses AND to the
     # demos-as-preferences pairs. With demo_noise=0.0 behaviour is unchanged.
-    return subset
+    if not return_manifest:
+        return subset
+    manifest = subsample_manifest(
+        indices=indices,
+        lengths=lengths,
+        seed=seed,
+        n_trajectories=n_trajectories,
+        n_transitions=n_transitions,
+        dataset_name=name,
+    )
+    return subset, manifest
 
 
 def load_debug_dataset(name: str = "debug_dataset.pkl"):

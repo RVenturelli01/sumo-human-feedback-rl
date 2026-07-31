@@ -27,6 +27,8 @@ from human_feedback_rl.common.replay_buffers import (
     RewardRelabelReplayBuffer,
 )
 
+from human_feedback_rl.common.demo_subsampling import DEMO_SUBSAMPLE_SEED
+
 from _common import (
     evaluate,
     init_wandb_run,
@@ -56,20 +58,42 @@ def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
     print("Loading expert trajectories...")
-    demo_subsample_seed = cfg.run.get("demo_subsample_seed", None)
-    expert_trajectories = load_expert_trajectories(
+    # The subsample seed is NOT the run seed: every arm at a given budget must
+    # read the same demonstrations, so a budget curve compares algorithms and
+    # not datasets. null falls back to the shared DEMO_SUBSAMPLE_SEED.
+    expert_trajectories, demo_manifest = load_expert_trajectories(
         n_trajectories=cfg.run.get("n_expert_trajectories", None),
-        seed=seed if demo_subsample_seed is None else demo_subsample_seed,
+        seed=cfg.run.get("demo_subsample_seed", None),
+        n_transitions=cfg.run.get("n_expert_transitions", None),
+        return_manifest=True,
     )
-    n_expert_transitions = sum(len(traj) for traj in expert_trajectories)
+    n_expert_transitions = demo_manifest["n_transitions_selected"]
     print(
         f"Loaded {len(expert_trajectories)} expert trajectories "
-        f"({n_expert_transitions} transitions)"
+        f"({n_expert_transitions} transitions), "
+        f"subsample seed {demo_manifest['subsample_seed']}, "
+        f"fingerprint {demo_manifest['fingerprint'][:12]}"
     )
+    if demo_manifest["subsample_seed"] != DEMO_SUBSAMPLE_SEED:
+        # Legitimate for an ablation that varies the demonstrations on purpose,
+        # but it means this run is NOT comparable to arms on the shared seed.
+        print(
+            f"WARNING: demo subsample seed {demo_manifest['subsample_seed']} is not "
+            f"the shared {DEMO_SUBSAMPLE_SEED}; this run sees different "
+            f"demonstrations from the other arms at the same budget."
+        )
+    # Persist the full selection next to the run's other artifacts, and put the
+    # fingerprint on W&B so two runs can be checked against each other without
+    # access to the machine that produced them.
+    with open(run_dir / "demo_subsample.json", "w") as f:
+        json.dump(demo_manifest, f, indent=2)
     wandb.config.update(
         {
             "expert_n_trajectories": len(expert_trajectories),
             "expert_n_transitions": n_expert_transitions,
+            "demo_subsample_fingerprint": demo_manifest["fingerprint"],
+            "demo_subsample_seed_used": demo_manifest["subsample_seed"],
+            "demo_dataset_fingerprint": demo_manifest["dataset_fingerprint"],
         },
         allow_val_change=True,
     )

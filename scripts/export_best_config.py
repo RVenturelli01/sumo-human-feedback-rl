@@ -38,6 +38,7 @@ from tune_hybrid_sac import (
     OBJECTIVE_METRIC,
     PREFERENCE_LABEL_CHOICES,
     arm_overrides,
+    fixed_param_overrides,
     params_to_overrides,
     resolve_preference_labels,
 )
@@ -72,6 +73,10 @@ def main():
     parser.add_argument("--save-dir", default=None,
                         help="Also archive the best trial as <dir>/<arm><suffix>.json "
                              "(params + full overrides + metadata).")
+    parser.add_argument("--fix-demo-weight", type=float, default=None,
+                        help="Override the pin recorded on the study (rarely needed).")
+    parser.add_argument("--fix-pref-temperature", type=float, default=None,
+                        help="Override the pin recorded on the study (rarely needed).")
     args = parser.parse_args()
 
     storage = JournalStorage(
@@ -91,6 +96,21 @@ def main():
             f"Study uses preference_labels={stored_labels!r}, "
             f"not {preference_labels!r}."
         )
+    # Pins default to whatever the tuning workers recorded on the study, so an
+    # exported config can never silently fall back to the FIXED_OVERRIDES or
+    # yaml value of a parameter that was deliberately pinned during tuning
+    # (pinned params are absent from best.params by construction).
+    stored_pins = study.user_attrs.get("fixed_params") or {}
+    fix_demo_weight = (
+        args.fix_demo_weight if args.fix_demo_weight is not None
+        else stored_pins.get("demo_weight")
+    )
+    fix_pref_temperature = (
+        args.fix_pref_temperature if args.fix_pref_temperature is not None
+        else stored_pins.get("pref_temperature")
+    )
+    pins = fixed_param_overrides(fix_demo_weight, fix_pref_temperature)
+
     trials = completed_trials_sorted(study)[: args.top_k]
     if not trials:
         raise SystemExit(f"No completed trials for arm {args.arm}.")
@@ -112,8 +132,13 @@ def main():
                     preference_labels,
                 )
                 + params_to_overrides(best.params)
+                + pins
             ),
             "preference_labels": preference_labels,
+            "fixed_params": {
+                "demo_weight": fix_demo_weight,
+                "pref_temperature": fix_pref_temperature,
+            },
             "pref_budget": args.pref_budget,
             "demo_budget": args.demo_budget,
             "eval": {k: v for k, v in best.user_attrs.items() if k.startswith("eval/")},
@@ -149,6 +174,7 @@ def main():
             preference_labels,
         )
         + params_to_overrides(best.params)
+        + pins
     )
     if args.format == "full":
         overrides = FIXED_OVERRIDES + overrides

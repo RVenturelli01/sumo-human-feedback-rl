@@ -7,8 +7,21 @@ run:
   # Demo budget: null = full dataset. Subsampling keeps the prefix of one
   # seeded permutation, so smaller budgets are nested inside larger ones.
   n_expert_trajectories: null
-  # null = follow run.seed (multi-seed runs then also vary the demo draw).
-  demo_subsample_seed: null
+  # Alternative demo budget, counted in TRANSITIONS instead of trajectories:
+  # whole trajectories are taken from the same seeded permutation while the
+  # cumulative length stays within the cap. One expert trajectory is ~175
+  # transitions, so "500 preferences + 500 trajectories" actually gives the
+  # demo channel ~175x more data than the preference one; this makes the two
+  # channels comparable per transition. Mutually exclusive with
+  # n_expert_trajectories.
+  n_expert_transitions: null
+  # Seed of the demonstration subsample. Deliberately INDEPENDENT of run.seed:
+  # the demo-only and hybrid arms must read the same demonstrations at the same
+  # budget, otherwise a budget curve compares algorithms and demo sets at once.
+  # null falls back to the same shared constant (human_feedback_rl.common
+  # .demo_subsampling.DEMO_SUBSAMPLE_SEED). Override only for an ablation that
+  # deliberately varies which demonstrations are drawn.
+  demo_subsample_seed: 1000
 
 wandb:
   entity: Null
@@ -62,6 +75,15 @@ algo:
     demo_weight: 1.0
     max_balance_scale: 100.0
     balance_eps: 1e-8
+    # Gradient-conflict diagnostics (reward/grad_*): sample every Nth reward
+    # gradient step, 0 disables. The gradients are already computed by the
+    # step, so 1 costs a few vector ops and no extra backward pass.
+    grad_diagnostics_interval: 1
+    # Single beta for the reward/grad_adam_eq_* variant, where using one
+    # window for both moments keeps v_hat - m_hat^2 a clean, non-negative
+    # variance. The reward/grad_adam_* variant instead borrows the reward
+    # optimizer's own betas and can go slightly negative by construction.
+    grad_diagnostics_eq_beta: 0.99
     # demos-as-preferences baseline (demo_mode=preferences only).
     demo_pref_pairs_per_iteration: 64
     demo_pref_batch_fraction: 0.5

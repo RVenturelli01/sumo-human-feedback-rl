@@ -63,6 +63,19 @@ OBJECTIVE_METRIC = "eval/mean_fast_return"
 POLL_SECONDS = 30
 KILL_GRACE_SECONDS = 30
 
+# Collapse rule. A hybrid run whose policy crashes immediately produces
+# ~1-step episodes, so SUMO resets dominate and the trial takes ~24h instead
+# of ~4h while pinned at the reward floor. MedianPruner cannot catch this in
+# the first wave (with N concurrent workers the first N trials all start
+# before any completes), so this is a separate, absolute rule.
+COLLAPSE_REWARD = -45.0
+COLLAPSE_MIN_STEP = 10
+COLLAPSE_STREAK = 5
+
+# Search-space identity. Bump when suggest_params changes so a study cannot
+# silently mix trials drawn from different spaces.
+SEARCH_SPACE_VERSION = 2
+
 # Values fixed across all arms and trials. pref_temperature and
 # preference_fragment_length define the synthetic oracle, i.e. the problem,
 # not the learner. SAC kwargs come from the true-reward baseline tuning;
@@ -178,13 +191,36 @@ def initial_queries_choices(pref_budget: int) -> list:
     return sorted({max(100, round(pref_budget * f)) for f in (0.02, 0.05, 0.1, 0.2)})
 
 
+def fixed_param_overrides(
+    fix_demo_weight=None,
+    fix_pref_temperature=None,
+) -> list:
+    """Hydra overrides for params pinned on the CLI and dropped from the search.
+
+    Emitted AFTER params_to_overrides so they beat FIXED_OVERRIDES (which pins
+    pref_temperature=20.0) and arm_overrides; --override still wins last.
+    """
+    overrides = []
+    if fix_demo_weight is not None:
+        overrides.append(f"algo.kwargs.demo_weight={fix_demo_weight!r}")
+    if fix_pref_temperature is not None:
+        overrides.append(f"algo.kwargs.pref_temperature={fix_pref_temperature!r}")
+    return overrides
+
+
 def suggest_params(
     trial: optuna.Trial,
     arm: str,
     pref_budget: int = 5000,
     preference_labels: str = "auto",
+    fix_demo_weight=None,
+    fix_pref_temperature=None,
 ) -> dict:
-    """Sample the per-arm search space; returns {param_name: value}."""
+    """Sample the per-arm search space; returns {param_name: value}.
+
+    Params pinned via fix_* are NOT sampled: leaving them in the space would
+    waste search dimensions on values that the overrides then ignore.
+    """
     resolved_labels = (
         resolve_preference_labels(arm, preference_labels)
         if uses_preferences(arm)
@@ -203,7 +239,7 @@ def suggest_params(
         params["batch_size_pref"] = trial.suggest_categorical(
             "batch_size_pref", [64, 128, 256]
         )
-        if resolved_labels == "binary_bernoulli":
+        if resolved_labels == "binary_bernoulli" and fix_pref_temperature is None:
             params["pref_temperature"] = trial.suggest_float(
                 "pref_temperature", 1.0, 50.0, log=True
             )
@@ -231,7 +267,7 @@ def suggest_params(
         params["batch_size_model"] = trial.suggest_categorical(
             "batch_size_model", [32, 64, 128]
         )
-    if arm.startswith("hybrid_"):
+    if arm.startswith("hybrid_") and fix_demo_weight is None:
         params["demo_weight"] = trial.suggest_float("demo_weight", 0.1, 10.0, log=True)
     return params
 
@@ -318,6 +354,11 @@ def make_objective(args):
     out_root = Path(args.output_root) / f"hybrid_sac_{args.arm}{args.study_suffix}"
 
     def objective(trial: optuna.Trial) -> float:
+        # First thing, before anything can fail: bind this trial to the worker
+        # process running it. Without this the campaign manager can detect that
+        # a RUNNING trial is orphaned but not WHICH one.
+        if args.worker_token:
+            trial.set_user_attr("worker_token", args.worker_token)
         trial_dir = out_root / f"trial_{trial.number:04d}"
         trial_dir.mkdir(parents=True, exist_ok=True)
         run_name = f"{args.arm}{args.study_suffix}-t{trial.number:03d}"
@@ -326,6 +367,8 @@ def make_objective(args):
             args.arm,
             args.pref_budget,
             args.preference_labels,
+            fix_demo_weight=args.fix_demo_weight,
+            fix_pref_temperature=args.fix_pref_temperature,
         )
         trial_overrides = (
             arm_overrides(
@@ -335,6 +378,11 @@ def make_objective(args):
                 args.preference_labels,
             )
             + params_to_overrides(params)
+            # Last inside trial_overrides so pinned values beat FIXED_OVERRIDES
+            # (which sets pref_temperature=20.0); args.override still wins.
+            + fixed_param_overrides(
+                args.fix_demo_weight, args.fix_pref_temperature
+            )
         )
         cmd = build_command(trial_dir, run_name, trial_overrides, args)
         (trial_dir / "command.txt").write_text(" ".join(cmd) + "\n")
@@ -350,8 +398,31 @@ def make_objective(args):
             cmd, cwd=REPO_ROOT, env=env, stdout=log_file, stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        # The trainer runs in its own session (start_new_session=True), so if
+        # this worker dies the trainer survives and keeps holding its core.
+        # Record the group ids here so the campaign manager can clean it up;
+        # without this record it has no safe way to tell which process to kill.
+        runtime_record = {
+            "worker_token": args.worker_token,
+            "study_name": f"hybrid_sac_{args.arm}{args.study_suffix}",
+            "trial_id": trial._trial_id,
+            "trial_number": trial.number,
+            "run_name": run_name,
+            "worker_pid": os.getpid(),
+            "trainer_pid": process.pid,
+            "trainer_pgid": os.getpgid(process.pid),
+            "trainer_sid": os.getsid(process.pid),
+            "core": args.cores,
+            "started_at": time.time(),
+        }
+        runtime_path = trial_dir / "trial_runtime.json"
+        temporary = runtime_path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(runtime_record, indent=2, sort_keys=True) + "\n")
+        temporary.replace(runtime_path)
+
         started = time.time()
         metrics_path, offset, last_step = None, 0, -1
+        collapse_streak = 0
         try:
             while True:
                 exited = process.poll() is not None
@@ -368,15 +439,27 @@ def make_objective(args):
                         last_step = step
                         trial.report(float(value), step)
                         if trial.should_prune():
+                            trial.set_user_attr("prune_reason", "median")
                             terminate_process_group(process)
                             raise optuna.TrialPruned()
+                        # Absolute collapse rule (see COLLAPSE_* above).
+                        if step >= COLLAPSE_MIN_STEP and float(value) <= COLLAPSE_REWARD:
+                            collapse_streak += 1
+                            if collapse_streak >= COLLAPSE_STREAK:
+                                trial.set_user_attr("prune_reason", "collapse")
+                                terminate_process_group(process)
+                                raise optuna.TrialPruned()
+                        else:
+                            collapse_streak = 0
                 if exited:
                     break
                 if time.time() - started > args.trial_timeout:
+                    # PRUNED, not FAIL: a timeout eliminates a too-slow config,
+                    # it is not an infrastructure failure. Schedulers gate on
+                    # the FAIL ratio, which must measure crashes/OOM/W&B only.
+                    trial.set_user_attr("prune_reason", "timeout")
                     terminate_process_group(process)
-                    raise RuntimeError(
-                        f"Trial exceeded --trial-timeout={args.trial_timeout}s."
-                    )
+                    raise optuna.TrialPruned()
                 time.sleep(POLL_SECONDS)
         finally:
             log_file.close()
@@ -442,7 +525,20 @@ def parse_args():
                              "different budget. Never mix budgets in one study.")
     parser.add_argument("--enqueue-params", default=None,
                         help="JSON file with a list of param dicts to enqueue as "
-                             "warm-start trials (e.g. baseline winners for hybrid arms).")
+                             "warm-start trials (e.g. baseline winners for hybrid arms). "
+                             "NOTE: enqueue_trial can duplicate trials when several "
+                             "workers call it at once; prefer enqueueing once from a "
+                             "coordinator holding a lock.")
+    parser.add_argument("--fix-demo-weight", type=float, default=None,
+                        help="Pin algo.kwargs.demo_weight and REMOVE it from the "
+                             "search space (hybrid arms). Requires --study-suffix.")
+    parser.add_argument("--fix-pref-temperature", type=float, default=None,
+                        help="Pin algo.kwargs.pref_temperature and REMOVE it from the "
+                             "search space (Bernoulli labels). Requires --study-suffix.")
+    parser.add_argument("--worker-token", default=None,
+                        help="Opaque id stored on the trial as user attr and in "
+                             "trial_runtime.json, so a coordinator can bind trial, "
+                             "worker process and trainer process group.")
     parser.add_argument("--override", action="append", default=[],
                         help="Extra Hydra override appended last (wins over fixed "
                              "and sampled values). Repeatable.")
@@ -466,6 +562,27 @@ def main():
             "A non-default --preference-labels value requires --study-suffix "
             "so incompatible trials cannot be mixed in one Optuna study."
         )
+    pins = {
+        "demo_weight": args.fix_demo_weight,
+        "pref_temperature": args.fix_pref_temperature,
+    }
+    if any(value is not None for value in pins.values()) and not args.study_suffix:
+        raise SystemExit(
+            "--fix-demo-weight/--fix-pref-temperature change the search space "
+            "and therefore require a dedicated --study-suffix."
+        )
+    # --override wins last, so an override on a pinned key would silently
+    # defeat the pin (and the study's recorded contract).
+    pinned_keys = {
+        PARAM_TO_OVERRIDE[name] for name, value in pins.items() if value is not None
+    }
+    for override in args.override:
+        key = override.split("=", 1)[0].strip()
+        if key in pinned_keys:
+            raise SystemExit(
+                f"--override {key}=... conflicts with the pinned value for that "
+                f"key; drop the override or the --fix-* flag."
+            )
 
     storage_path = Path(args.storage_path)
     storage_path.parent.mkdir(parents=True, exist_ok=True)
@@ -495,12 +612,48 @@ def main():
         )
     if stored_labels is None:
         study.set_user_attr("preference_labels", effective_labels)
+
+    # The whole experimental contract, not just the labels: a study must never
+    # mix trials drawn under different budgets, pins or search spaces.
+    contract = {
+        "pref_budget": args.pref_budget,
+        "demo_budget": args.demo_budget,
+        "preference_labels": effective_labels,
+        "seed": args.seed,
+        "total_timesteps": args.total_timesteps,
+        "timesteps_per_iteration": args.timesteps_per_iteration,
+        "n_envs": args.n_envs,
+        "eval_episodes": args.eval_episodes,
+        "search_space_version": SEARCH_SPACE_VERSION,
+        "fixed_params": pins,
+    }
+    stored_contract = study.user_attrs.get("experiment_contract")
+    if stored_contract is not None and stored_contract != contract:
+        differences = {
+            key: {"study": stored_contract.get(key), "worker": value}
+            for key, value in contract.items()
+            if stored_contract.get(key) != value
+        }
+        raise SystemExit(
+            "This worker disagrees with the study's recorded contract: "
+            + json.dumps(differences, sort_keys=True)
+        )
+    if stored_contract is None:
+        study.set_user_attr("experiment_contract", contract)
+        study.set_user_attr("fixed_params", pins)
+
     if args.enqueue_params:
         for params in json.loads(Path(args.enqueue_params).read_text()):
             study.enqueue_trial(params, skip_if_exists=True)
     study.optimize(make_objective(args), n_trials=args.n_trials)
 
-    best = study.best_trial
+    try:
+        best = study.best_trial
+    except ValueError:
+        # No COMPLETE trial in the study yet: this worker's trial was pruned
+        # or failed and it is the first one. Not an error for the worker.
+        print(f"\nNo COMPLETE trial in hybrid_sac_{args.arm}{args.study_suffix} yet.")
+        return
     print(f"\nBest trial #{best.number}: {OBJECTIVE_METRIC}={best.value:.3f}")
     print(f"  params: {best.params}")
     print(f"  run_dir: {best.user_attrs.get('run_dir')}")
