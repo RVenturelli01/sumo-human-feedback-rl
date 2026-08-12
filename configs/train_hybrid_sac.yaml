@@ -31,6 +31,14 @@ wandb:
 env:
   id: "HighwayEgo-v0"
   n_envs: 4
+  # false (default): le traiettorie per il feedback vengono da un ambiente
+  # dedicato, con seed disgiunto. Costa il doppio delle interazioni, ma sono
+  # campioni di UNA politica, perche' il rollout gira a pesi fermi.
+  # true: si riusa l'ambiente di training. Le transizioni che l'agente produce
+  # allenandosi diventano il pool da cui l'oracolo pesca. Meta' interazioni, ma
+  # le traiettorie sono una miscela di politiche, perche' i pesi cambiano
+  # durante i timestep di learn().
+  shared_rollout_env: false
   kwargs:
     ego: "continuous"
     reward: "fast"
@@ -67,7 +75,6 @@ algo:
     preference_fragment_length: 1
     batch_size_pref: 128
     comparison_queue_size: 1000000
-    train_comparison_frac: 0.8
     total_queries: 10000
     initial_queries: 1000
     query_schedule: "constant"
@@ -75,15 +82,15 @@ algo:
     demo_weight: 1.0
     max_balance_scale: 100.0
     balance_eps: 1e-8
-    # Gradient-conflict diagnostics (reward/grad_*): sample every Nth reward
-    # gradient step, 0 disables. The gradients are already computed by the
-    # step, so 1 costs a few vector ops and no extra backward pass.
-    grad_diagnostics_interval: 1
-    # Single beta for the reward/grad_adam_eq_* variant, where using one
-    # window for both moments keeps v_hat - m_hat^2 a clean, non-negative
-    # variance. The reward/grad_adam_* variant instead borrows the reward
-    # optimizer's own betas and can go slightly negative by construction.
-    grad_diagnostics_eq_beta: 0.99
+    # Come i due gradienti diventano un update.
+    #   norm_balance            somma bilanciata di norma (ricetta storica)
+    #   alpha_norm_single_adam  direzioni unitarie pesate da alpha, un solo Adam
+    gcl_fusion: norm_balance
+    # Pavimento numerico di CV^2 = S / ||g_medio||^2.
+    alpha_eps: 1e-8
+    # Sposta le etichette verso 1/2. Applicato SOLO alle etichette
+    # bernoulliane: quelle soft hanno gia' un ottimo finito.
+    label_smoothing: 0.0
     # demos-as-preferences baseline (demo_mode=preferences only).
     demo_pref_pairs_per_iteration: 64
     demo_pref_batch_fraction: 0.5
@@ -121,7 +128,10 @@ train:
     log_interval: 100
     checkpoint_interval: 10
     scatter_interval: null
-    total_queries: 10000
+    # NB: il budget di query NON sta qui. Vive fra i kwargs dell'algoritmo
+    # (algo.kwargs.total_queries), insieme a initial_queries e query_schedule.
+    # Averlo in due posti significava che quello di train() vinceva in
+    # silenzio, e nessuno si accorgeva di aver impostato solo l'altro.
 
 hydra:
   job:

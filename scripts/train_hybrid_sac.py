@@ -105,12 +105,19 @@ def main(cfg: DictConfig) -> None:
         base_seed=seed,
         **OmegaConf.to_container(cfg.env.kwargs, resolve=True),
     )
-    rollout_env = sge.make_vec_env(
+    # rollout_env=None fa passare HybridAlgorithm sul ramo "ambiente condiviso"
+    # di TrajectoryGeneratorFromAgent: il buffering wrapper finisce dentro al
+    # reward wrapper sull'ambiente dell'agente, quindi ogni passo di learn()
+    # viene registrato col reward VERO e sample() lo riusa invece di raccogliere
+    # traiettorie nuove.
+    shared_rollout = bool(OmegaConf.select(cfg, "env.shared_rollout_env") or False)
+    rollout_env = None if shared_rollout else sge.make_vec_env(
         cfg.env.id,
         n_envs=cfg.env.n_envs,
         base_seed=seed + 10_000,
         **OmegaConf.to_container(cfg.env.kwargs, resolve=True),
     )
+    print(f"Rollout env: {'condiviso col training' if shared_rollout else 'dedicato'}")
 
     relabel_rewards = cfg.algo.kwargs.relabel_rewards
     print("Initializing agent...")
@@ -151,7 +158,8 @@ def main(cfg: DictConfig) -> None:
     # libsumo allows one simulation per process: release both training envs
     # before evaluate() opens its own.
     env.close()
-    rollout_env.close()
+    if rollout_env is not None:
+        rollout_env.close()
 
     print("Running final held-out evaluation...")
     env_kwargs = OmegaConf.to_container(cfg.env.kwargs, resolve=True)
