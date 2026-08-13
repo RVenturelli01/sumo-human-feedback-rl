@@ -35,6 +35,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TRAIN_SCRIPT = REPO_ROOT / "scripts" / "train_hybrid_sac.py"
+# Etichetta della campagna. Entra nel nome del gruppo, quindi le run di due
+# campagne convivono nello stesso progetto W&B senza mescolarsi: "v2" e' quella
+# con lo schedule delle query corretto (le query non si ammucchiano piu' in
+# fondo alla corsa). Il parser dei gruppi legge th_<tag>_B<livello> e il tag
+# puo' contenere underscore, quindi th_v2_hybrid_soft_B10 resta leggibile.
+CAMPAIGN = "v2"
+
 OUTPUT_ROOT = REPO_ROOT / "outputs" / "thesis_runs"
 LOG_ROOT = OUTPUT_ROOT / "logs"
 
@@ -84,9 +91,11 @@ PROTOCOL = (
     "eval.n_episodes=20",
 )
 
-# Normalizzazione del reward vista dall'agente. Uniforme per tutti i bracci:
-# e' l'unica asimmetria che restava fra i metodi confrontati.
-NORMALIZE_AGENT_REWARD = False
+# La normalizzazione del reward vista dall'agente e' per braccio, non globale:
+# ogni metodo deve girare nella configurazione in cui e' stato tarato, altrimenti
+# il confronto penalizza chi e' fuori dal suo punto di lavoro. I due bracci
+# solo-preferenze sono stati tarati con la normalizzazione attiva, tutti gli
+# altri senza. E' un'asimmetria dichiarata, da riportare in tesi.
 
 
 @dataclass(frozen=True)
@@ -110,6 +119,7 @@ class Arm:
     pref_temperature: float | None = None
     label_smoothing: float = 0.0
     initial_queries_frac: float = 0.10   # quota del budget raccolta nel bootstrap
+    normalize: bool = False              # trasformazione affine agent-facing
 
 
 # Iperparametri presi dalle config W&B delle run originali. I due bracci
@@ -130,7 +140,7 @@ ARMS: dict[str, Arm] = {
         lr_rew=0.001837324265850939, l2_rew=0.00012704069184662418,
         gradient_steps_rew=23, batch_size_expert=64, batch_size_pref=64,
         net_arch="[32,32]", initial_agent_timesteps=40000,
-        pref_temperature=20.0, initial_queries_frac=0.05,
+        pref_temperature=20.0, initial_queries_frac=0.05, normalize=True,
     ),
     "pref_bern": Arm(
         uses_pref=True, uses_demo=False, labels="binary_bernoulli", fusion="norm_balance",
@@ -138,7 +148,7 @@ ARMS: dict[str, Arm] = {
         gradient_steps_rew=99, batch_size_expert=64, batch_size_pref=64,
         net_arch="[128,128]", initial_agent_timesteps=20000,
         pref_temperature=3.0595414013726767, label_smoothing=0.1,
-        initial_queries_frac=0.20,
+        initial_queries_frac=0.20, normalize=True,
     ),
     "hybrid_soft": Arm(
         uses_pref=True, uses_demo=True, labels="soft", fusion="alpha_norm_single_adam",
@@ -180,7 +190,8 @@ class Task:
 
     @property
     def group(self) -> str:
-        return f"th_{self.arm}_B{self.budget}"
+        prefix = f"th_{CAMPAIGN}" if CAMPAIGN else "th"
+        return f"{prefix}_{self.arm}_B{self.budget}"
 
     @property
     def run_name(self) -> str:
@@ -221,7 +232,7 @@ def arm_overrides(name: str, budget: int, seed: int) -> list[str]:
         f"algo.kwargs.initial_agent_timesteps={arm.initial_agent_timesteps}",
         f"algo.kwargs.gcl_fusion={arm.fusion}",
         f"algo.kwargs.label_smoothing={arm.label_smoothing}",
-        f"algo.kwargs.normalize_agent_reward={str(NORMALIZE_AGENT_REWARD).lower()}",
+        f"algo.kwargs.normalize_agent_reward={str(arm.normalize).lower()}",
         # Canale preferenze: acceso solo se il braccio lo usa.
         f"algo.kwargs.total_queries={budget if arm.uses_pref else 0}",
         f"algo.kwargs.initial_queries={initial_queries(arm, budget)}",
@@ -233,7 +244,7 @@ def arm_overrides(name: str, budget: int, seed: int) -> list[str]:
         f"run.group={task.group}",
         f"wandb.entity={WANDB_ENTITY}",
         f"wandb.project={WANDB_PROJECT}",
-        f"wandb.tags=[thesis_final,{name},B{budget}]",
+        f"wandb.tags=[thesis_final,{CAMPAIGN},{name},B{budget}]",
     ]
     if arm.uses_pref:
         ov.append(f"algo.kwargs.labels_type={arm.labels}")
@@ -279,7 +290,7 @@ def validate(name: str, budget: int, seed: int) -> dict:
         "algo.kwargs.gcl_fusion": arm.fusion,
         "algo.kwargs.loss_type": "demo_2",
         "algo.kwargs.reward_model_kwargs.n_ensembles": 1,
-        "algo.kwargs.normalize_agent_reward": NORMALIZE_AGENT_REWARD,
+        "algo.kwargs.normalize_agent_reward": arm.normalize,
         "algo.kwargs.gradient_steps_rew": arm.gradient_steps_rew,
         "algo.kwargs.batch_size_expert": arm.batch_size_expert,
         "algo.kwargs.batch_size_pref": arm.batch_size_pref,
@@ -312,6 +323,32 @@ def validate(name: str, budget: int, seed: int) -> dict:
 
 # --- lancio -----------------------------------------------------------------
 
+def preflight() -> None:
+    """Controlli che costano un secondo e valgono ore di calcolo.
+
+    La validazione Hydra dice che la config e' giusta, non che la run partira':
+    senza login W&B ogni processo muore dentro ``wandb.init`` dopo essere stato
+    avviato, e quarantacinque processi falliscono uno per uno senza che nessuno
+    se ne accorga finche' non si guardano i log.
+    """
+    import os
+
+    if os.environ.get("WANDB_MODE", "").lower() in ("offline", "disabled", "dryrun"):
+        print(f"  W&B in modalita' {os.environ['WANDB_MODE']}: niente login richiesto")
+        return
+    import wandb
+
+    if wandb.api.api_key is None:
+        raise SystemExit(
+            "W&B non ha credenziali su questa macchina: ogni run morirebbe in\n"
+            "wandb.init dopo essere stata avviata. Scegli una via:\n"
+            "  1) autenticati una volta:  wandb login\n"
+            "  2) lancia offline e sincronizza dopo:  WANDB_MODE=offline ...\n"
+            "     poi  wandb sync outputs/thesis_runs/*/*/wandb/offline-run-*"
+        )
+    print(f"  W&B ok (entity {WANDB_ENTITY}, project {WANDB_PROJECT})")
+
+
 def busy_cores() -> set[int]:
     """Core gia' occupati da un training, letti dall'affinita' reale."""
     busy = set()
@@ -333,7 +370,10 @@ def busy_cores() -> set[int]:
 
 
 def launch(tasks: list[Task]) -> list[dict]:
-    free = [c for c in range(CORE_FIRST, CORE_LAST + 1) if c not in busy_cores()]
+    # Dal 63 a scendere: i core bassi sono i piu' contesi dagli altri utenti e
+    # lo 0-15 e' comunque vietato, quindi si parte dal fondo.
+    busy = busy_cores()
+    free = [c for c in range(CORE_LAST, CORE_FIRST - 1, -1) if c not in busy]
     if len(tasks) > len(free):
         raise RuntimeError(
             f"{len(tasks)} run ma solo {len(free)} core liberi fra {CORE_FIRST} e "
@@ -364,7 +404,10 @@ def status() -> int:
     print(f"{'run':<34} {'pid':>8}  {'stato':<9} {'iter':>5}")
     print("-" * 62)
     for e in manifest["runs"]:
-        run_dir = OUTPUT_ROOT / f"th_{e['arm']}_B{e['budget']}" / e["run_name"]
+        # train_hybrid_sac.py crea una sua sottocartella col nome della run
+        # DENTRO run.output_dir, quindi il livello e' doppio.
+        task = Task(e["arm"], e["budget"], e["seed"])
+        run_dir = task.output_dir / e["run_name"]
         done = (run_dir / "final_eval.json").exists()
         alive = Path(f"/proc/{e['pid']}").exists()
         stato = "finita" if done else ("in corso" if alive else "FERMA")
@@ -406,12 +449,14 @@ def main() -> int:
         print("\n" + shlex.join(build_command(names[0], args.budgets[0], args.seeds[0], CORE_FIRST)))
         return 0
 
+    preflight()
+
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     launched = launch(tasks)
     (OUTPUT_ROOT / "manifest.json").write_text(json.dumps({
         "started": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "wandb_project": WANDB_PROJECT,
-        "normalize_agent_reward": NORMALIZE_AGENT_REWARD,
+        "normalize_agent_reward": {n: ARMS[n].normalize for n in ARMS},
         "runs": launched,
     }, indent=2))
     print(f"\nmanifest: {(OUTPUT_ROOT / 'manifest.json').relative_to(REPO_ROOT)}")
