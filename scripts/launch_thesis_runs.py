@@ -127,6 +127,16 @@ class Arm:
 # omologo pesato, cambia SOLO la fusione. Nell'archivio l'ablazione soft
 # girava con batch_size_expert=16 invece di 64; qui e' allineata a 64, cosi'
 # fra i due bracci cambia una cosa sola.
+#
+# batch_size_pref=64 su TUTTI i bracci che usano preferenze (era 256 sugli
+# ibridi). Non e' un iperparametro come gli altri: entra in alpha come
+# B = min(batch_size, N), quindi con 256 contro 64 il canale preferenze
+# risultava mediato su quattro volte piu' campioni a B=1000, e alpha scendeva
+# a ~0.25 invece di ~0.54. Il 256 veniva dalla taratura sotto norm_balance,
+# dove alpha non esisteva e quel valore non lo toccava. Con budget omogeneo i
+# due canali ricevono lo stesso numero di campioni, cosi' alpha misura
+# l'affidabilita' del FEEDBACK e non una scelta di batch size. Allinea anche
+# gli ibridi alle baseline solo-preferenze, che gia' usavano 64.
 ARMS: dict[str, Arm] = {
     "demo_only": Arm(
         uses_pref=False, uses_demo=True, labels=None, fusion="norm_balance",
@@ -153,7 +163,7 @@ ARMS: dict[str, Arm] = {
     "hybrid_soft": Arm(
         uses_pref=True, uses_demo=True, labels="soft", fusion="alpha_norm_single_adam",
         lr_rew=0.001154295698198038, l2_rew=1.1265276323434602e-06,
-        gradient_steps_rew=139, batch_size_expert=64, batch_size_pref=256,
+        gradient_steps_rew=139, batch_size_expert=64, batch_size_pref=64,
         net_arch="[64,64]", initial_agent_timesteps=20000,
         pref_temperature=20.0,
     ),
@@ -161,21 +171,21 @@ ARMS: dict[str, Arm] = {
         uses_pref=True, uses_demo=True, labels="binary_bernoulli",
         fusion="alpha_norm_single_adam",
         lr_rew=0.0003080841576274553, l2_rew=0.0005307422191330497,
-        gradient_steps_rew=78, batch_size_expert=64, batch_size_pref=256,
+        gradient_steps_rew=78, batch_size_expert=64, batch_size_pref=64,
         net_arch="[32,32]", initial_agent_timesteps=40000,
         pref_temperature=3.0595414013726767, label_smoothing=0.1,
     ),
     "unw_soft": Arm(
         uses_pref=True, uses_demo=True, labels="soft", fusion="norm_balance",
         lr_rew=0.001154295698198038, l2_rew=1.1265276323434602e-06,
-        gradient_steps_rew=139, batch_size_expert=64, batch_size_pref=256,
+        gradient_steps_rew=139, batch_size_expert=64, batch_size_pref=64,
         net_arch="[64,64]", initial_agent_timesteps=20000,
         pref_temperature=20.0,
     ),
     "unw_bern": Arm(
         uses_pref=True, uses_demo=True, labels="binary_bernoulli", fusion="norm_balance",
         lr_rew=0.0003080841576274553, l2_rew=0.0005307422191330497,
-        gradient_steps_rew=78, batch_size_expert=64, batch_size_pref=256,
+        gradient_steps_rew=78, batch_size_expert=64, batch_size_pref=64,
         net_arch="[32,32]", initial_agent_timesteps=40000,
         pref_temperature=3.0595414013726767, label_smoothing=0.1,
     ),
