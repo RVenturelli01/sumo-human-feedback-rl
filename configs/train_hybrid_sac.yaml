@@ -91,6 +91,7 @@ algo:
     # Sposta le etichette verso 1/2. Applicato SOLO alle etichette
     # bernoulliane: quelle soft hanno gia' un ottimo finito.
     label_smoothing: 0.0
+    bootstrap_comparisons: null   # null = decide n_ensembles
     # demos-as-preferences baseline (demo_mode=preferences only).
     demo_pref_pairs_per_iteration: 64
     demo_pref_batch_fraction: 0.5

@@ -19,6 +19,7 @@ Due cautele sull'occupazione dei core:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import importlib.util
 import json
 import subprocess
@@ -96,17 +97,97 @@ def main() -> int:
     # attivo, ma cosi' non serve fidarsene.
     ap.add_argument("--first-core", type=int, default=32)
     ap.add_argument("--last-core", type=int, default=LTR.CORE_LAST)
+    ap.add_argument("--batch-size-pref", type=int, default=None,
+                    help="sovrascrive batch_size_pref dei bracci scelti. Serve a "
+                         "confrontare la vecchia scelta (256, quella delle run "
+                         "th_v2) con la nuova simmetrica (64) a parita' di codice: "
+                         "quel valore entra in alpha come B = min(batch_size, N), "
+                         "quindi a B=1000 sposta alpha da ~0.25 a ~0.54.")
+    ap.add_argument("--initial-queries", type=int, default=None,
+                    help="numero fisso di query al bootstrap, invece della quota "
+                         "per braccio. Serve a sbloccare alpha fin dall'inizio: "
+                         "sotto ALPHA_MIN_PREFS confronti la stima non parte e il "
+                         "canale preferenze viene scartato del tutto, cosa che a "
+                         "B=10 dura fino all'iterazione 44 su 100.")
+    ap.add_argument("--initial-agent-timesteps", type=int, default=None,
+                    help="sovrascrive il warmup del braccio. pref_soft era tarato "
+                         "a 40000 e l'uniformazione a 20000 e' uno dei due "
+                         "candidati per il suo crollo a B=100.")
+    ap.add_argument("--like-report", action="store_true",
+                    help="riproduce il protocollo delle lane del report "
+                         "(n_envs=2, train_freq=8, iperparametri originali), "
+                         "lasciando pero' shared_rollout_env e n_ensembles come "
+                         "sono nel PROTOCOL corrente.")
+    ap.add_argument("--n-ensembles", type=int, default=None,
+                    help="sovrascrive n_ensembles del PROTOCOL")
+    ap.add_argument("--extra-override", action="append", default=[],
+                    help="override Hydra aggiuntivo, ripetibile")
     ap.add_argument("--poll", type=int, default=60, help="secondi fra due controlli")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
     LTR.CAMPAIGN = args.campaign          # entra nel nome del gruppo e delle cartelle
+    if args.initial_queries is not None:
+        # Sostituire la funzione, non aggiungere un override in coda: cosi'
+        # arm_overrides e validate leggono lo stesso numero e non possono
+        # divergere.
+        fisso = args.initial_queries
+        LTR.initial_queries = lambda arm, budget, _n=fisso: _n
+        print(f"initial_queries forzato a {fisso}", flush=True)
+    if args.n_ensembles is not None:
+        chiave = "algo.kwargs.reward_model_kwargs.n_ensembles"
+        LTR.PROTOCOL = tuple(f"{chiave}={args.n_ensembles}" if o.startswith(chiave + "=")
+                             else o for o in LTR.PROTOCOL)
+        print(f"n_ensembles forzato a {args.n_ensembles}", flush=True)
+    if args.extra_override:
+        # Si avvolge arm_overrides invece di toccare il launcher: cosi' anche
+        # validate() risolve la config con gli stessi override applicati.
+        _orig = LTR.arm_overrides
+        LTR.arm_overrides = (lambda a, b, s_, _o=_orig, _e=list(args.extra_override):
+                             _o(a, b, s_) + _e)
+        print("override aggiuntivi: " + ", ".join(args.extra_override), flush=True)
+    if args.like_report:
+        # Valori delle lane demo2_1net / pref_soft_1net / p1_soft_bexp64 /
+        # bern_ls_p1_alphavar. Restano fuori shared_rollout_env e n_ensembles,
+        # che sono le due variabili che vogliamo cambiare.
+        LTR.PROTOCOL = tuple(
+            "env.n_envs=2" if o.startswith("env.n_envs=") else
+            "agent.kwargs.train_freq=8" if o.startswith("agent.kwargs.train_freq=") else o
+            for o in LTR.PROTOCOL)
+        for arm, campi in (("hybrid_soft", dict(net_arch="[64,64]")),
+                           ("hybrid_bern", dict(gradient_steps_rew=78,
+                                                initial_agent_timesteps=40000)),
+                           ("pref_soft",   dict(initial_agent_timesteps=40000))):
+            if arm in args.arms:
+                LTR.ARMS[arm] = dataclasses.replace(LTR.ARMS[arm], **campi)
+        print("protocollo del report: n_envs=2, train_freq=8, iperparametri originali",
+              flush=True)
+    if args.initial_agent_timesteps is not None:
+        for arm in args.arms:
+            LTR.ARMS[arm] = dataclasses.replace(
+                LTR.ARMS[arm], initial_agent_timesteps=args.initial_agent_timesteps)
+        print(f"initial_agent_timesteps forzato a {args.initial_agent_timesteps} "
+              f"per {', '.join(args.arms)}", flush=True)
+    if args.batch_size_pref is not None:
+        # Sostituire la voce in ARMS invece di aggiungere un override in coda:
+        # cosi' anche validate() controlla il valore nuovo, e non resta un
+        # override che contraddice in silenzio la definizione del braccio.
+        for arm in args.arms:
+            LTR.ARMS[arm] = dataclasses.replace(
+                LTR.ARMS[arm], batch_size_pref=args.batch_size_pref)
+        print(f"batch_size_pref forzato a {args.batch_size_pref} "
+              f"per {', '.join(args.arms)}", flush=True)
 
     # Ordine intrecciato fra i bracci: se qualcosa si ferma a meta' si resta
     # con una copertura parziale di tutti, non con un braccio completo e gli
     # altri a zero.
+    # Ordine a seed maggiore: prima tutta la griglia (bracci x budget) del
+    # seed 1, poi quella del seed 2, e cosi' via. Lanciare a blocchi per
+    # braccio darebbe dopo quattro ore un solo braccio completo e nulla degli
+    # altri; cosi' invece dopo la prima tornata si ha gia' una riga intera di
+    # risultati confrontabili, e un problema si vede subito su tutti.
     tutti = [LTR.Task(a, b, s)
-             for b in args.budgets for s in args.seeds for a in args.arms]
+             for s in args.seeds for b in args.budgets for a in args.arms]
     # Ripresa: una run gia' lanciata ha la sua cartella di output. Senza questo
     # controllo un riavvio dello scheduler rilancerebbe cio' che sta gia'
     # girando, con lo stesso nome W&B e la stessa cartella.

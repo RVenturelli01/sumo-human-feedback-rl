@@ -80,7 +80,10 @@ PROTOCOL = (
     "algo.kwargs.query_schedule=constant",
     "algo.kwargs.fragmenter_type=random",
     "algo.kwargs.agent_log_timestep_interval=10000",
-    "algo.kwargs.reward_model_kwargs.n_ensembles=1",
+    # n_ensembles=3: col bootstrap che torna legittimo (tre membri da
+    # decorrelare) e la ricompensa vista dall'agente che e' la media di tre
+    # reti, quindi un bersaglio meno mobile per SAC.
+    "algo.kwargs.reward_model_kwargs.n_ensembles=3",
     "algo.kwargs.reward_model_kwargs.activation_fn=tanh",
     "algo.kwargs.batch_size_model=64",
     "train.kwargs.total_timesteps=2000000",
@@ -128,15 +131,26 @@ class Arm:
 # girava con batch_size_expert=16 invece di 64; qui e' allineata a 64, cosi'
 # fra i due bracci cambia una cosa sola.
 #
-# batch_size_pref=64 su TUTTI i bracci che usano preferenze (era 256 sugli
-# ibridi). Non e' un iperparametro come gli altri: entra in alpha come
-# B = min(batch_size, N), quindi con 256 contro 64 il canale preferenze
-# risultava mediato su quattro volte piu' campioni a B=1000, e alpha scendeva
-# a ~0.25 invece di ~0.54. Il 256 veniva dalla taratura sotto norm_balance,
-# dove alpha non esisteva e quel valore non lo toccava. Con budget omogeneo i
-# due canali ricevono lo stesso numero di campioni, cosi' alpha misura
-# l'affidabilita' del FEEDBACK e non una scelta di batch size. Allinea anche
-# gli ibridi alle baseline solo-preferenze, che gia' usavano 64.
+# batch_size_pref: 64 sui bracci solo-preferenze, 256 sugli ibridi. Non e' un
+# iperparametro come gli altri, perche' entra in alpha come B = min(batch, N):
+# con 256 il canale preferenze risulta mediato su quattro volte piu' campioni a
+# B=1000, e alpha scende a ~0.35 invece di ~0.82. Le prestazioni non cambiano
+# (differenze fra -2.8 e +2.4 su quattro confronti appaiati), cambia cosa alpha
+# descrive: col 256 il rumore del gradiente EFFETTIVAMENTE applicato, che e' la
+# motivazione dello pseudocodice originale ed e' la configurazione delle lane
+# di riferimento.
+#
+# initial_agent_timesteps uniforme a 20000: e' protocollo, non metodo, e
+# lasciarlo per braccio dava a pref_soft e hybrid_bern l'1,9% di interazioni
+# ambientali in piu' degli altri.
+#
+# hybrid_soft net_arch e hybrid_bern gradient_steps_rew vengono dalla taratura
+# sotto prova 1 (40 trial per braccio, B=1000): sono le due sole modifiche con
+# supporto -- [128,128] ha mediana 58.2 contro 53.7 su 16 e 9 trial, e
+# gradient_steps_rew >=120 da' 54.7 contro 49.9. lr_rew e l2_rew restano dove
+# erano: fra i primi dieci trial variano di tre ordini di grandezza a parita'
+# di risultato, quindi il dato non li distingue.
+
 ARMS: dict[str, Arm] = {
     "demo_only": Arm(
         uses_pref=False, uses_demo=True, labels=None, fusion="norm_balance",
@@ -149,7 +163,7 @@ ARMS: dict[str, Arm] = {
         uses_pref=True, uses_demo=False, labels="soft", fusion="norm_balance",
         lr_rew=0.001837324265850939, l2_rew=0.00012704069184662418,
         gradient_steps_rew=23, batch_size_expert=64, batch_size_pref=64,
-        net_arch="[32,32]", initial_agent_timesteps=40000,
+        net_arch="[32,32]", initial_agent_timesteps=20000,
         pref_temperature=20.0, initial_queries_frac=0.05, normalize=True,
     ),
     "pref_bern": Arm(
@@ -163,30 +177,30 @@ ARMS: dict[str, Arm] = {
     "hybrid_soft": Arm(
         uses_pref=True, uses_demo=True, labels="soft", fusion="alpha_norm_single_adam",
         lr_rew=0.001154295698198038, l2_rew=1.1265276323434602e-06,
-        gradient_steps_rew=139, batch_size_expert=64, batch_size_pref=64,
-        net_arch="[64,64]", initial_agent_timesteps=20000,
+        gradient_steps_rew=139, batch_size_expert=64, batch_size_pref=256,
+        net_arch="[128,128]", initial_agent_timesteps=20000,
         pref_temperature=20.0,
     ),
     "hybrid_bern": Arm(
         uses_pref=True, uses_demo=True, labels="binary_bernoulli",
         fusion="alpha_norm_single_adam",
         lr_rew=0.0003080841576274553, l2_rew=0.0005307422191330497,
-        gradient_steps_rew=78, batch_size_expert=64, batch_size_pref=64,
-        net_arch="[32,32]", initial_agent_timesteps=40000,
+        gradient_steps_rew=145, batch_size_expert=64, batch_size_pref=256,
+        net_arch="[32,32]", initial_agent_timesteps=20000,
         pref_temperature=3.0595414013726767, label_smoothing=0.1,
     ),
     "unw_soft": Arm(
         uses_pref=True, uses_demo=True, labels="soft", fusion="norm_balance",
         lr_rew=0.001154295698198038, l2_rew=1.1265276323434602e-06,
-        gradient_steps_rew=139, batch_size_expert=64, batch_size_pref=64,
-        net_arch="[64,64]", initial_agent_timesteps=20000,
+        gradient_steps_rew=139, batch_size_expert=64, batch_size_pref=256,
+        net_arch="[128,128]", initial_agent_timesteps=20000,
         pref_temperature=20.0,
     ),
     "unw_bern": Arm(
         uses_pref=True, uses_demo=True, labels="binary_bernoulli", fusion="norm_balance",
         lr_rew=0.0003080841576274553, l2_rew=0.0005307422191330497,
-        gradient_steps_rew=78, batch_size_expert=64, batch_size_pref=64,
-        net_arch="[32,32]", initial_agent_timesteps=40000,
+        gradient_steps_rew=145, batch_size_expert=64, batch_size_pref=256,
+        net_arch="[32,32]", initial_agent_timesteps=20000,
         pref_temperature=3.0595414013726767, label_smoothing=0.1,
     ),
 }
@@ -292,14 +306,27 @@ def validate(name: str, budget: int, seed: int) -> dict:
         raise RuntimeError(f"[{name} B={budget}] Hydra non risolve la config:\n"
                            + res.stderr.strip()[-1500:])
     cfg = OmegaConf.create(res.stdout)
+    # Le chiavi di protocollo si leggono da PROTOCOL invece di riscriverle qui:
+    # erano due elenchi della stessa cosa, e quando ho portato n_ensembles a 3
+    # ne ho aggiornato uno solo e il lancio si e' fermato.
+    def _da_protocollo(chiave, conv):
+        for o in PROTOCOL:
+            k, v = o.split("=", 1)
+            if k == chiave:
+                return conv(v)
+        raise KeyError(chiave)
+
     attesi = {
-        "env.n_envs": 1,
-        "env.shared_rollout_env": True,
-        "agent.kwargs.train_freq": 16,
-        "agent.kwargs.gradient_steps": 32,
+        "env.n_envs": _da_protocollo("env.n_envs", int),
+        "env.shared_rollout_env": _da_protocollo(
+            "env.shared_rollout_env", lambda v: v.lower() == "true"),
+        "agent.kwargs.train_freq": _da_protocollo("agent.kwargs.train_freq", int),
+        "agent.kwargs.gradient_steps": _da_protocollo(
+            "agent.kwargs.gradient_steps", int),
         "algo.kwargs.gcl_fusion": arm.fusion,
         "algo.kwargs.loss_type": "demo_2",
-        "algo.kwargs.reward_model_kwargs.n_ensembles": 1,
+        "algo.kwargs.reward_model_kwargs.n_ensembles": _da_protocollo(
+            "algo.kwargs.reward_model_kwargs.n_ensembles", int),
         "algo.kwargs.normalize_agent_reward": arm.normalize,
         "algo.kwargs.gradient_steps_rew": arm.gradient_steps_rew,
         "algo.kwargs.batch_size_expert": arm.batch_size_expert,

@@ -32,6 +32,7 @@ EPISODE_LEN = 10
 PER_ITER = 100          # timesteps_per_iteration
 N_ITER = 6
 BOOT = 50               # initial_agent_timesteps
+N_ENSEMBLES = 3         # configurazione della campagna finale
 
 
 class CountingEnv(FakeVecEnv):
@@ -72,7 +73,7 @@ def build():
         relabel_rewards=True,
         normalize_agent_reward=False,
         initial_agent_timesteps=BOOT,
-        reward_model_kwargs=dict(n_ensembles=1, net_arch=[8]),
+        reward_model_kwargs=dict(n_ensembles=N_ENSEMBLES, net_arch=[8]),
         rng=np.random.default_rng(0),
         output_formats=[],
         rollout_env=None,            # <- AMBIENTE CONDIVISO (default)
@@ -214,7 +215,49 @@ def main() -> int:
     check("le dimostrazioni restano le stesse per tutta la run",
           expert_fp_prima == expert_fp_dopo)
 
-    # I6 - budget di confronti rispettato
+    # I6 - ensemble: tre membri, davvero distinti
+    membri = algo.reward_model.members
+    check("l'ensemble ha il numero di membri richiesto", len(membri) == N_ENSEMBLES,
+          f"{len(membri)}")
+
+    def piatto(m):
+        return th.cat([q.detach().reshape(-1) for q in m.parameters()])
+    coppie_uguali = sum(1 for i in range(len(membri)) for j in range(i + 1, len(membri))
+                        if th.equal(piatto(membri[i]), piatto(membri[j])))
+    check("i membri restano distinti dopo l'allenamento", coppie_uguali == 0,
+          f"coppie identiche={coppie_uguali}")
+
+    # I7 - ogni membro riceve un ricampionamento diverso
+    if len(algo.dataset_train):
+        viste = [algo._training_view(algo.dataset_train) for _ in membri]
+        firme = []
+        for v in viste:
+            firme.append(tuple(sorted(id(fp) for fp in v.get_all().fragment_pairs)))
+        check("ogni membro vede un bootstrap diverso",
+              len(set(firme)) == len(firme) if len(membri) > 1 else True,
+              f"viste distinte={len(set(firme))}/{len(firme)}")
+        distinti = [len({id(fp) for fp in v.get_all().fragment_pairs}) for v in viste]
+        unione = len(set().union(*[{id(fp) for fp in v.get_all().fragment_pairs} for v in viste]))
+        tot = len(algo.dataset_train)
+        print(f"        (distinti per membro {distinti} su {tot}, unione {unione})")
+
+    # I8 - alpha e' per membro
+    if algo._alpha_current:
+        alphas = [algo._alpha_current[id(m)].alpha for m in membri if id(m) in algo._alpha_current]
+        check("alpha e' stimato per ogni membro", len(alphas) == len(membri),
+              f"{len(alphas)}/{len(membri)}  valori={[round(a,3) for a in alphas]}")
+
+    # I9 - la ricompensa vista dall'agente e' la media dei membri
+    import numpy as _np
+    obs = _np.zeros((4, algo.venv.observation_space.shape[0]), dtype=_np.float32)
+    act = _np.zeros((4, algo.venv.action_space.shape[0]), dtype=_np.float32)
+    ns = _np.zeros((4, 7), dtype=_np.float32); dn = _np.zeros(4, dtype=_np.float32)
+    per_membro = algo.reward_model.predict_all(obs, act, ns, dn)
+    media = algo.reward_model.predict_unnormalized(obs, act, ns, dn)
+    check("la ricompensa e' la media dei membri",
+          bool(_np.allclose(per_membro.mean(axis=1), media, atol=1e-5)))
+
+    # I10 - budget di confronti rispettato
     check("i confronti raccolti non superano total_queries",
           len(algo.dataset_train) <= algo.total_queries,
           f"{len(algo.dataset_train)} su {algo.total_queries}")
