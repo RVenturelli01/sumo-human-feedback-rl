@@ -51,6 +51,8 @@
         <h2>Anteprima</h2>
         <div class="head-actions">
           <label class="check"><input type="checkbox" id="auto-preview"> automatica</label>
+          <label class="check" title="mostra le definizioni matematiche accanto al grafico">
+            <input type="checkbox" id="show-formula" checked> formule</label>
           <button id="preview" class="primary small">Aggiorna</button>
           <span class="sep"></span>
           <button id="export-jpeg" class="ghost small">JPEG</button>
@@ -66,6 +68,21 @@
           <label class="pill"><input type="radio" name="kind" value="budget">
             <span>curva di budget</span></label>
         </div>
+        <label class="check" id="grid-compare-fusion-field"
+               title="Separa anche per schema di fusione dei gradienti. Senza, schemi diversi dello stesso algoritmo finiscono mediati nella stessa curva.">
+          <input type="checkbox" id="grid-compare-fusion">
+          <span>confronta gli schemi di fusione</span>
+        </label>
+        <label class="check" id="grid-compare-norm-field"
+               title="Separa anche per normalize_agent_reward: stesso colore, tratteggiata = normalizzazione attiva.">
+          <input type="checkbox" id="grid-compare-norm">
+          <span>confronta normalizzazione on/off</span>
+        </label>
+        <label class="check" id="grid-compare-smoothing-field"
+               title="Separa anche per label_smoothing: stesso colore, tratteggiata = con smoothing.">
+          <input type="checkbox" id="grid-compare-smoothing">
+          <span>confronta con/senza smoothing</span>
+        </label>
       </div>
 
       <div class="toolbar">
@@ -107,10 +124,29 @@
               <input type="number" id="grid-panel-h" value="2.5" min="1.5" max="14" step="0.1" title="altezza (pollici)">
             </div>
           </div>
+          <div class="field panel-size-field">
+            <span>asse y</span>
+            <div class="panel-size-inputs">
+              <input type="number" id="grid-ymin" placeholder="min" step="any"
+                     title="lascia vuoti entrambi per il range automatico">
+              <span class="x">…</span>
+              <input type="number" id="grid-ymax" placeholder="max" step="any"
+                     title="lascia vuoti entrambi per il range automatico">
+              <label class="check" title="scala logaritmica sull'asse y">
+                <input type="checkbox" id="grid-logy"> log
+              </label>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div id="preview-box"><p class="placeholder">Premi «Aggiorna» per disegnare l'anteprima.</p></div>
+      <div id="preview-row">
+        <div id="preview-box"><p class="placeholder">Premi «Aggiorna» per disegnare l'anteprima.</p></div>
+        <aside id="formula-box" hidden>
+          <div class="card-head"><h3>Definizioni</h3></div>
+          <div id="formula-body"></div>
+        </aside>
+      </div>
 
       <div id="series-box" hidden>
         <div class="card-head">

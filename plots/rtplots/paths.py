@@ -32,13 +32,24 @@ OUTPUT_DIR = Path(os.environ.get("RTPLOTS_OUTPUT", str(PLOTS_ROOT / "output")))
 
 WANDB_ENTITY = os.environ.get("RTPLOTS_WANDB_ENTITY", "andrea02polimi-politecnico-di-milano")
 
-# Progetti indicizzati di default. Oggi la campagna di budget curves vive tutta
-# in un progetto solo; se in futuro si allarga (es. l'ultima run finale a 5
-# seed finisce in un progetto "thesis" separato) e' una riga in piu' qui, non
-# un file nuovo: la convenzione di lettura (rtplots/source.py) e' la stessa
-# per ogni progetto di questa campagna.
+# Progetti indicizzati di default. La convenzione di lettura
+# (rtplots/source.py) e' la stessa per tutti: vengono tutti dallo stesso entry
+# point (scripts/train_hybrid_sac.py), quindi aggiungerne uno e' una riga qui.
+#
+#  - thesis-final                           : le run finali della tesi
+#                                             (scripts/launch_thesis_runs.py),
+#                                             protocollo unico, gruppi th_*
+#  - tuning-thesis-budget-curves-completion : campagna di budget curves
+#  - thesis-grad-diagnostics                : schemi di fusione, ablation della
+#                                             normalizzazione, frozen probe
+#  - thesis                                 : ablation a sorgente singola
+#
+# Servono insieme perche' un confronto ibrido vs solo-preferenze vs
+# solo-dimostrazioni pesca da progetti diversi.
 DEFAULT_PROJECTS = os.environ.get(
-    "RTPLOTS_WANDB_PROJECTS", "tuning-thesis-budget-curves-completion"
+    "RTPLOTS_WANDB_PROJECTS",
+    "thesis-final,thesis-grad-diagnostics,"
+    "tuning-thesis-budget-curves-completion,thesis",
 ).split(",")
 
 

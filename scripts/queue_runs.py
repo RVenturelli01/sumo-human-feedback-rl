@@ -118,8 +118,52 @@ def main() -> int:
                          "(n_envs=2, train_freq=8, iperparametri originali), "
                          "lasciando pero' shared_rollout_env e n_ensembles come "
                          "sono nel PROTOCOL corrente.")
+    ap.add_argument("--set-arm-field", action="append", default=[],
+                    metavar="BRACCIO.CAMPO=VALORE",
+                    help="sovrascrive un campo del braccio (dataclasses.replace), "
+                         "es. hybrid_soft.gradient_steps_rew=100 oppure "
+                         "hybrid_soft.uses_pref=false. Ripetibile. A differenza "
+                         "di --extra-override, arm_overrides e validate() "
+                         "leggono il valore nuovo e restano coerenti.")
     ap.add_argument("--n-ensembles", type=int, default=None,
                     help="sovrascrive n_ensembles del PROTOCOL")
+    # Queste due passano dal PROTOCOL e non da --extra-override: validate()
+    # legge le attese proprio dal PROTOCOL, quindi un override in coda le
+    # contraddirebbe e il lancio si fermerebbe.
+    ap.add_argument("--shared-rollout-env", choices=("true", "false"), default=None,
+                    help="sovrascrive shared_rollout_env del PROTOCOL. false = "
+                         "ambiente di rollout dedicato, come le lane del report.")
+    ap.add_argument("--query-schedule", default=None,
+                    choices=("constant", "hyperbolic", "inverse_quadratic"),
+                    help="forma della distribuzione delle query nel tempo. Riscrive "
+                         "il PROTOCOL invece di aggiungersi in coda, cosi' Hydra non "
+                         "riceve due volte la stessa chiave. Nota che quando il budget "
+                         "e' piu' piccolo del numero di iterazioni tutte le quote "
+                         "vanno a zero e i due schedule decrescenti coincidono: a B=10 "
+                         "entrambi mettono le query nelle prime iterazioni.")
+    ap.add_argument("--n-envs", type=int, default=None,
+                    help="numero di ambienti paralleli. Con 2 o piu' si passa da "
+                         "DummyVecEnv a SubprocVecEnv e i seed ambiente sono "
+                         "base_seed..base_seed+n-1. validate() impone comunque "
+                         "replay ratio 2.0 = gradient_steps/(train_freq*n_envs).")
+    ap.add_argument("--train-freq", type=int, default=None,
+                    help="passi ambiente fra due aggiornamenti SAC. Da scegliere "
+                         "insieme a --n-envs per tenere il replay ratio a 2.0.")
+    ap.add_argument("--total-queries", type=int, default=None,
+                    help="scollega il numero di confronti dal budget delle "
+                         "dimostrazioni. Sotto ALPHA_MIN_PREFS (5) alpha resta "
+                         "fissato a 1 per tutta la corsa: serve a isolare il solo "
+                         "effetto della normalizzazione del gradiente. Con 0 NON "
+                         "funziona, perche' _reward_step salta la fusione.")
+    ap.add_argument("--total-timesteps", type=int, default=None,
+                    help="durata della run. Il numero di iterazioni ne discende: "
+                         "n_iterations = total_timesteps / timesteps_per_iteration, "
+                         "quindi 1000000 con i 20000 di serie da 50 iterazioni "
+                         "invece di 100, e altrettanti round di reward learning.")
+    ap.add_argument("--bootstrap", choices=("true", "false", "null"), default=None,
+                    help="fissa bootstrap_comparisons. null = decide n_ensembles "
+                         "(il default). true con n_ensembles=1 riproduce il "
+                         "bootstrap a un solo membro delle lane del report.")
     ap.add_argument("--extra-override", action="append", default=[],
                     help="override Hydra aggiuntivo, ripetibile")
     ap.add_argument("--poll", type=int, default=60, help="secondi fra due controlli")
@@ -139,6 +183,46 @@ def main() -> int:
         LTR.PROTOCOL = tuple(f"{chiave}={args.n_ensembles}" if o.startswith(chiave + "=")
                              else o for o in LTR.PROTOCOL)
         print(f"n_ensembles forzato a {args.n_ensembles}", flush=True)
+    if args.n_envs is not None:
+        chiave = "env.n_envs"
+        LTR.PROTOCOL = tuple(f"{chiave}={args.n_envs}" if o.startswith(chiave + "=")
+                             else o for o in LTR.PROTOCOL)
+        print(f"n_envs forzato a {args.n_envs}", flush=True)
+    if args.train_freq is not None:
+        chiave = "agent.kwargs.train_freq"
+        LTR.PROTOCOL = tuple(f"{chiave}={args.train_freq}" if o.startswith(chiave + "=")
+                             else o for o in LTR.PROTOCOL)
+        print(f"train_freq forzato a {args.train_freq}", flush=True)
+    if args.total_queries is not None:
+        LTR.QUERIES_OVERRIDE = args.total_queries
+        print(f"total_queries forzato a {args.total_queries} "
+              f"(alpha resta fissato a 1 se < 5)", flush=True)
+    if args.query_schedule is not None:
+        chiave = "algo.kwargs.query_schedule"
+        LTR.PROTOCOL = tuple(f"{chiave}={args.query_schedule}"
+                             if o.startswith(chiave + "=") else o
+                             for o in LTR.PROTOCOL)
+        print(f"query_schedule forzato a {args.query_schedule}", flush=True)
+    if args.total_timesteps is not None:
+        chiave = "train.kwargs.total_timesteps"
+        LTR.PROTOCOL = tuple(f"{chiave}={args.total_timesteps}"
+                             if o.startswith(chiave + "=") else o
+                             for o in LTR.PROTOCOL)
+        tpi = next(int(o.split("=")[1]) for o in LTR.PROTOCOL
+                   if o.startswith("train.kwargs.timesteps_per_iteration="))
+        print(f"total_timesteps forzato a {args.total_timesteps} "
+              f"({args.total_timesteps // tpi} iterazioni da {tpi} passi)", flush=True)
+    if args.shared_rollout_env is not None:
+        chiave = "env.shared_rollout_env"
+        LTR.PROTOCOL = tuple(f"{chiave}={args.shared_rollout_env}"
+                             if o.startswith(chiave + "=") else o
+                             for o in LTR.PROTOCOL)
+        print(f"shared_rollout_env forzato a {args.shared_rollout_env}", flush=True)
+    if args.bootstrap is not None:
+        chiave = "algo.kwargs.bootstrap_comparisons"
+        resto = tuple(o for o in LTR.PROTOCOL if not o.startswith(chiave + "="))
+        LTR.PROTOCOL = resto + (f"{chiave}={args.bootstrap}",)
+        print(f"bootstrap_comparisons forzato a {args.bootstrap}", flush=True)
     if args.extra_override:
         # Si avvolge arm_overrides invece di toccare il launcher: cosi' anche
         # validate() risolve la config con gli stessi override applicati.
@@ -162,6 +246,24 @@ def main() -> int:
                 LTR.ARMS[arm] = dataclasses.replace(LTR.ARMS[arm], **campi)
         print("protocollo del report: n_envs=2, train_freq=8, iperparametri originali",
               flush=True)
+    # Dopo --like-report, cosi' un --set-arm-field puo' correggerne i valori.
+    for spec in args.set_arm_field:
+        target, sep, valore = spec.partition("=")
+        arm_name, _, campo = target.partition(".")
+        if not sep or arm_name not in LTR.ARMS:
+            raise SystemExit(f"--set-arm-field non valido: {spec!r} "
+                             f"(atteso BRACCIO.CAMPO=VALORE, bracci: {', '.join(LTR.ARMS)})")
+        vecchio = getattr(LTR.ARMS[arm_name], campo)   # AttributeError se il campo non esiste
+        if isinstance(vecchio, bool):
+            nuovo = valore.lower() in ("true", "1", "yes")
+        elif isinstance(vecchio, int):
+            nuovo = int(valore)
+        elif isinstance(vecchio, float):
+            nuovo = float(valore)
+        else:                       # str oppure None (es. net_arch, labels)
+            nuovo = valore
+        LTR.ARMS[arm_name] = dataclasses.replace(LTR.ARMS[arm_name], **{campo: nuovo})
+        print(f"{arm_name}.{campo}: {vecchio} -> {nuovo}", flush=True)
     if args.initial_agent_timesteps is not None:
         for arm in args.arms:
             LTR.ARMS[arm] = dataclasses.replace(

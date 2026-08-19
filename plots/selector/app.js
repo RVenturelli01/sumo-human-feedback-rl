@@ -16,9 +16,16 @@ const state = {
   // budget_x non e' scelto dalla pagina: resta il default del backend
   // (budget_level, robusto per ogni arm — vedi rtplots/figure.py).
   grid: { kind: "curve", rows: "", cols: "", band: "se", smooth: 5,
-          metric: "", legend: "outside_right", panel_size: [3.4, 2.5] },
+          metric: "", legend: "outside_right", panel_size: [3.4, 2.5],
+          // solo per le curve di budget: le curve di apprendimento separano
+          // gia' per schema di fusione da sole (auto_hue lato server).
+          compare_fusion: false, compare_norm: false, compare_smoothing: false,
+          // ylim: null = automatico. Il campo esiste gia' nello spec ed e' usato
+          // dalla riga di comando (--ylim/--logy); qui si limita a esporlo.
+          ylim: null, logy: false },
   // ritocchi a mano delle serie: etichetta di partenza -> {name, color}
   series_overrides: {},
+  showFormula: true,     // pannello delle definizioni accanto all'anteprima
   series: [],            // ultimo elenco di serie disegnate
   seriesSel: null,       // quale e' selezionata nell'elenco
   palette: [],
@@ -101,7 +108,6 @@ function renderDimensions(dims) {
         input.checked ? cur.add(v.value) : cur.delete(v.value);
         f.values = (!isMulti(f.op) && input.checked) ? [v.value] : [...cur];
         syncPills(dim.col);
-        state.excluded.clear();
         scheduleQuery();
       });
       pills.appendChild(label);
@@ -115,7 +121,6 @@ function renderDimensions(dims) {
       f.op = opSel.value;
       if (!isMulti(f.op) && f.values.length > 1) f.values = [f.values[0]];
       syncPills(dim.col);
-      state.excluded.clear();
       scheduleQuery();
     });
     box.appendChild(sec);
@@ -170,6 +175,9 @@ function syncKindVisibility() {
   $("#grid-smooth-field").hidden = isBudget;
   const iqrOpt = $("#grid-band").querySelector('option[value="iqr"]');
   if (iqrOpt) iqrOpt.hidden = false; // iqr supportato in entrambi i casi
+  $("#grid-compare-fusion-field").hidden = !isBudget;
+  $("#grid-compare-norm-field").hidden = !isBudget;
+  $("#grid-compare-smoothing-field").hidden = !isBudget;
 }
 
 function renderKindControls() {
@@ -202,6 +210,15 @@ function renderGridControls(fields) {
       maybeAutoPreview();
     });
   }
+  for (const [id, key] of [["#grid-compare-fusion", "compare_fusion"],
+                           ["#grid-compare-norm", "compare_norm"],
+                           ["#grid-compare-smoothing", "compare_smoothing"]]) {
+    const box = $(id);
+    box.checked = !!state.grid[key];
+    box.addEventListener("change", (e) => {
+      state.grid[key] = e.target.checked; maybeAutoPreview();
+    });
+  }
   $("#grid-metric").addEventListener("change", (e) => {
     state.grid.metric = e.target.value; maybeAutoPreview();
   });
@@ -210,6 +227,19 @@ function renderGridControls(fields) {
   });
   $("#grid-legend").addEventListener("change", (e) => {
     state.grid.legend = e.target.value; maybeAutoPreview();
+  });
+  const readYlim = () => {
+    const lo = parseFloat($("#grid-ymin").value), hi = parseFloat($("#grid-ymax").value);
+    // Entrambi vuoti = automatico; uno solo non e' un intervallo, quindi si
+    // ignora finche' non c'e' anche l'altro.
+    state.grid.ylim = (Number.isFinite(lo) && Number.isFinite(hi)) ? [lo, hi] : null;
+    maybeAutoPreview();
+  };
+  for (const id of ["#grid-ymin", "#grid-ymax"]) {
+    $(id).addEventListener("change", readYlim);
+  }
+  $("#grid-logy").addEventListener("change", (e) => {
+    state.grid.logy = e.target.checked; maybeAutoPreview();
   });
   for (const [id, i] of [["#grid-panel-w", 0], ["#grid-panel-h", 1]]) {
     $(id).addEventListener("change", (e) => {
@@ -263,7 +293,7 @@ function renderCoverage(cov) {
     `<th class="pick"><input type="checkbox" id="cov-all"${allOn ? " checked" : ""}` +
     ` title="tutte / nessuna"></th>` +
     cov.columns.map((c) => `<th>${c}</th>`).join("") +
-    `<th>run</th><th>seed</th><th>quali seed</th>`;
+    `<th>run</th><th>seed</th><th>quali seed</th><th class="dl">yaml</th>`;
   const body = cov.rows.map((r, i) => {
     const partial = r.n_seeds < maxSeeds;
     const cls = [partial ? "partial" : "", r.on ? "" : "off"].filter(Boolean).join(" ");
@@ -272,7 +302,9 @@ function renderCoverage(cov) {
       r.cells.map((c) => `<td>${c}</td>`).join("") +
       `<td class="num">${r.n_runs}</td>` +
       `<td class="num seeds-missing">${r.n_seeds}</td>` +
-      `<td class="num">${r.seeds}</td></tr>`;
+      `<td class="num">${r.seeds}</td>` +
+      `<td class="dl"><button class="ghost small" data-hp="${i}"` +
+      ` title="scarica gli iperparametri di questa riga (YAML)">⬇</button></td></tr>`;
   }).join("");
   box.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 
@@ -289,6 +321,10 @@ function renderCoverage(cov) {
     for (const row of cov.rows) setRow(row, e.target.checked);
     runQuery();
   });
+
+  for (const btn of box.querySelectorAll("button[data-hp]")) {
+    btn.addEventListener("click", () => downloadHparams(cov, Number(btn.dataset.hp), btn));
+  }
 
   const note = $("#coverage-note");
   const off = cov.rows.filter((r) => !r.on).length;
@@ -308,11 +344,21 @@ function renderCoverage(cov) {
 /* --- anteprima ------------------------------------------------------------ */
 
 function maybeAutoPreview() {
-  if ($("#auto-preview").checked) runPreview();
+  if ($("#auto-preview").checked) { runPreview(); return; }
+  // Con l'anteprima automatica spenta la figura a schermo e' quella di prima:
+  // senza segnalarlo, contraddice in silenzio l'impostazione appena cambiata.
+  const box = $("#preview-box");
+  if (box.querySelector("img")) box.classList.add("stale");
+}
+
+// Passi grandi (timestep) in milioni, piccoli (iterazioni) interi.
+function fmtStep(v) {
+  return v >= 1e5 ? `${(v / 1e6).toFixed(2)}M` : `${Math.round(v)}`;
 }
 
 async function runPreview() {
   const box = $("#preview-box");
+  box.classList.remove("stale");
   box.innerHTML = `<p class="spinner">Disegno in corso…</p>`;
   const data = await post("/api/preview", payload());
   if (data.error) { box.innerHTML = `<p class="error">${data.error}</p>`; return; }
@@ -324,8 +370,27 @@ async function runPreview() {
     (hue ? ` · colori${data.auto_hue ? " (auto)" : ""}: ${esc(hue)}` : "") + `</p>` +
     (merged ? `<p class="error merged-warning">${esc(merged)} ${
       data.merged.length > 1 ? "variano" : "varia"} senza separare le curve: ` +
-      `configurazioni diverse sono mediate insieme.</p>` : "");
+      `configurazioni diverse sono mediate insieme.</p>` : "") +
+    ((data.truncated || []).length
+      ? `<p class="error merged-warning">La serie si ferma a ${
+          fmtStep(data.truncated[0].end)} invece di ${fmtStep(data.truncated[0].longest)}: ` +
+        `una run del gruppo e' piu' corta delle altre e la griglia comune si adegua ` +
+        `alla piu' corta.</p>`
+      : "");
   renderSeries(data.series_list || [], data.palette || []);
+  refreshFormula();
+}
+
+/* --- formule delle metriche ----------------------------------------------- */
+
+// Rese lato server con mathtext (nessuna dipendenza JS): l'SVG arriva pronto.
+async function refreshFormula() {
+  const box = $("#formula-box");
+  if (!state.showFormula) { box.hidden = true; return; }
+  const data = await post("/api/formula", payload());
+  if (!data || !data.svg) { box.hidden = true; return; }
+  box.hidden = false;
+  $("#formula-body").innerHTML = data.svg;
 }
 
 /* --- ritocchi alle serie -------------------------------------------------- */
@@ -391,6 +456,38 @@ function copySeriesRule() {
 
 /* --- export --------------------------------------------------------------- */
 
+/* Le celle arrivano gia' formattate per la pagina: per lo YAML serve il testo. */
+function plainText(html) {
+  const el = document.createElement("div");
+  el.innerHTML = html;
+  return el.textContent.trim();
+}
+
+async function downloadHparams(cov, i, btn) {
+  const row = cov.rows[i];
+  const label = btn.textContent;
+  // La config completa arriva da W&B: la prima volta e' una richiesta per run.
+  btn.disabled = true;
+  btn.textContent = "…";
+  try {
+    const data = await post("/api/hparams", {
+      run_ids: row.run_ids,
+      cells: row.cells.map(plainText),
+      columns: cov.columns,
+    });
+    if (data.error) return toast(data.error);
+    const url = URL.createObjectURL(new Blob([data.yaml], { type: "text/yaml" }));
+    download(url, data.filename);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast(`${data.filename} (${data.n_runs} run)`);
+  } catch (err) {
+    toast(String(err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 function download(url, filename) {
   const a = document.createElement("a");
   a.href = url; a.download = filename; a.rel = "noopener";
@@ -410,7 +507,11 @@ async function exportFigure(format) {
   const old = btn.textContent;
   btn.disabled = true; btn.textContent = "…";
   try {
-    const data = await post("/api/export", { ...payload(), format });
+    // Il .tex ha le sue macro: le formule come immagine avrebbero poco senso.
+    const data = await post("/api/export", {
+      ...payload(), format,
+      include_formula: format !== "tex" && !!state.showFormula,
+    });
     if (data.error) { toast(data.error); return; }
     download(data.url, data.filename);
     showDownloadLink(data);
@@ -526,7 +627,9 @@ async function deleteSelection(slug) {
 
 function gridFromSpec(spec) {
   const out = {};
-  for (const k of ["kind", "rows", "cols", "band", "smooth", "metric", "budget_x", "legend"]) {
+  for (const k of ["kind", "rows", "cols", "band", "smooth", "metric", "budget_x", "legend",
+                   "compare_fusion", "compare_norm", "compare_smoothing",
+                   "ylim", "logy"]) {
     if (spec[k] !== undefined && spec[k] !== null && spec[k] !== "") out[k] = spec[k];
   }
   if (Array.isArray(spec.panel_size) && spec.panel_size.length === 2) out.panel_size = spec.panel_size;
@@ -558,6 +661,12 @@ function applySelection(entry) {
   $("#grid-band").value = state.grid.band || "se";
   $("#grid-smooth").value = state.grid.smooth || 5;
   $("#grid-legend").value = state.grid.legend || "outside_right";
+  $("#grid-ymin").value = state.grid.ylim ? state.grid.ylim[0] : "";
+  $("#grid-ymax").value = state.grid.ylim ? state.grid.ylim[1] : "";
+  $("#grid-logy").checked = !!state.grid.logy;
+  $("#grid-compare-fusion").checked = !!state.grid.compare_fusion;
+  $("#grid-compare-norm").checked = !!state.grid.compare_norm;
+  $("#grid-compare-smoothing").checked = !!state.grid.compare_smoothing;
   $("#grid-panel-w").value = state.grid.panel_size?.[0] ?? 3.4;
   $("#grid-panel-h").value = state.grid.panel_size?.[1] ?? 2.5;
   runQuery();
@@ -606,6 +715,12 @@ async function init() {
     });
   }
   $("#preview").addEventListener("click", runPreview);
+  const formulaBox = $("#show-formula");
+  formulaBox.checked = state.showFormula;
+  formulaBox.addEventListener("change", (e) => {
+    state.showFormula = e.target.checked;
+    refreshFormula();
+  });
   $("#series-reset").addEventListener("click", resetSeries);
   $("#series-rule").addEventListener("click", copySeriesRule);
   $("#series-name").addEventListener("change", (e) => {

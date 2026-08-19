@@ -24,11 +24,15 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from rtplots import budget as B  # noqa: E402
+from rtplots import hparams as HP  # noqa: E402
+from rtplots import formulas as FM  # noqa: E402
+from rtplots import metrics as M  # noqa: E402
 from rtplots import labels as L  # noqa: E402
 from rtplots import rules, schema, selection, source, tikz  # noqa: E402
 from rtplots.curves import aggregate as aggregate_curves  # noqa: E402
 from rtplots.figure import (FigureSpec, Series, _apply_overrides,  # noqa: E402
-                            auto_hue, merged_dims, split_panels)
+                            _decollide, _merged_budget_dims, auto_hue,  # noqa: E402
+                            merged_dims, split_panels)
 from rtplots.webui import api  # noqa: E402
 
 
@@ -146,6 +150,58 @@ def test_parse_group_livello_e_tag():
     assert source.parse_group(None) == (None, None)
 
 
+def test_parse_group_riconosce_i_gruppi_della_campagna_finale():
+    """thesis-final usa il prefisso th_: senza pattern, budget_level resta vuoto
+    e quelle run sparirebbero dalle curve di budget senza alcun errore."""
+    tag, level = source.parse_group("th_hybrid_soft_B1000")
+    assert tag == "hybrid_soft" and level == 1000.0
+    tag, level = source.parse_group("th_demo_only_B10")
+    assert tag == "demo_only" and level == 10.0
+    tag, level = source.parse_group("th_unw_bern_B100")
+    assert tag == "unw_bern" and level == 100.0
+    # niente budget in coda: non e' un gruppo di quella campagna
+    assert source.parse_group("th_qualcosa") == (None, None)
+
+
+def test_thesis_final_e_fra_i_progetti_indicizzati():
+    from rtplots import paths
+    assert "thesis-final" in paths.DEFAULT_PROJECTS
+
+
+def test_parse_group_riconosce_anche_i_gruppi_gd():
+    """thesis-grad-diagnostics scrive il livello come `_B<N>`, non `_<N>`."""
+    tag, level = source.parse_group("gd_norm_on_p2_alpha_B100")
+    assert tag == "norm_on_p2_alpha" and level == 100.0
+    tag, level = source.parse_group("gd_baseline_norm_balance_no_norm_B1000")
+    assert tag == "baseline_norm_balance_no_norm" and level == 1000.0
+
+
+def test_fusion_solo_per_hybrid_e_norm_balance_quando_manca():
+    """`gcl_fusion` non esiste nelle run precedenti agli schemi di fusione:
+    li' il codice applicava il bilanciamento di norma, che e' il default."""
+    assert source.derive_fusion({"gcl_fusion": "dual_adam_alpha"}, "hybrid") == "dual_adam_alpha"
+    assert source.derive_fusion({}, "hybrid") == "norm_balance"
+    # Su un braccio a sorgente singola non c'e' niente da fondere.
+    assert source.derive_fusion({"gcl_fusion": "dual_adam_alpha"}, "demo") is None
+    assert source.derive_fusion({}, "pref") is None
+
+
+def test_fusion_distingue_bracci_che_arm_collasserebbe():
+    """Baseline e prova 2 hanno lo stesso `arm`: senza `fusion` sarebbero
+    indistinguibili nell'indice."""
+    def cfg(fusion):
+        return {"run": {"seed": 1},
+                "algo": {"kwargs": {"total_queries": 100, "demo_weight": 1.0,
+                                    "loss_type": "demo_2", "labels_type": "soft",
+                                    "gcl_fusion": fusion}},
+                "train": {"kwargs": {}}}
+    base = source.row(fake_run(cfg("norm_balance"), group="gd_baseline_norm_balance_no_norm_B100"), "p")
+    p2 = source.row(fake_run(cfg("dual_adam_alpha"), group="gd_p2_alpha_B100"), "p")
+    assert base["arm"] == p2["arm"] == "hybrid_demo_2_soft"
+    assert base["fusion"] != p2["fusion"]
+    assert base["budget_level"] == p2["budget_level"] == 100.0
+
+
 def fake_run(config, group=None, tags=(), rid="abc", state="finished"):
     return SimpleNamespace(id=rid, name="run", group=group, state=state,
                            tags=list(tags), created_at="2026-01-01", config=config)
@@ -219,6 +275,49 @@ def test_aggregate_curve_media_sui_seed():
     assert (one["n_seeds"] == 3).all()
 
 
+def test_una_metrica_che_nasce_a_meta_run_non_viene_estesa_all_indietro():
+    """`np.interp` fuori dall'intervallo replica il primo valore.
+
+    Le metriche `alpha/*` non esistono finche' i confronti non bastano a
+    stimarne la dispersione: a B=10 comparivano dall'iterazione 44. Con la
+    griglia che partiva da 0, le prime 44 iterazioni venivano riempite col
+    primo valore vero, e il tratto piatto era indistinguibile da una misura.
+    """
+    df = make_index()
+    run_ids = df[df.arm == "pref_soft"].run_id.tolist()
+    curves = pd.DataFrame([
+        {"run_id": rid, "step": float(s), "ret": 0.5 + 0.01 * (s - 44)}
+        for rid in run_ids for s in range(44, 100)
+    ])
+
+    agg = aggregate_curves(curves, df, ["arm"], band="se")
+
+    assert agg.step.min() == 44.0, "la curva non deve iniziare prima del primo dato"
+    assert agg["mean"].iloc[0] == pytest.approx(0.5)
+
+
+def test_i_seed_che_partono_in_ritardo_accorciano_da_sinistra_e_lo_segnalano():
+    """Bordo sinistro come il destro: intersezione, non unione.
+
+    Cosi' il numero di seed resta costante lungo la curva e la banda e'
+    confrontabile punto per punto. Il taglio viene dichiarato, non subito.
+    """
+    df = make_index()
+    run_ids = df[df.arm == "pref_soft"].run_id.tolist()
+    inizi = dict(zip(run_ids, (44, 47, 50)))
+    curves = pd.DataFrame([
+        {"run_id": rid, "step": float(s), "ret": 1.0}
+        for rid, primo in inizi.items() for s in range(primo, 100)
+    ])
+
+    agg = aggregate_curves(curves, df, ["arm"], band="se")
+
+    assert agg.step.min() == 50.0            # l'ultimo che inizia
+    assert (agg["n_seeds"] == 3).all()       # nessun punto con meno seed
+    nota = agg.attrs["late_start"]
+    assert len(nota) == 1 and nota[0]["start"] == 50.0 and nota[0]["earliest"] == 44.0
+
+
 # --- aggregazione: curve di budget ------------------------------------------
 
 def test_budget_aggregate_un_punto_per_livello(monkeypatch, tmp_path):
@@ -232,6 +331,242 @@ def test_budget_aggregate_un_punto_per_livello(monkeypatch, tmp_path):
     # un solo livello di budget per arm in questo indice finto: una riga a serie
     assert set(agg.arm) == set(df.arm.unique())
     assert (agg.n_seeds == 3).all()
+
+
+def _fusion_index() -> pd.DataFrame:
+    """Stesso arm e stesso livello, due fusioni x due stati della normalizzazione.
+
+    ``label_smoothing`` c'e' ma costante: la terza ablation esiste come colonna
+    e deve restare muta finche' non varia davvero.
+    """
+    return pd.DataFrame([
+        dict(run_id=f"r{i}", arm="hybrid_demo_2_soft", arm_family="hybrid",
+             fusion=f, normalize_agent_reward=n, label_smoothing=0.0,
+             budget_level=100.0, seed=1.0)
+        for i, (f, n) in enumerate([("norm_balance", False), ("norm_balance", True),
+                                    ("dual_adam_alpha", False), ("dual_adam_alpha", True)])
+    ])
+
+
+def _smoothing_index() -> pd.DataFrame:
+    """Stesso arm, stessa fusione, stessa normalizzazione: cambia solo eps."""
+    return pd.DataFrame([
+        dict(run_id=f"s{i}", arm="hybrid_demo_2_bernoulli", arm_family="hybrid",
+             fusion="norm_balance", normalize_agent_reward=False,
+             label_smoothing=eps, budget_level=100.0, seed=1.0)
+        for i, eps in enumerate([0.0, 0.1])
+    ])
+
+
+def test_compare_fusion_separa_gli_schemi_solo_se_attiva():
+    df = _fusion_index()
+    spento = FigureSpec(kind="budget")
+    # Spento: il default delle curve di budget resta "un arm = una serie", e
+    # entrambe le ablation vengono segnalate come mediate insieme.
+    assert not spento.compare_fusion and not spento.compare_norm
+    assert _merged_budget_dims(df, ["arm"], spento) == ["fusion", "normalize_agent_reward"]
+    # Accese una per volta: resta segnalata solo l'altra.
+    solo_fus = FigureSpec(kind="budget", compare_fusion=True)
+    assert _merged_budget_dims(df, ["arm", "fusion"], solo_fus) == ["normalize_agent_reward"]
+    solo_norm = FigureSpec(kind="budget", compare_norm=True)
+    assert _merged_budget_dims(
+        df, ["arm", "normalize_agent_reward"], solo_norm) == ["fusion"]
+    # Entrambe: niente da segnalare.
+    both = FigureSpec(kind="budget", compare_fusion=True, compare_norm=True)
+    assert _merged_budget_dims(df, ["arm", "fusion", "normalize_agent_reward"], both) == []
+
+
+def test_merges_fusion_tace_quando_non_ce_niente_da_mediare():
+    df = _fusion_index()
+    spec = FigureSpec(kind="budget")
+    # Un solo valore presente: nessuna media silenziosa possibile.
+    solo_una = df[(df.fusion == "norm_balance") & (~df.normalize_agent_reward)]
+    assert _merged_budget_dims(solo_una, ["arm"], spec) == []
+    # Su righe o colonne la dimensione separa gia' i pannelli.
+    assert "fusion" not in _merged_budget_dims(
+        df, ["arm"], FigureSpec(kind="budget", rows="fusion"))
+
+
+def test_compare_smoothing_separa_gli_eps_solo_se_attiva():
+    df = _smoothing_index()
+    spento = FigureSpec(kind="budget")
+    assert not spento.compare_smoothing
+    # eps=0 e eps=0.1 nello stesso arm: senza la casella finiscono mediati.
+    assert _merged_budget_dims(df, ["arm"], spento) == ["label_smoothing"]
+    acceso = FigureSpec(kind="budget", compare_smoothing=True)
+    assert _merged_budget_dims(df, ["arm", "label_smoothing"], acceso) == []
+    # Costante: niente da segnalare, anche a casella spenta.
+    assert "label_smoothing" not in _merged_budget_dims(_fusion_index(), ["arm"], spento)
+
+
+def test_senza_smoothing_prende_il_tratto_continuo():
+    """Convenzione condivisa con la normalizzazione: l'ablation e' la tratteggiata."""
+    df = _smoothing_index()
+    styles = {"a": {"color": "C0", "style": "solid"}, "b": {"color": "C0", "style": "solid"}}
+    matches = {"a": {"label_smoothing": 0.0}, "b": {"label_smoothing": 0.1}}
+    # L'ordine arriva gia' crescente da _sort_ascending: eps=0 e' il primo.
+    _decollide(styles, ["a", "b"], matches)
+    assert styles["a"]["style"] == "solid"
+    assert styles["b"]["style"] != "solid"
+    assert set(df.label_smoothing) == {0.0, 0.1}
+
+
+def test_i_flag_sopravvivono_al_salvataggio():
+    """Sono parte dello spec, quindi --runs-file rifa' la stessa figura."""
+    spec = FigureSpec(kind="budget", compare_fusion=True, compare_norm=True,
+                      compare_smoothing=True)
+    back = FigureSpec.from_dict(spec.to_dict())
+    assert back.compare_fusion is True and back.compare_norm is True
+    assert back.compare_smoothing is True
+
+
+def test_serie_dello_stesso_braccio_non_restano_indistinguibili():
+    """Le regole di style.toml colorano per `arm`: due configurazioni dello
+    stesso braccio (normalizzazione on/off, schemi di fusione, ...) uscirebbero
+    identiche. Il colore resta quello della regola, a separarle e' il tratto."""
+    from rtplots.figure import _decollide
+    styles = {
+        "baseline, no-norm": {"color": "#e34948", "style": "solid"},
+        "baseline, norm": {"color": "#e34948", "style": "solid"},
+    }
+    # In legenda i booleani vanno con "si" per primo: l'ordine da solo darebbe
+    # il tratto continuo alla configurazione normalizzata.
+    order = ["baseline, norm", "baseline, no-norm"]
+    matches = {"baseline, norm": {"normalize_agent_reward": True},
+               "baseline, no-norm": {"normalize_agent_reward": False}}
+    _decollide(styles, order, matches)
+    assert styles["baseline, no-norm"]["color"] == styles["baseline, norm"]["color"]
+    # La condizione disattivata resta continua, l'ablation e' la tratteggiata,
+    # sempre nello stesso verso in ogni figura.
+    assert styles["baseline, no-norm"]["style"] == "solid"
+    assert styles["baseline, norm"]["style"] == "dashed"
+
+
+def test_decollide_non_tocca_le_serie_gia_distinguibili():
+    """soft e bernoulli condividono il colore ma hanno gia' tratti diversi."""
+    from rtplots.figure import _decollide
+    styles = {
+        "hybrid (soft)": {"color": "#e34948", "style": "solid"},
+        "hybrid (bernoulli)": {"color": "#e34948", "style": "dashed"},
+        "demo_2": {"color": "#008300", "style": "solid"},
+    }
+    before = {k: v["style"] for k, v in styles.items()}
+    _decollide(styles, list(styles))
+    assert {k: v["style"] for k, v in styles.items()} == before
+
+
+# --- formule ----------------------------------------------------------------
+
+def test_ogni_metrica_dei_gradienti_ha_la_sua_formula():
+    """Il pannello delle definizioni non deve restare vuoto proprio sulle
+    metriche per cui e' stato aggiunto."""
+    documented = [k for group, items in M.METRIC_GROUPS
+                  if "Gradienti" in group or "Normalizzazione" in group
+                  or "Stima di α" in group
+                  for k, *_ in items]
+    assert documented, "i tre gruppi di metriche esistono ancora"
+    assert [k for k in documented if k not in FM.METRIC_FORMULAS] == []
+
+
+def test_le_metriche_di_alpha_sono_nella_tendina_delle_curve():
+    """Il gruppo deve arrivare davvero alla tendina COSA PLOTTARE.
+
+    Passa da ``ui_groups("curve")``: se una chiave fosse registrata come
+    ``summary`` sparirebbe dal pannello della curva di apprendimento senza che
+    nulla si lamenti.
+    """
+    gruppi = {g["group"]: [o["key"] for o in g["options"]]
+              for g in M.ui_groups("curve")}
+    alpha = next((v for k, v in gruppi.items() if "Stima di α" in k), None)
+    assert alpha is not None, "il gruppo α manca dalla tendina delle curve"
+
+    attese = {f"alpha/{k}_{c}"
+              for k in ("V", "S", "cv2", "gradmean_norm_sq", "n", "batch")
+              for c in ("pref", "demo")}
+    assert attese <= set(alpha)
+    assert "reward/hybrid_alpha" in alpha
+
+    # Asse x giusto: sono loggate dall'algoritmo, non dall'agente SAC.
+    for key in attese:
+        assert M.metric_info(key)["step_key"] == M.ITER_STEP
+
+
+def test_ogni_fusione_implementata_ha_la_sua_equazione():
+    from rtplots.schema import FUSION_NAMES
+    storiche = {"dual_adam_reliability", "demo_anchor_inv_var"}
+    attuali = set(FUSION_NAMES) - storiche
+    assert attuali <= set(FM.FUSION_FORMULAS)
+
+
+def test_blocks_include_le_fusioni_in_selezione():
+    blocks = FM.blocks("reward/hybrid_alpha", ["dual_adam_alpha", "norm_balance"])
+    assert [b["title"] for b in blocks][0] == "Peso delle dimostrazioni"
+    fusion_block = blocks[1]["lines"]
+    assert any("prova 2" in line for line in fusion_block)
+    assert any("norm_balance" in line for line in fusion_block)
+    # Una fusione sconosciuta non deve far comparire un blocco vuoto.
+    assert len(FM.blocks("sweep/mean_fast_return", ["mai_vista"])) == 0
+
+
+def test_salvataggi_diversi_non_si_sovrascrivono(tmp_path, monkeypatch):
+    """Due nomi che collassano sullo stesso slug devono restare due file."""
+    # In produzione selection.json sta in CACHE_DIR e le selezioni in
+    # CACHE_DIR/selections: cartelle diverse, altrimenti listing() lo conterebbe.
+    store = tmp_path / "selections"; store.mkdir()
+    monkeypatch.setattr(selection, "SELECTIONS_DIR", store)
+    monkeypatch.setattr(selection, "SELECTION_JSON", tmp_path / "selection.json")
+    base = selection.slugify("selezione 03/08 19:13")
+    for name in ("selezione 03/08 19:13", "selezione 03/08 19:13 (bis)"):
+        slug = selection.free_slug(selection.slugify(name), name)
+        selection.write({"version": 1, "name": name, "slug": slug, "saved_at": name,
+                         "n_runs": 1, "run_ids": [], "spec": {}})
+    assert len(selection.listing()) == 2
+    # Risalvare con lo STESSO nome aggiorna, non duplica.
+    slug = selection.free_slug(base, "selezione 03/08 19:13")
+    assert slug == base
+    selection.write({"version": 1, "name": "selezione 03/08 19:13", "slug": slug,
+                     "saved_at": "dopo", "n_runs": 9, "run_ids": [], "spec": {}})
+    assert len(selection.listing()) == 2
+    assert [i["n_runs"] for i in selection.listing() if i["slug"] == base] == [9]
+
+
+def test_budget_level_e_una_dimensione_di_griglia():
+    """Una riga per B: budget_level e' gia' la B unificata (10 preferenze + 10
+    traiettorie per l'ibrido, solo una delle due per i bracci a sorgente
+    singola), quindi deve essere selezionabile come riga/colonna."""
+    assert "budget_level" in schema.GRID_FIELDS
+    assert schema.panel_title("budget_level", 100.0) == "B = 100"
+    # Non in sidebar: il filtro si fa con query_budget/demo_budget.
+    assert "budget_level" not in schema.UI_DIMENSIONS
+
+
+def test_formule_stesso_contenuto_in_svg_e_raster():
+    """L'immagine esportata e il pannello a schermo vengono dalla stessa
+    sorgente: se divergessero, il report mostrerebbe formule diverse."""
+    blocks = FM.blocks("reward/hybrid_alpha", ["dual_adam_alpha"])
+    svg = FM.render_svg(blocks)
+    png = FM.render_png(blocks, dpi=100)
+    assert svg.startswith("<svg")
+    assert png[:4] == b"\x89PNG"
+
+
+def test_curve_segnala_quando_una_run_corta_accorcia_la_serie():
+    """La griglia comune si ferma alla run piu' corta del gruppo: prima lo
+    faceva in silenzio e la curva sembrava interrotta senza motivo."""
+    curves = pd.concat([
+        pd.DataFrame({"run_id": "a", "step": [0.0, 1e6, 2e6], "ret": [0.0, 5.0, 10.0]}),
+        pd.DataFrame({"run_id": "b", "step": [0.0, 1e6, 2e6], "ret": [0.0, 5.0, 10.0]}),
+        pd.DataFrame({"run_id": "c", "step": [0.0, 5e5], "ret": [0.0, 3.0]}),
+    ], ignore_index=True)
+    meta = pd.DataFrame({"run_id": ["a", "b", "c"], "arm": ["demo_2"] * 3})
+    agg = aggregate_curves(curves, meta, ["arm"])
+    trunc = agg.attrs["truncated"]
+    assert len(trunc) == 1
+    assert trunc[0]["run_id"] == "c"
+    assert trunc[0]["end"] == 5e5 and trunc[0]["longest"] == 2e6
+    # Con run di lunghezza simile non si segnala niente.
+    same = curves[curves.run_id != "c"]
+    assert aggregate_curves(same, meta[meta.run_id != "c"], ["arm"]).attrs["truncated"] == []
 
 
 def test_minimum_budget_regola_del_90_percento():
@@ -263,7 +598,10 @@ def test_spec_default_metric_dipende_dal_kind():
 
 
 def test_selezione_lettura_scrittura(tmp_path, monkeypatch):
-    monkeypatch.setattr(selection, "SELECTIONS_DIR", tmp_path)
+    # In produzione selection.json sta in CACHE_DIR e le selezioni in
+    # CACHE_DIR/selections: cartelle diverse, altrimenti listing() lo conterebbe.
+    store = tmp_path / "selections"; store.mkdir()
+    monkeypatch.setattr(selection, "SELECTIONS_DIR", store)
     monkeypatch.setattr(selection, "SELECTION_JSON", tmp_path / "selection.json")
     spec = FigureSpec(kind="budget", filters=["arm_family=pref"])
     payload = {"name": "prova", "slug": "prova", "saved_at": "2026-07-29T10:00:00",
@@ -321,6 +659,120 @@ def test_esclusioni_tolgono_run_ma_non_righe_di_copertura():
     assert res["n_excluded"] == 1
     rows = res["coverage"]["rows"]
     assert any(r["n_kept"] < r["n_runs"] for r in rows)
+
+
+# --- iperparametri di una riga di copertura ---------------------------------
+
+def fake_config(seed: int, **over) -> dict:
+    cfg = {
+        "run": {"seed": seed, "n_expert_trajectories": 500, "output_dir": "outputs/x",
+                "name": f"run-{seed}", "group": "g"},
+        "algo": {"kwargs": {"lr_rew": 0.0011542956981980379, "l2_rew": 1.1265e-06,
+                            "gradient_steps_rew": 139, "batch_size_expert": 64,
+                            "batch_size_model": 64, "batch_size_pref": 256,
+                            "reward_model_kwargs": {"n_ensembles": 1, "net_arch": [64, 64]}}},
+        "wandb": {"project": "p", "tags": ["a", "b"]},
+    }
+    cfg["algo"]["kwargs"].update(over)
+    return cfg
+
+
+def loader_from(configs):
+    """Loader iniettabile con la firma di `hparams.load_config`."""
+    def load(run_id, project, state):
+        if run_id not in configs:
+            raise KeyError(run_id)
+        return configs[run_id]
+    return load
+
+
+def test_appiattimento_tiene_le_liste_intere():
+    flat = HP.flatten(fake_config(1))
+    assert flat["algo.kwargs.lr_rew"] == 0.0011542956981980379
+    assert flat["algo.kwargs.reward_model_kwargs.net_arch"] == [64, 64]
+    assert "algo.kwargs.reward_model_kwargs.net_arch.0" not in flat
+
+
+def test_solo_il_seed_distingue_le_run_di_un_gruppo_sano():
+    per_run = {f"r{s}": HP.run_hparams(fake_config(s)) for s in (1, 2, 3)}
+    common, differing = HP.split_common(per_run)
+    assert list(differing) == ["run.seed"]
+    assert common["algo.kwargs.gradient_steps_rew"] == 139
+
+
+def test_una_chiave_presente_in_una_sola_run_conta_come_differenza():
+    per_run = {"r1": HP.run_hparams(fake_config(1)),
+               "r2": HP.run_hparams(fake_config(1, label_smoothing=0.1))}
+    common, differing = HP.split_common(per_run)
+    assert "algo.kwargs.label_smoothing" in differing
+    assert "algo.kwargs.label_smoothing" not in common
+
+
+def test_il_float_non_perde_cifre():
+    # lr_rew deve restare confrontabile con l'export di Optuna
+    assert "0.0011542956981980379" in HP.to_yaml([(None, "a", {"lr": 0.0011542956981980379})])
+
+
+def test_yaml_scrive_booleani_e_liste_in_sintassi_yaml():
+    text = HP.to_yaml([(None, "a", {"b": True, "c": None, "d": [64, 64], "e": "x y"})])
+    assert "b: true" in text and "c: null" in text
+    assert "d: [64, 64]" in text and 'e: "x y"' in text
+
+
+def test_yaml_del_gruppo_separa_comune_e_differenze():
+    configs = {f"r{s}": fake_config(s) for s in (1, 2, 3)}
+    text = HP.group_yaml([{"run_id": f"r{s}", "project": "p", "state": "finished",
+                           "name": f"n{s}"} for s in (1, 2, 3)],
+                         cells=["hybrid_demo_2_soft"], columns=["Algoritmo"],
+                         loader=loader_from(configs))
+    assert "gruppo:" in text and "comune:" in text and "differenze:" in text
+    assert "Algoritmo: hybrid_demo_2_soft" in text
+    assert "algo.kwargs.batch_size_expert: 64" in text
+    assert "run.seed [r1]: 1" in text
+    # le chiavi che dicono solo dove la run e' finita non sono iperparametri
+    assert "run.output_dir" not in text and "wandb.project" not in text
+
+
+def test_una_run_illeggibile_non_blocca_le_altre():
+    text = HP.group_yaml(
+        [{"run_id": "r1", "project": "p", "state": "finished"},
+         {"run_id": "assente", "project": "p", "state": "finished"}],
+        loader=loader_from({"r1": fake_config(1)}))
+    assert "errori:" in text and "assente" in text
+    assert "algo.kwargs.gradient_steps_rew: 139" in text
+
+
+def test_handler_hparams_rifiuta_run_fuori_dall_indice():
+    df = make_index()
+    assert "error" in api.hparams(df, {"run_ids": []})
+    res = api.hparams(df, {"run_ids": ["non-esiste"]})
+    assert "non-esiste" in res["error"]
+
+
+def test_handler_hparams_si_ferma_prima_di_troppe_richieste():
+    df = make_index()
+    res = api.hparams(df, {"run_ids": list(df.run_id) * 2})
+    assert "massimo" in res["error"]
+
+
+def test_handler_hparams_usa_le_run_della_riga(monkeypatch):
+    df = make_index()
+    ids = ["hybrid_demo_2_soft-1", "hybrid_demo_2_soft-2", "hybrid_demo_2_soft-3"]
+    configs = {rid: fake_config(i + 1) for i, rid in enumerate(ids)}
+    monkeypatch.setattr(HP, "load_config", loader_from(configs))
+    res = api.hparams(df, {"run_ids": ids, "cells": ["soft"], "columns": ["Etichette"]})
+    assert res["n_runs"] == 3
+    assert res["filename"] == "hparams_budget_hybrid_demo_2_soft_1000.yaml"
+    assert "Etichette: soft" in res["yaml"]
+    assert "algo.kwargs.lr_rew: 0.0011542956981980379" in res["yaml"]
+
+
+def test_ogni_riga_di_copertura_porta_le_sue_run():
+    # il bottone della pagina manda esattamente questi id all'handler
+    df = make_index()
+    rows = api.query(df, {"dims": {}})["coverage"]["rows"]
+    assert rows and all(r["run_ids"] for r in rows)
+    assert all(set(r["run_ids"]) <= set(df.run_id) for r in rows)
 
 
 # --- regole scritte a mano (style.toml) -------------------------------------

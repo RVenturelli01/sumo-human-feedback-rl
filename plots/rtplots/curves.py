@@ -42,8 +42,16 @@ def _mem_put(key, df) -> None:
 
 
 def curve_from_wandb(run_id: str, project: str, metric: str = DEFAULT_CURVE_METRIC,
-                     cache: bool = True, samples: int = 2000) -> pd.DataFrame:
-    """Curva [step, ret] di una run, sul suo asse x naturale (vedi metrics.py)."""
+                     cache: bool = True, samples: int = 2000,
+                     state: str = "") -> pd.DataFrame:
+    """Curva [step, ret] di una run, sul suo asse x naturale (vedi metrics.py).
+
+    Una run ancora in corso viene scaricata ma **non** salvata su disco: la sua
+    curva e' destinata ad allungarsi, e una cache parziale resterebbe li' per
+    sempre accorciando in silenzio ogni figura che la usa (`aggregate` fissa la
+    griglia comune sulla run piu' corta del gruppo). Stessa regola gia' adottata
+    da `budget.load_summary` per i summary.
+    """
     ensure_dirs()
     info = metric_info(metric)
     step_key = info["step_key"]
@@ -60,20 +68,20 @@ def curve_from_wandb(run_id: str, project: str, metric: str = DEFAULT_CURVE_METR
     else:
         df = (pd.DataFrame({"step": hist[step_key].astype(float), "ret": hist[metric].astype(float)})
               .dropna(subset=["step", "ret"]).sort_values("step"))
-    if cache:
+    if cache and (state or run.state) == "finished":
         df.to_parquet(cache_file, index=False)
     return df
 
 
 def load_curve(run_id: str, metric: str = DEFAULT_CURVE_METRIC,
-              project: str | None = None) -> pd.DataFrame | None:
+              project: str | None = None, state: str = "") -> pd.DataFrame | None:
     project = project or ""
     mem_key = (project, run_id, metric)
     cached = _mem_get(mem_key)
     if cached is not None:
         return cached if not cached.empty else None
     try:
-        df = curve_from_wandb(run_id, project=project, metric=metric)
+        df = curve_from_wandb(run_id, project=project, metric=metric, state=state)
     except Exception:
         return None
     _mem_put(mem_key, df)
@@ -85,9 +93,11 @@ def load_curves(index: pd.DataFrame, metric: str = DEFAULT_CURVE_METRIC,
     """Curve di tutti i run dell'indice, in formato tidy [run_id, step, ret]."""
     run_ids = list(index.run_id)
     projects = dict(zip(index.run_id, index.project)) if "project" in index.columns else {}
+    states = dict(zip(index.run_id, index.state)) if "state" in index.columns else {}
 
     def fetch(run_id):
-        return run_id, load_curve(run_id, metric=metric, project=projects.get(run_id))
+        return run_id, load_curve(run_id, metric=metric, project=projects.get(run_id),
+                                  state=states.get(run_id, ""))
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         pairs = list(pool.map(fetch, run_ids))
@@ -108,6 +118,10 @@ def load_curves(index: pd.DataFrame, metric: str = DEFAULT_CURVE_METRIC,
 
 # --- aggregazione sui seed --------------------------------------------------
 
+# Sotto questa frazione della run piu' lunga del gruppo il taglio va segnalato.
+TRUNCATION_RATIO = 0.9
+
+
 def _smooth(y: np.ndarray, window: int) -> np.ndarray:
     if window <= 1:
         return y
@@ -126,15 +140,41 @@ def aggregate(curves: pd.DataFrame, meta: pd.DataFrame, group_cols,
     group_cols = list(group_cols)
     df = curves.merge(meta[["run_id", *group_cols]], on="run_id", how="inner")
     out = []
+    # Una run piu' corta delle sorelle accorcia tutta la serie, e finora lo
+    # faceva in silenzio: chi guarda la figura vede una curva interrotta senza
+    # sapere perche'.
+    truncated = []
+    # Una metrica che nasce a meta' run (alpha/* prima che le preferenze
+    # bastino a stimarne la dispersione) esiste solo da un certo step in poi.
+    # La griglia deve partire da li': `np.interp` FUORI dall'intervallo dei dati
+    # non estrapola, replica il primo valore, quindi una griglia che parte da 0
+    # disegnava un tratto piatto lungo quanto il buco, indistinguibile da una
+    # misura vera. Il bordo destro prendeva gia' l'intersezione fra i seed; ora
+    # anche il sinistro.
+    late_start = []
     for key, g in df.groupby(group_cols, dropna=False):
         key = key if isinstance(key, tuple) else (key,)
         runs = list(g.groupby("run_id"))
-        t_end = min(r["step"].max() for _, r in runs)
+        ends = {rid: float(r["step"].max()) for rid, r in runs}
+        starts = {rid: float(r["step"].min()) for rid, r in runs}
+        t_end = min(ends.values())
+        t_start = max(starts.values())
+        longest = max(ends.values())
+        if longest > 0 and t_end < TRUNCATION_RATIO * longest:
+            truncated.append({"run_id": min(ends, key=ends.get),
+                              "end": t_end, "longest": longest})
+        if t_start > min(starts.values()):
+            late_start.append({"run_id": max(starts, key=starts.get),
+                               "start": t_start, "earliest": min(starts.values())})
         if xmax is not None:
             t_end = min(t_end, xmax)
+        if not t_end > t_start:
+            # Nessun intervallo comune ai seed: una serie di un punto solo
+            # ingannerebbe piu' di quanto informi.
+            continue
         n_pts = grid_points or int(np.median([len(r) for _, r in runs]))
         n_pts = max(int(n_pts), 2)
-        grid = np.linspace(0, t_end, n_pts)
+        grid = np.linspace(t_start, t_end, n_pts)
         mat = np.vstack([
             _smooth(np.interp(grid, r["step"].to_numpy(), r["ret"].to_numpy()), smooth)
             for _, r in runs
@@ -161,5 +201,9 @@ def aggregate(curves: pd.DataFrame, meta: pd.DataFrame, group_cols,
             block[col] = val
         out.append(block)
     if not out:
-        return pd.DataFrame(columns=[*group_cols, "step", "mean", "lo", "hi", "n_seeds"])
-    return pd.concat(out, ignore_index=True)
+        result = pd.DataFrame(columns=[*group_cols, "step", "mean", "lo", "hi", "n_seeds"])
+    else:
+        result = pd.concat(out, ignore_index=True)
+    result.attrs["truncated"] = truncated
+    result.attrs["late_start"] = late_start
+    return result

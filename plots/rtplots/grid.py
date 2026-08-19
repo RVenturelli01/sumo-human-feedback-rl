@@ -68,7 +68,7 @@ def _legend_handles(order, styles, opts: GridOptions):
         color = st.get("color", "black")
         if opts.style == "errorbar":
             h = mlines.Line2D([], [], color=color, lw=st.get("width", 1.4),
-                              marker="o", markersize=4)
+                              ls=st.get("style", "solid"), marker="o", markersize=4)
         else:
             h = mlines.Line2D([], [], color=color, lw=st.get("width", 1.4),
                               ls=st.get("style", "solid"))
@@ -103,7 +103,8 @@ def draw_grid(agg, order, styles, opts: GridOptions):
                 if opts.style == "errorbar":
                     yerr = [(g["mean"] - g["lo"]).to_numpy(), (g["hi"] - g["mean"]).to_numpy()]
                     ax.errorbar(x, g["mean"], yerr=yerr, color=st["color"],
-                               linewidth=st["width"], marker="o", markersize=4,
+                               linewidth=st["width"], linestyle=st["style"],
+                               marker="o", markersize=4,
                                capsize=3, label=lab, zorder=3)
                 else:
                     ax.plot(x, g["mean"], color=st["color"], lw=st["width"],

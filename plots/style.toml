@@ -78,7 +78,7 @@ colors = [
 #  Ogni regola può fissare:
 #    color        colore della curva/dei punti
 #    width        spessore (default: [lines].width)
-#    style        solid | dashed | dotted | dashdot (solo curve di apprendimento)
+#    style        solid | dashed | dotted | dashdot (curve e budget)
 #    band_alpha   opacità della banda solo per questa serie
 #    name         nome in legenda nell'anteprima (mathtext di matplotlib)
 #    latex        nome in legenda nel .tex — qui ci vanno le macro della tesi
@@ -92,6 +92,52 @@ colors = [
 #  tratteggio (soft = continuo, bernoulli = tratteggiato) — cosi' "hybrid con
 #  preferenze soft" e "hybrid con preferenze Bernoulli" restano leggibili anche
 #  in scala di grigi.
+
+#  ── Schemi di fusione (thesis-grad-diagnostics) ──
+#  Stanno PRIMA delle regole per `arm` perche' vince la prima che combacia: gli
+#  otto schemi hanno tutti lo stesso arm (hybrid_demo_2), quindi senza queste
+#  righe uscirebbero tutti dello stesso colore.
+#
+#  Fissano solo il colore: il nome in legenda viene da schema.FUSION_NAMES, e
+#  ripeterlo qui con `name` lo stamperebbe due volte.
+#  Nota: non fissano nemmeno lo `style`, quindi la
+#  convenzione "bernoulli = tratteggiato" delle regole per arm qui non si
+#  applica. Per confrontare soft e bernoulli mettendo la fusione sui colori,
+#  usa `pref_labels` su righe o colonne.
+
+[[series]]
+match = { fusion = "norm_balance" }
+color = "#333333"
+
+[[series]]
+match = { fusion = "alpha_norm_single_adam" }
+color = "#eb6834"
+
+[[series]]
+match = { fusion = "dual_adam_alpha" }
+color = "#1baf7a"
+
+[[series]]
+match = { fusion = "dual_adam_sum" }
+color = "#eda100"
+
+[[series]]
+match = { fusion = "dual_adam_alpha_unit" }
+color = "#4a3aa7"
+
+[[series]]
+match = { fusion = "dual_adam_alpha_unit_nobudget" }
+color = "#0f7ea6"
+
+[[series]]
+match = { fusion = "dual_adam_reliability" }
+color = "#8A9099"
+
+[[series]]
+match = { fusion = "demo_anchor_inv_var" }
+color = "#8a4b08"
+
+#  ── Bracci ──
 
 [[series]]
 match = { arm = "pref_soft" }

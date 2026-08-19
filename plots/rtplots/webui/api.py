@@ -20,7 +20,9 @@ from .. import rules as R
 from .. import schema, selection, tikz
 from ..budget import SUMMARY_DIR
 from ..curves import _MEM as CURVE_MEM
+from .. import hparams as HP
 from ..metrics import DEFAULT_CURVE_METRIC, DEFAULT_SUMMARY_METRIC, metric_info, ui_groups
+from .. import formulas
 from ..paths import SELECTION_JSON
 
 # Metriche W&B: ogni run non in cache e' una richiesta di rete. Oltre la soglia
@@ -236,6 +238,8 @@ def render(index: pd.DataFrame, sub: pd.DataFrame, payload: dict,
             "auto_hue": not (payload.get("grid") or {}).get("hue"),
             "metric": series.metric_label,
             "merged": [schema.title(c) for c in series.merged],
+            "truncated": series.truncated,
+            "late_start": series.late_start,
             "series_list": series_list(series, spec),
             "palette": R.palette(),
             "n_seeds": int(series.agg.n_seeds.max()) if len(series.agg) else 0}
@@ -308,6 +312,51 @@ def figure_name(sel_df: pd.DataFrame, kind: str = "curve") -> str:
             bits.append(_clean(vals[0]))
     name = "_".join(bits) or "selezione"
     return "".join(c for c in name if c.isalnum() or c in "_")[:60]
+
+
+MAX_HPARAM_RUNS = 24
+
+
+def hparams(df: pd.DataFrame, payload: dict) -> dict:
+    """YAML degli iperparametri delle run di UNA riga della tabella di copertura.
+
+    Costa una richiesta W&B per run non ancora in cache (la config completa
+    arriva solo con ``run.load``), quindi vale la stessa cautela delle metriche:
+    una riga sono tre seed, non trecento.
+    """
+    run_ids = [r for r in (payload.get("run_ids") or []) if r]
+    if not run_ids:
+        return {"error": "Nessuna run in questa riga."}
+    if len(run_ids) > MAX_HPARAM_RUNS:
+        return {"error": f"{len(run_ids)} run in questa riga (massimo "
+                         f"{MAX_HPARAM_RUNS}): restringi i filtri."}
+    known = df[df.run_id.isin(run_ids)]
+    missing = sorted(set(run_ids) - set(known.run_id))
+    if missing:
+        return {"error": f"Run non presenti nell'indice: {', '.join(missing)}"}
+
+    records = known[[c for c in ("run_id", "project", "state", "name", "seed")
+                     if c in known.columns]].to_dict("records")
+    # Ordine dell'elenco della riga, non quello del DataFrame: e' l'ordine in
+    # cui la pagina mostra i seed.
+    by_id = {r["run_id"]: r for r in records}
+    records = [by_id[r] for r in run_ids if r in by_id]
+
+    text = HP.group_yaml(records, cells=payload.get("cells") or [],
+                         columns=payload.get("columns") or [])
+    return {"yaml": text, "filename": f"{_hparams_name(known)}.yaml",
+            "n_runs": len(records)}
+
+
+def _hparams_name(sel_df: pd.DataFrame) -> str:
+    """Nome file: gruppo W&B se le run lo condividono, altrimenti il primo run_id."""
+    groups = sel_df.get("group")
+    if groups is not None:
+        vals = groups.dropna().unique()
+        if len(vals) == 1:
+            return "hparams_" + "".join(
+                c if c.isalnum() or c in "_-" else "_" for c in str(vals[0]))[:60]
+    return f"hparams_{sel_df.run_id.iloc[0]}"
 
 
 def _caption(sel_df: pd.DataFrame, info: dict, band: str, kind: str) -> str:
@@ -459,11 +508,70 @@ def preview(df: pd.DataFrame, payload: dict, plot_lock=None) -> dict:
     return res
 
 
+def compose_with_formula(figure_png: bytes, df: pd.DataFrame, payload: dict,
+                         fmt: str = "png", dpi: int = 300) -> bytes:
+    """Figura e pannello delle definizioni affiancati in un'unica immagine.
+
+    Composizione raster invece di una figura matplotlib unica: le formule sono
+    gia' disegnate da `formulas`, e ridisegnarle dentro la griglia
+    significherebbe due sorgenti di verita' per lo stesso contenuto.
+    """
+    from PIL import Image
+
+    blocks = _formula_blocks(df, payload)
+    if not blocks:
+        return figure_png
+    left = Image.open(io.BytesIO(figure_png)).convert("RGB")
+    right = Image.open(io.BytesIO(formulas.render_png(blocks, dpi=dpi))).convert("RGB")
+    # Le definizioni accompagnano la figura, non la dominano: al massimo meta'
+    # della sua larghezza, e scalate a parita' di altezza se sono piu' alte.
+    max_w = left.width // 2
+    if right.width > max_w:
+        right = right.resize((max_w, max(1, right.height * max_w // right.width)))
+    if right.height > left.height:
+        h = left.height
+        right = right.resize((max(1, right.width * h // right.height), h))
+    gap = max(12, left.width // 60)
+    canvas = Image.new("RGB", (left.width + gap + right.width,
+                               max(left.height, right.height)), "white")
+    canvas.paste(left, (0, 0))
+    canvas.paste(right, (left.width + gap, 0))
+    out = io.BytesIO()
+    canvas.save(out, format="JPEG" if fmt in ("jpg", "jpeg") else "PNG", quality=95)
+    return out.getvalue()
+
+
+def _formula_blocks(df: pd.DataFrame, payload: dict) -> list:
+    """Blocchi da mostrare per la selezione corrente (metrica + fusioni)."""
+    grid = payload.get("grid") or {}
+    metric = grid.get("metric") or (
+        DEFAULT_SUMMARY_METRIC if grid.get("kind") == "budget" else DEFAULT_CURVE_METRIC)
+    try:
+        sub = apply_ui_filters(df, payload)
+        fusions = ([f for f in sub.fusion.dropna().unique()]
+                   if "fusion" in sub.columns else [])
+    except Exception:
+        fusions = []
+    return formulas.blocks(metric, fusions)
+
+
+def formula(df: pd.DataFrame, payload: dict) -> dict:
+    """Definizioni matematiche della metrica scelta e delle fusioni in selezione.
+
+    Reso lato server con mathtext di matplotlib: la pagina resta senza
+    dipendenze esterne (niente MathJax/KaTeX da CDN).
+    """
+    blocks = _formula_blocks(df, payload)
+    if not blocks:
+        return {"svg": None}
+    return {"svg": formulas.render_svg(blocks)}
+
+
 def save(df: pd.DataFrame, payload: dict) -> dict:
     sub = apply_ui_filters(df, payload)
     name = (payload.get("name") or "").strip() or \
-        datetime.now().strftime("selezione %d/%m %H:%M")
-    slug = selection.slugify(name)
+        datetime.now().strftime("selezione %d/%m %H:%M:%S")
+    slug = selection.free_slug(selection.slugify(name), name)
     stored = selection.write({
         "version": F.SPEC_VERSION,
         "name": name,

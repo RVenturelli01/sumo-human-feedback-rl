@@ -25,6 +25,29 @@ def slugify(name: str) -> str:
     return slug or datetime.now().strftime("selezione-%Y%m%d-%H%M%S")
 
 
+def free_slug(slug: str, name: str) -> str:
+    """Slug libero per `name`, senza sovrascrivere una selezione diversa.
+
+    Risalvare con lo *stesso* nome deve aggiornare la selezione esistente (e'
+    la via per correggere una selezione salvata), ma due nomi diversi che
+    collassano sullo stesso slug — succede col nome di default, che ha la
+    risoluzione al minuto, e con nomi che coincidono nei primi 60 caratteri —
+    non devono cancellarsi a vicenda in silenzio.
+    """
+    candidate, n = slug, 1
+    while True:
+        stored = path_for(candidate)
+        if not stored.exists():
+            return candidate
+        try:
+            if json.loads(stored.read_text()).get("name") == name:
+                return candidate          # stessa selezione: aggiornamento voluto
+        except (json.JSONDecodeError, OSError):
+            return candidate              # file illeggibile: rimpiazzarlo va bene
+        n += 1
+        candidate = f"{slug}-{n}"
+
+
 def read(path: str | Path) -> dict:
     """Selezione da file."""
     path = Path(path)

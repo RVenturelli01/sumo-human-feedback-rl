@@ -27,6 +27,23 @@ from __future__ import annotations
 import re
 
 GROUP_LEVEL_RE = re.compile(r"^budget_(?P<tag>[a-z0-9]+(?:_[a-z0-9]+)*)_(?P<level>\d+)$")
+# thesis-grad-diagnostics numera il budget in coda con una B maiuscola
+# (`gd_p2_alpha_B100`) invece che con il suffisso numerico nudo della campagna
+# budget-curves. Stesso significato, sintassi diversa: senza questo pattern
+# `budget_level` resterebbe vuoto per tutte le run del progetto e la modalita'
+# curva-di-budget non produrrebbe nulla.
+GD_LEVEL_RE = re.compile(r"^gd_(?P<tag>[a-z0-9]+(?:_[a-z0-9]+)*)_B(?P<level>\d+)$")
+# thesis-final (le run finali della tesi, scripts/launch_thesis_runs.py) usa il
+# prefisso `th_`: `th_hybrid_soft_B1000` -> ("hybrid_soft", 1000). Stessa
+# sintassi di gd_, prefisso diverso perche' e' una campagna diversa. Senza
+# questo pattern quelle run non avrebbero budget_level e sparirebbero dalle
+# curve di budget senza alcun errore.
+TH_LEVEL_RE = re.compile(r"^th_(?P<tag>[a-z0-9]+(?:_[a-z0-9]+)*)_B(?P<level>\d+)$")
+
+# `gcl_fusion` non esiste nelle run precedenti all'introduzione degli schemi di
+# fusione: la' il codice applicava il bilanciamento di norma, che e' il default
+# del costruttore di HybridAlgorithm.
+DEFAULT_FUSION = "norm_balance"
 
 
 def _num(v):
@@ -54,11 +71,17 @@ def parse_group(group: str | None) -> tuple[str | None, float | None]:
     variare (query o traiettorie a seconda del braccio); il resto e' un'etichetta
     libera, utile per distinguere varianti non ancora modellate come colonne
     proprie senza doverle indovinare.
+
+    Vale anche per i gruppi di thesis-grad-diagnostics, che scrivono lo stesso
+    livello come `gd_<tag>_B<N>`: `gd_norm_on_p2_alpha_B100` ->
+    ("norm_on_p2_alpha", 100.0). Le run finali della tesi usano `th_<tag>_B<N>`:
+    `th_hybrid_soft_B1000` -> ("hybrid_soft", 1000.0).
     """
-    m = GROUP_LEVEL_RE.match(group or "")
-    if not m:
-        return None, None
-    return m.group("tag"), float(m.group("level"))
+    for pattern in (GROUP_LEVEL_RE, GD_LEVEL_RE, TH_LEVEL_RE):
+        m = pattern.match(group or "")
+        if m:
+            return m.group("tag"), float(m.group("level"))
+    return None, None
 
 
 def derive_arm(algo_kwargs: dict, run_cfg: dict) -> dict:
@@ -93,6 +116,20 @@ def derive_arm(algo_kwargs: dict, run_cfg: dict) -> dict:
     return dict(arm=arm, arm_family=arm_family, demo_loss=demo_loss, pref_labels=pref_labels)
 
 
+def derive_fusion(algo_kwargs: dict, arm_family: str | None) -> str | None:
+    """Come i due canali vengono combinati in un update: `algo.kwargs.gcl_fusion`.
+
+    Sta fuori da `arm` di proposito. `arm` risponde a "quali sorgenti di
+    feedback usa questa run", ed e' la dimensione lungo cui la campagna
+    budget-curves e quella grad-diagnostics sono confrontabili; la fusione
+    risponde a "come le mette insieme", e ha senso solo per l'ibrido. Tenerle
+    separate lascia `arm` con lo stesso significato nei due progetti.
+    """
+    if arm_family != "hybrid":
+        return None
+    return algo_kwargs.get("gcl_fusion") or DEFAULT_FUSION
+
+
 def row(run, project: str) -> dict:
     """Riga dell'indice per una run di questo progetto."""
     cfg = run.config or {}
@@ -125,6 +162,7 @@ def row(run, project: str) -> dict:
         created_at=str(run.created_at),
         project=project,
         **arm_bits,
+        fusion=derive_fusion(algo_kwargs, arm_bits["arm_family"]),
         demo_mode=algo_kwargs.get("demo_mode"),
         query_budget=query_budget,
         # None = intero dataset esperto (nessun sottocampionamento): non e' un
@@ -136,6 +174,9 @@ def row(run, project: str) -> dict:
         query_schedule=algo_kwargs.get("query_schedule"),
         fragmenter_type=algo_kwargs.get("fragmenter_type"),
         pref_temperature=_num(algo_kwargs.get("pref_temperature")),
+        # Assente nelle run precedenti all'introduzione dello smoothing: la' il
+        # target era l'etichetta grezza, che e' esattamente eps = 0.
+        label_smoothing=_num(algo_kwargs.get("label_smoothing")) or 0.0,
         normalize_agent_reward=_bool(algo_kwargs.get("normalize_agent_reward")),
         relabel_rewards=_bool(algo_kwargs.get("relabel_rewards")),
         reward_net_arch=str(reward_net_arch) if reward_net_arch else None,

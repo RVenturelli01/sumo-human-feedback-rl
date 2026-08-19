@@ -54,6 +54,13 @@ CORE_FIRST, CORE_LAST = 16, 63
 BUDGETS = (10, 100, 1000)
 SEEDS = (1, 2, 3)
 
+# Numero di confronti, quando va scollegato dal budget delle dimostrazioni.
+# None = total_queries e' il budget, che e' il protocollo normale. Un intero lo
+# fissa: serve a far girare un ibrido sotto la soglia di alpha, tenendo B
+# dimostrazioni. La leggono sia arm_overrides sia validate, quindi non possono
+# divergere.
+QUERIES_OVERRIDE = None
+
 # --- protocollo comune a tutti i bracci -------------------------------------
 # Cambiare una di queste righe cambia TUTTI i bracci insieme: e' il punto.
 PROTOCOL = (
@@ -241,6 +248,13 @@ def initial_queries(arm: Arm, budget: int) -> int:
     return max(1, round(arm.initial_queries_frac * budget))
 
 
+def total_queries(arm: Arm, budget: int) -> int:
+    """Confronti concessi al braccio: il budget, salvo override di campagna."""
+    if not arm.uses_pref:
+        return 0
+    return budget if QUERIES_OVERRIDE is None else int(QUERIES_OVERRIDE)
+
+
 def arm_overrides(name: str, budget: int, seed: int) -> list[str]:
     """Tutti gli override Hydra di una run, protocollo compreso."""
     arm = ARMS[name]
@@ -258,7 +272,7 @@ def arm_overrides(name: str, budget: int, seed: int) -> list[str]:
         f"algo.kwargs.label_smoothing={arm.label_smoothing}",
         f"algo.kwargs.normalize_agent_reward={str(arm.normalize).lower()}",
         # Canale preferenze: acceso solo se il braccio lo usa.
-        f"algo.kwargs.total_queries={budget if arm.uses_pref else 0}",
+        f"algo.kwargs.total_queries={total_queries(arm, budget)}",
         f"algo.kwargs.initial_queries={initial_queries(arm, budget)}",
         # Canale dimostrazioni: demo_weight=0 lo spegne del tutto.
         f"algo.kwargs.demo_weight={1.0 if arm.uses_demo else 0.0}",
@@ -332,18 +346,28 @@ def validate(name: str, budget: int, seed: int) -> dict:
         "algo.kwargs.batch_size_expert": arm.batch_size_expert,
         "algo.kwargs.batch_size_pref": arm.batch_size_pref,
         "algo.kwargs.label_smoothing": arm.label_smoothing,
-        "algo.kwargs.total_queries": budget if arm.uses_pref else 0,
+        "algo.kwargs.total_queries": total_queries(arm, budget),
         "algo.kwargs.initial_queries": initial_queries(arm, budget),
         "algo.kwargs.demo_weight": 1.0 if arm.uses_demo else 0.0,
         "run.demo_subsample_seed": 1000,
         "run.seed": seed,
-        "train.kwargs.total_timesteps": 2_000_000,
+        "train.kwargs.total_timesteps": _da_protocollo(
+            "train.kwargs.total_timesteps", int),
     }
     if arm.uses_demo:
         attesi["run.n_expert_trajectories"] = budget
     if arm.uses_pref:
         attesi["algo.kwargs.labels_type"] = arm.labels
         attesi["algo.kwargs.pref_temperature"] = arm.pref_temperature
+    # Il bootstrap non sta nel PROTOCOL di serie (lo decide n_ensembles), ma se
+    # una campagna lo fissa esplicitamente va controllato come le altre chiavi:
+    # sbagliarlo cambia quanti confronti distinti vede il reward model.
+    try:
+        attesi["algo.kwargs.bootstrap_comparisons"] = _da_protocollo(
+            "algo.kwargs.bootstrap_comparisons",
+            lambda v: None if v.lower() in ("null", "none") else v.lower() == "true")
+    except KeyError:
+        pass
     sbagliati = {}
     for key, atteso in attesi.items():
         got = OmegaConf.select(cfg, key)

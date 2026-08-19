@@ -106,6 +106,9 @@ def _export(df, payload: dict) -> dict:
         return res
     filename = f"{name}.{ext}"
     raw = res.pop("raw")
+    if payload.get("include_formula"):
+        raw = api.compose_with_formula(raw, df, payload, fmt=ext,
+                                       dpi=int(payload.get("dpi") or 300))
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUTPUT_DIR / filename).write_bytes(raw)
     token = _remember_export(filename, mime, raw)
@@ -152,6 +155,8 @@ POST_ROUTES = {
     "/api/preview": _preview,
     "/api/export": _export,
     "/api/save": api.save,
+    "/api/formula": api.formula,
+    "/api/hparams": api.hparams,
     "/api/selections/load": _load_selection,
     "/api/selections/rename": _rename,
     "/api/selections/delete": _delete,

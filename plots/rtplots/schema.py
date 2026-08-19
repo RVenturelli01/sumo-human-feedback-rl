@@ -26,6 +26,22 @@ ARM_NAMES = {
 }
 
 
+# Schemi di fusione dei due canali (`algo.kwargs.gcl_fusion`). I nomi brevi
+# sono quelli usati con il relatore, il valore grezzo resta quello del codice.
+FUSION_NAMES = {
+    "norm_balance": "norm_balance (baseline)",
+    "alpha_norm_single_adam": "prova 1 (un Adam sul gradiente fuso)",
+    "dual_adam_alpha": "prova 2 (un Adam per canale)",
+    "dual_adam_sum": "due Adam, somma",
+    "dual_adam_alpha_unit": "due Adam, alpha + budget",
+    "dual_adam_alpha_unit_nobudget": "due Adam, alpha su direzioni unitarie",
+    # Schemi provati prima della richiesta del relatore e poi rimossi da
+    # VALID_GCL_FUSIONS: le run restano nell'indice, il nome le marca.
+    "dual_adam_reliability": "dual_adam_reliability (storico)",
+    "demo_anchor_inv_var": "demo_anchor_inv_var (storico)",
+}
+
+
 def _int(value):
     return int(float(value))
 
@@ -64,6 +80,16 @@ def _num_html(fmt: str = "{:g}"):
     return _fmt
 
 
+def _eps(value) -> float:
+    """Il valore di label_smoothing, con 0 per le run che non lo dichiarano."""
+    return 0.0 if _missing(value) else float(value)
+
+
+def _smoothing_html(value) -> str:
+    eps = _eps(value)
+    return "senza smoothing" if not eps else f"con smoothing (eps={eps:g})"
+
+
 def _millions_html(v):
     if _missing(v):
         raise ValueError("missing")
@@ -80,6 +106,16 @@ FIELDS: list[Field] = [
     # "Algoritmo", che gia' elenca le 8 combinazioni (i 4 bracci base + le 4 di
     # hybrid) come pillole selezionabili una per una. Restano colonne vere,
     # quindi restano filtrabili da riga di comando (--filter arm_family=hybrid).
+    # Come i due canali vengono combinati (solo hybrid). In sidebar e fra le
+    # dimensioni di griglia perche' e' cio' che distingue i bracci di
+    # thesis-grad-diagnostics fra loro: senza, baseline, prova 1 e prova 2
+    # collassano tutti in "hybrid_demo_2 (soft)".
+    Field(
+        "fusion", "Fusione dei gradienti", ui=True, grid=True, series=True,
+        html=lambda v: FUSION_NAMES.get(v, str(v)),
+        title_of=lambda v: FUSION_NAMES.get(v, str(v)),
+        legend=lambda v: FUSION_NAMES.get(v, str(v)),
+    ),
     Field("arm_family", "Famiglia", html=str, title_of=str),
     Field("demo_loss", "Loss dimostrazioni", html=str),
     Field("pref_labels", "Etichette preferenze", html=str),
@@ -99,13 +135,25 @@ FIELDS: list[Field] = [
     # Non in sidebar ne' in copertura/righe/colonne: resta una colonna vera,
     # usata come asse x di default per le curve di budget (vedi "asse budget"
     # nel toolbar del grafico — un controllo a parte, non le dimensioni qui).
+    # In griglia (una riga per budget) ma non in sidebar: il filtro si fa gia'
+    # con query_budget/demo_budget. Titolo volutamente neutro, "B = 10": una
+    # riga attraversa piu' bracci, e B significa 10 preferenze + 10 traiettorie
+    # per l'ibrido ma solo una delle due per i bracci a sorgente singola, quindi
+    # la precisazione va nella didascalia, non nel titolo del pannello.
     Field(
-        "budget_level", "Livello budget (dal gruppo)",
-        html=_int_html(), title_of=lambda v: f"budget = {_int(v)}",
+        "budget_level", "Budget B (dal gruppo)", grid=True,
+        html=_int_html(), title_of=lambda v: f"B = {_int(v)}",
+        legend=lambda v: f"B={_int(v)}",
     ),
     Field("normalize_agent_reward", "Reward normalizzata", ui=True, grid=True, series=True,
           html=_bool_html(), title_of=lambda v: f"normalize_agent_reward = {bool(v)}",
           legend=lambda v: "norm" if v else "no-norm"),
+    # Il valore di eps, non un booleano: oggi c'e' un solo livello (0.1) e in UI
+    # si legge come con/senza, ma se un domani arriva un secondo eps le curve si
+    # separano da sole invece di collassare due configurazioni in "con".
+    Field("label_smoothing", "Label smoothing", ui=True, grid=True, series=True,
+          html=_smoothing_html, title_of=_smoothing_html,
+          legend=lambda v: None if not _eps(v) else f"eps={_eps(v):g}"),
     Field("query_schedule", "Schedule query", ui=True, grid=True, series=True, html=str),
     Field("fragmenter_type", "Fragmenter", ui=True, grid=True, series=True, html=str),
     # Ne' in sidebar ne' in copertura/righe/colonne/legenda: iperparametri del

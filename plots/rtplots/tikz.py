@@ -23,10 +23,12 @@ PREAMBLE = (r"% Nel preambolo del documento: \usepackage{pgfplots,amsmath}"
 
 
 def _compat() -> None:
-    """Alias dei nomi rimossi da matplotlib/numpy che tikzplotlib usa ancora."""
+    """Alias dei nomi rimossi da matplotlib/numpy/webcolors che tikzplotlib usa ancora."""
     import numpy as np
     import matplotlib.backends.backend_pgf as pgf
     from matplotlib.legend import Legend
+    from matplotlib.lines import Line2D
+    import webcolors
 
     if not hasattr(pgf, "common_texification"):        # rinominata in mpl 3.6
         pgf.common_texification = pgf._tex_escape
@@ -34,9 +36,35 @@ def _compat() -> None:
         Legend.legendHandles = property(lambda self: self.legend_handles)
     if not hasattr(Legend, "_ncol"):                   # rinominata in mpl 3.6
         Legend._ncol = property(lambda self: self._ncols)
+    if not hasattr(Line2D, "_us_dashSeq"):             # accorpati in mpl 3.6
+        # I due attributi sono diventati la coppia _unscaled_dash_pattern
+        # = (offset, sequenza). _path.py li legge solo dentro un ramo protetto
+        # da is_dashed(), quindi il caso "linea continua" (sequenza None) non
+        # viene mai raggiunto. La sequenza resta una tuple come quella che
+        # _get_dash_pattern restituisce, cosi' il confronto col tratteggio di
+        # default non cambia esito e non compaiono "dash pattern" superflui.
+        Line2D._us_dashSeq = property(lambda self: self._unscaled_dash_pattern[1])
+        Line2D._us_dashOffset = property(lambda self: self._unscaled_dash_pattern[0])
     for old, new in (("float_", "float64"), ("alltrue", "all"), ("bool8", "bool_")):
         if not hasattr(np, old):                       # rimossi in numpy 2.0
             setattr(np, old, getattr(np, new))
+    if not hasattr(webcolors, "CSS3_HEX_TO_NAMES"):    # rimossa in webcolors 24
+        # _color.py cerca il nome CSS3 piu' vicino iterando su hex -> nome e
+        # tiene il primo a distanza minima, quindi contano sia l'ordine sia
+        # quale nome sopravvive fra due sinonimi.
+        #
+        # Fra due sinonimi vince la grafia che xcolor conosce, che e' anche
+        # quella che teneva la 1.13: \color{gray}, \color{cyan} e
+        # \color{magenta} esistono, grey/aqua/fuchsia no, e un nome ignoto fa
+        # fallire la compilazione del .tex. In ordine alfabetico vince il primo
+        # (gray su grey), tranne per i due sinonimi aggiunti da CSS3.
+        PREFERITI = ("cyan", "magenta")
+        mappa: dict[str, str] = {}
+        for nome in sorted(webcolors.names(webcolors.CSS3)):
+            hex_ = webcolors.name_to_hex(nome, spec=webcolors.CSS3)
+            if hex_ not in mappa or nome in PREFERITI:
+                mappa[hex_] = nome
+        webcolors.CSS3_HEX_TO_NAMES = mappa
 
 
 def unavailable_reason() -> str | None:

@@ -29,6 +29,15 @@ def add_selection_args(p):
     g.add_argument("--label-fields", nargs="*", default=None,
                    help="campi mostrati in legenda oltre all'arm (default: --hue)")
     g.add_argument("--min-seeds", type=int, default=1)
+    g.add_argument("--compare-fusion", action="store_true", default=None,
+                   help="curve di budget: separa anche per schema di fusione "
+                        "(senza, schemi diversi dello stesso arm sono mediati insieme)")
+    g.add_argument("--compare-norm", action="store_true", default=None,
+                   help="curve di budget: separa anche per normalize_agent_reward "
+                        "(ON tratteggiata, OFF continua)")
+    g.add_argument("--compare-smoothing", action="store_true", default=None,
+                   help="curve di budget: separa anche per label_smoothing "
+                        "(con smoothing tratteggiata, senza continua)")
     return p
 
 
@@ -96,7 +105,8 @@ def spec_from_args(args, kind: str, metric: str | None = None) -> FigureSpec:
     if metric or getattr(args, "metric", None):
         spec.metric = metric or args.metric
     pick("budget_x")
-    for attr in ("rows", "cols", "hue", "hue_order", "label_fields", "min_seeds"):
+    for attr in ("rows", "cols", "hue", "hue_order", "label_fields", "min_seeds",
+                 "compare_fusion", "compare_norm", "compare_smoothing"):
         pick(attr)
     for attr in ("band", "smooth", "grid_points", "xmax"):
         pick(attr)

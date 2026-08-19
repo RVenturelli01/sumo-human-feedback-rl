@@ -150,8 +150,26 @@ button:disabled { opacity: .5; cursor: default; }
 .panel-size-inputs .x { color: var(--muted); font-size: 12px; flex: none; }
 
 .kind-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-#preview-box { text-align: center; min-height: 120px; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+         color: #444; cursor: pointer; user-select: none; }
+.check[hidden] { display: none; }
+#preview-row { display: flex; gap: 14px; align-items: flex-start; }
+#preview-box { text-align: center; min-height: 120px; flex: 1 1 auto; min-width: 0; }
+#formula-box { flex: 0 0 340px; border-left: 1px solid #e4e6ea; padding-left: 12px;
+               max-height: 620px; overflow-y: auto; }
+#formula-box[hidden] { display: none; }
+#formula-body svg { max-width: 100%; height: auto; }
+#formula-box .card-head { margin-bottom: 6px; }
+@media (max-width: 1100px) { #preview-row { flex-direction: column; }
+  #formula-box { flex: 1 1 auto; border-left: none; padding-left: 0; } }
 #preview-box img { max-width: 100%; border-radius: 6px; }
+#preview-box.stale { position: relative; }
+#preview-box.stale img { opacity: .35; filter: grayscale(.6); }
+#preview-box.stale::after {
+  content: "impostazioni cambiate — premi «Aggiorna»";
+  position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);
+  background: #1a1a1a; color: #fff; font-size: 12px; padding: 6px 12px;
+  border-radius: 999px; white-space: nowrap; }
 .placeholder { color: var(--muted); font-size: 13px; padding: 24px 0; margin: 0; }
 .error { color: var(--magenta); font-size: 13px; padding: 14px 0; margin: 0; }
 /* avviso sotto l'anteprima: dimensioni che variano ma non separano le curve */
@@ -203,7 +221,14 @@ input[type=text] {
 #sel-card.closed #selections { display: none; }
 #sel-card.closed .card-head { margin-bottom: 0; }
 
+/* Sei voci a vista (52px + 6px di margine l'una), poi scorre: la card sta in
+   cima alla pagina e una lista lunga spingerebbe l'anteprima fuori schermo. */
+#selections { max-height: 350px; overflow-y: auto; padding-right: 4px; }
+#selections::-webkit-scrollbar { width: 8px; }
+#selections::-webkit-scrollbar-thumb { background: #d2d6dc; border-radius: 4px; }
+#selections::-webkit-scrollbar-thumb:hover { background: #b9bec6; }
 .sel-item { display: flex; align-items: stretch; gap: 6px; margin-bottom: 6px; }
+.sel-item:last-child { margin-bottom: 0; }
 .sel-load {
   flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; gap: 1px;
   padding: 7px 11px; border: 1px solid var(--line); border-radius: 7px; background: transparent;
@@ -228,7 +253,12 @@ tr.partial td.num.seeds-missing { color: var(--orange); font-weight: 600; }
 
 /* copertura: righe escluse dal grafico, ma sempre visibili per riattivarle */
 th.pick, td.pick { width: 1.8rem; text-align: center; padding-right: 0; }
-tr.off td:not(.pick) { opacity: 0.38; text-decoration: line-through; }
+/* Una riga esclusa dal grafico ha comunque iperparametri validi: il bottone
+   resta leggibile e cliccabile come la casella di selezione. */
+tr.off td:not(.pick):not(.dl) { opacity: 0.38; text-decoration: line-through; }
+th.dl, td.dl { width: 2.4rem; text-align: center; padding-right: 0; }
+td.dl button { padding: 1px 6px; line-height: 1.4; min-width: 1.9rem; }
+td.dl button:disabled { opacity: 0.5; cursor: progress; }
 .badge.excluded { border-color: var(--orange); color: var(--orange); }
 #coverage { max-height: 420px; overflow: auto; }
 
