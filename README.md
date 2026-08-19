@@ -225,10 +225,30 @@ return and the success, collision, off-road and timeout rates.
 ### 7. Evaluating on 200 episodes
 
 The thesis reports the return over 200 held-out episodes. Runs write a 20-episode
-evaluation at the end of training; the 200-episode numbers are obtained
-afterwards from the saved policy (`agent_final.zip`), without retraining. The
-evaluation uses a single environment, a deterministic policy and episode seeds
-`1000..1199`, identical for every method, so all policies face the same traffic.
+evaluation at the end of training, which is enough to follow a run but too coarse
+for the final tables: with 20 episodes one collision moves the mean return by
+about 8 points, more than the differences between the methods.
+
+`scripts/evaluate_checkpoints.py` re-runs the evaluation from `agent_final.zip`,
+without retraining. It calls the same `evaluate()` used at the end of training,
+so the procedure is identical: one environment, deterministic policy, episode
+seeds `seed + i`. With the default seed the first 20 episodes are exactly the
+ones already evaluated, so a longer run extends the series instead of replacing
+it — and all methods face the same 200 scenarios.
+
+```bash
+# every run of the thesis campaigns, 44 at a time
+find outputs/thesis_runs/th_1mh4* -name agent_final.zip -exec dirname {} \; \
+  | xargs -P 44 -I{} python scripts/evaluate_checkpoints.py {}
+```
+
+It writes `final_eval_200.json` next to each checkpoint and skips runs that
+already have one, so it can be interrupted and restarted. One run takes about 20
+seconds on a single core.
+
+The evaluation is deterministic within one environment but not across
+environments: re-running it on a machine with a different SUMO or torch version
+gives returns that agree to about 0.01%, not to the last digit.
 
 The per-run and aggregated results used in the thesis are in
 `results_200_episodes.csv` and `results_200_episodes_summary.csv` in the thesis
