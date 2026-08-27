@@ -224,13 +224,21 @@ tensorboard.DS_Store
 
 *.DS_Store
 
+# --- LaTeX build artefacts (sources themselves are versioned) ---
 *.aux
 *.fdb_latexmk
 *.fls
 *.out
 *.synctex.gz
-*.tex
+
+# --- generated / machine-specific ---
+# environment.yml is the exception: it is how the environment is rebuilt.
 *.yml
+!environment.yml
 *.pkl
 
+# --- output trees and historical material ---
 /reports
+/dashboard
+/output
+backup.zip
