@@ -1,88 +1,137 @@
 # Hybrid reward learning from demonstrations and preferences
 
-Code for the thesis *Hybrid reward learning from demonstrations and preferences*
-(Politecnico di Milano). An agent drives an ego vehicle on a three-lane highway
-in SUMO, and the reward it optimises is learned from two sources at once: expert
-demonstrations and pairwise preferences over trajectory fragments.
+Code for the thesis *Reward learning from preferences and demonstrations via
+gradient reliability* (Politecnico di Milano). An agent drives an ego vehicle on
+a three-lane highway in SUMO, and the reward it optimises is learned from two
+sources at once: expert demonstrations and pairwise preferences over trajectory
+fragments.
 
 The method combines the two gradients with a reliability weight `α`, estimated at
 every iteration from the dispersion of each channel. When the preference channel
 is noisy, `α` moves the weight onto the demonstrations; when comparisons become
-informative, it moves it back. The baselines are the same algorithm with a single
-channel active.
+informative, it moves it back. The baselines are not separate implementations:
+they are the same algorithm with a single channel active.
 
-## Repository layout
+## Layout
 
 ```
-scripts/            entry points: training, launchers, evaluation helpers
-  train_hybrid_sac.py     one run (Hydra config + overrides)
-  launch_thesis_runs.py   arms, shared protocol, per-run validation
-  queue_runs.py           scheduler: launches runs as cores free up
-configs/            Hydra configs (train_hybrid_sac.yaml is the entry config)
-human-feedback-rl/  submodule: the reward-learning algorithms
-sumo-rl-ego/        submodule: the SUMO environment
-datasets/           expert demonstrations (not versioned, see below)
-plots/              plotting toolkit used for the thesis figures
+experiments/          everything needed to run an experiment
+  train.py              the entry point: one run
+  evaluate.py           re-evaluation on more episodes, and the result tables
+  download_datasets.py  fetches the demonstrations
+  configs/
+    train.yaml            base configuration
+    arm/                  one file per method — hyperparameters only
+    protocol/             the campaign settings shared by every method
+  utils/
+    common.py             seeding, W&B, data loading, evaluation
+    budget.py             how the budget B becomes the numbers the algorithm needs
+tests/                configuration equivalence with the thesis runs
+results/              the numbers reported in the thesis
+plots/                the toolkit that drew the figures (reads W&B)
+notebooks/            how the datasets were built
+human-feedback-rl/    submodule: the algorithm
+sumo-rl-ego/          submodule: the environment
 ```
 
-## Reproducing the thesis experiments
+There is no scheduler and no launcher. An experiment is a configuration, and a
+grid is `--multirun`.
 
-Everything reported in the Experimental Evaluation section comes from two
-campaigns, `th_1mh4` and `th_1mh4iq5`, run with the code on this branch. The
-commands below are the ones that produced them.
-
-### 1. Code version
+## Setup
 
 ```bash
-git clone https://github.com/RVenturelli01/sumo-human-feedback-rl.git
-cd sumo-human-feedback-rl
-git submodule update --init --recursive
-```
-
-The submodule pointer is what matters: `human-feedback-rl` must sit at
-`c5cd63e`, which is also tagged `thesis-experiments` in that repository. Every
-run in the thesis was produced by that commit. `git submodule update` puts it
-there automatically; to check:
-
-```bash
-git submodule status human-feedback-rl
-# c5cd63ee664633a924156c353f80e676e5331cfb human-feedback-rl (thesis-experiments)
-```
-
-The tag exists so the commit stays reachable even if the branch it was developed
-on is ever removed. If you see a different SHA, the runs will not match.
-
-### 2. Environment
-
-The runs used Python 3.12 with SUMO/libsumo 1.27.1, torch 2.13.0 (CPU),
-numpy 2.5.2, gymnasium 1.3.0 and stable-baselines3 2.9.0. Training is CPU-only:
-each run is pinned to a single core with `taskset`.
-
-```bash
-conda env create -f environment.yml
+git clone --recurse-submodules <repo> && cd sumo-human-feedback-rl
+./setup.sh
 conda activate sumo-rlhf
-pip install -e human-feedback-rl -e sumo-rl-ego
 ```
 
-SUMO must be installed separately and `SUMO_HOME` set; `libsumo` is imported
-directly, so a working SUMO installation is a hard requirement.
+`setup.sh` creates the environment, installs the two submodules in editable mode,
+checks SUMO, downloads the demonstrations and verifies their checksums. It cannot
+activate the environment for you — that only works in the shell you are sitting
+in, which is why activation is a separate line.
 
-Results are logged to Weights & Biases, so `wandb login` is needed before
-launching. The project and entity are set in `scripts/launch_thesis_runs.py`
-(`WANDB_ENTITY`, `WANDB_PROJECT`) — change them to your own account.
+The demonstrations live in a **private** Hugging Face repository. Without access
+the download stops with a clear message; ask for access to
+`Andrea02/sumo-rlhf-datasets` before starting.
 
-### 3. Demonstrations
+## Running one experiment
 
-The expert dataset is not in the repository (`*.pkl` is ignored). You need:
-
+```bash
+python experiments/train.py arm=hybrid_soft protocol=thesis budget=1000 run.seed=3
 ```
-datasets/expert_trajectories_no_collision.pkl
+
+Three things identify a run, and everything else follows from them:
+
+| | |
+|---|---|
+| `arm` | the method — one of the seven files under `configs/arm/` |
+| `protocol` | the campaign settings — `thesis`, or `thesis_b10` |
+| `budget` | the feedback budget `B` |
+
+From those, the configuration derives how many comparisons the arm may ask for,
+how many it collects up front, how many demonstrations it reads, the W&B group,
+the run name and the output directory. Nothing has to be passed by hand, which is
+what used to go wrong.
+
+To see the resolved configuration without running anything:
+
+```bash
+python experiments/train.py arm=hybrid_soft protocol=thesis budget=1000 --cfg job --resolve
 ```
 
-2723 collision-free expert trajectories. Each run subsamples `B` of them with a
-fixed seed (`run.demo_subsample_seed=1000`, independent of the training seed), so
-all methods at a given budget see the same demonstrations and the subsets are
-nested across budgets. The run prints a fingerprint of the subset it loaded:
+## Reproducing the thesis
+
+Seven methods × three budgets × ten seeds = 210 runs of 1M environment steps.
+
+| method | channels |
+|---|---|
+| `demo_only` | demonstrations |
+| `pref_soft`, `pref_bern` | preferences, soft or Bernoulli labels |
+| `hybrid_soft`, `hybrid_bern` | both, combined by the reliability weight |
+| `unw_soft`, `unw_bern` | both, combined by norm balancing — the ablation |
+
+```bash
+# B=100 and B=1000, every method
+python experiments/train.py --multirun \
+  arm=demo_only,pref_soft,pref_bern,hybrid_soft,hybrid_bern,unw_soft,unw_bern \
+  protocol=thesis budget=100,1000 run.seed=1,2,3,4,5,6,7,8,9,10
+```
+
+```bash
+# B=10: the two-channel methods use the variant with five initial comparisons
+python experiments/train.py --multirun \
+  arm=hybrid_soft,hybrid_bern,unw_soft,unw_bern \
+  protocol=thesis_b10 budget=10 run.seed=1,2,3,4,5,6,7,8,9,10
+```
+
+```bash
+# B=10: the single-channel baselines keep their usual share
+python experiments/train.py --multirun \
+  arm=demo_only,pref_soft,pref_bern \
+  protocol=thesis budget=10 run.seed=1,2,3,4,5,6,7,8,9,10
+```
+
+Hydra's `--multirun` runs these in sequence. Parallelism is yours to arrange —
+`taskset -c <core>` around a single-run command is what the original campaigns
+used, one core per run.
+
+### Why B=10 is split in two
+
+Below `ALPHA_MIN_PREFS = 5` comparisons the reliability weight cannot be
+estimated at all. At `B=10` the usual 10% share would give one, so the
+reliability-weighted hybrids collect five up front instead. The norm-balanced
+ablations do not estimate a weight and have no such need, but they use the same
+floor so that both variants collect feedback on the same schedule — which is what
+makes the ablation a comparison of the combination rule alone.
+
+`protocol=thesis_b10` refuses any other budget, and refuses single-channel arms.
+
+### Demonstrations are the same across methods
+
+Each run subsamples `B` demonstrations with a fixed seed
+(`run.demo_subsample_seed=1000`, deliberately independent of the training seed),
+so every method at a given budget sees the same ones and the subsets are nested
+across budgets. Each run prints a fingerprint of what it loaded:
 
 | budget | trajectories | transitions | fingerprint |
 |--------|--------------|-------------|-------------|
@@ -90,176 +139,29 @@ nested across budgets. The run prints a fingerprint of the subset it loaded:
 | 100    | 100          | 18977       | `132b848ddafc` |
 | 1000   | 1000         | 179079      | `c3705912f3e5` |
 
-If your fingerprints differ, you have a different dataset and the numbers will
-not match.
+A different fingerprint means a different dataset, and the numbers will not match.
 
-### 4. Protocol
+## Evaluation
 
-All arms share one protocol, defined in `PROTOCOL` in
-`scripts/launch_thesis_runs.py`. The thesis campaigns override part of it on the
-command line:
-
-| parameter | value |
-|-----------|-------|
-| total environment steps | 1,000,000 (50 iterations × 20,000) |
-| parallel environments | 4 (`SubprocVecEnv`) |
-| SAC `train_freq` | 4 — with `gradient_steps=32` the replay ratio is 2.0 |
-| rollout collection | shared with training |
-| reward-model ensemble | 1 member, no bootstrap of comparisons |
-| query schedule | hyperbolic |
-| evaluation | 200 held-out episodes, deterministic policy, fixed seed 1000 |
-| seeds | 1–10 |
-
-`validate()` resolves the config with Hydra before anything is launched and
-refuses to start if the replay ratio is not 2.0 or if any protocol key does not
-land as expected. Per-arm hyperparameters (learning rate, network size, gradient
-steps, warm-up) are written explicitly in `ARMS` in the same file.
-
-### 5. Commands
-
-`queue_runs.py` takes the arms and holds the rest of the runs in a queue,
-launching each one on a free core as soon as one is available. `--first-core 16`
-is specific to the machine used (cores 0–15 were reserved for other users);
-adjust it to your hardware.
-
-Run these one at a time, not in parallel: two schedulers read the state of the
-cores at the same instant and can assign the same core twice.
-
-**Demonstration-only baseline** (30 runs):
+Training ends with a 20-episode evaluation, which is enough to follow a run but
+too coarse for the tables: one collision moves the mean by about 8 points, more
+than the differences between methods. The reported numbers come from 200
+episodes, re-run from the saved policies:
 
 ```bash
-python scripts/queue_runs.py \
-  --arms demo_only --seeds 1 2 3 4 5 6 7 8 9 10 \
-  --campaign 1mh4 \
-  --n-envs 4 --train-freq 4 --query-schedule hyperbolic \
-  --total-timesteps 1000000 --n-ensembles 1 --bootstrap false \
-  --first-core 16
+python experiments/evaluate.py outputs/thesis_runs/th_1mh4*/*/*
+python experiments/evaluate.py --aggregate outputs/thesis_runs results
 ```
 
-**Hybrid methods at B=100 and B=1000** (40 runs):
+The first writes `final_eval_200.json` next to each checkpoint, skipping runs
+that already have one. The second builds the two tables in `results/`, and
+refuses to write if the 7 × 3 × 10 grid has holes — a cell built from nine seeds
+looks exactly like one built from ten.
 
-```bash
-python scripts/queue_runs.py \
-  --arms hybrid_soft hybrid_bern --budgets 100 1000 --seeds 1 2 3 4 5 6 7 8 9 10 \
-  --campaign 1mh4 \
-  --n-envs 4 --train-freq 4 --query-schedule hyperbolic \
-  --total-timesteps 1000000 --n-ensembles 1 --bootstrap false \
-  --set-arm-field 'hybrid_soft.net_arch=[64,64]' \
-  --set-arm-field hybrid_bern.gradient_steps_rew=78 \
-  --set-arm-field hybrid_bern.initial_agent_timesteps=40000 \
-  --first-core 16
-```
-
-**Hybrid methods at B=10** (20 runs). Separate campaign because the reliability
-weight needs at least five comparisons before it can be estimated: with the
-default share, `B=10` would start with one. Five initial queries make `α`
-available from the first reward-model update.
-
-```bash
-python scripts/queue_runs.py \
-  --arms hybrid_soft hybrid_bern --budgets 10 --seeds 1 2 3 4 5 6 7 8 9 10 \
-  --campaign 1mh4iq5 \
-  --n-envs 4 --train-freq 4 --query-schedule hyperbolic \
-  --total-timesteps 1000000 --n-ensembles 1 --bootstrap false \
-  --initial-queries 5 \
-  --set-arm-field 'hybrid_soft.net_arch=[64,64]' \
-  --set-arm-field hybrid_bern.gradient_steps_rew=78 \
-  --set-arm-field hybrid_bern.initial_agent_timesteps=40000 \
-  --first-core 16
-```
-
-**Preference-only baselines and norm-balanced ablation** (120 runs):
-
-```bash
-python scripts/queue_runs.py \
-  --arms pref_soft pref_bern unw_soft unw_bern --seeds 1 2 3 4 5 6 7 8 9 10 \
-  --campaign 1mh4 \
-  --n-envs 4 --train-freq 4 --query-schedule hyperbolic \
-  --total-timesteps 1000000 --n-ensembles 1 --bootstrap false \
-  --set-arm-field pref_soft.initial_agent_timesteps=40000 \
-  --set-arm-field 'unw_soft.net_arch=[64,64]' \
-  --set-arm-field unw_bern.gradient_steps_rew=78 \
-  --set-arm-field unw_bern.initial_agent_timesteps=40000 \
-  --first-core 16
-```
-
-The three `--set-arm-field` lines on `unw_*` are not cosmetic. `unw_soft` and
-`unw_bern` are the ablation of the weighting: they must differ from
-`hybrid_soft` and `hybrid_bern` **only** in how the two gradients are combined.
-Without them the ablation would also change the network size and the number of
-gradient steps, and would no longer isolate the combination rule.
-
-Each command runs 20–120 policies of 1M steps each. On 48 cores the full set
-takes a few days.
-
-### 6. Checking that a run started correctly
-
-The scheduler prints one line per launch:
-
-```
-[10:26:39] lanciata th_1mh4_demo_only_B10-seed1 pid=1775121 core=60
-```
-
-and refuses to start if `validate()` fails, so a wrong parameter surfaces before
-any compute is spent, not hours later.
-
-In the run's own log (`outputs/thesis_runs/logs/<run-name>.log`) the first
-things worth checking are the demonstration fingerprint and the environment
-mode:
-
-```
-Loaded 1000 expert trajectories (179079 transitions), subsample seed 1000, fingerprint c3705912f3e5
-Creating environment...
-Rollout env: condiviso col training
-- Collecting 20000 bootstrap transitions
-- Collecting 20000 agent + 0 exploration transitions
-```
-
-If the fingerprint matches the table above and the rollout env is shared, the run
-is on the right protocol. From there the log prints one `- Collecting 20000
-agent` block per iteration, 50 in total.
-
-At the end each run writes `final_eval.json` in its output directory, with the
-return and the success, collision, off-road and timeout rates.
-
-### 7. Evaluating on 200 episodes
-
-The thesis reports the return over 200 held-out episodes. Runs write a 20-episode
-evaluation at the end of training, which is enough to follow a run but too coarse
-for the final tables: with 20 episodes one collision moves the mean return by
-about 8 points, more than the differences between the methods.
-
-`scripts/evaluate_checkpoints.py` re-runs the evaluation from `agent_final.zip`,
-without retraining. It calls the same `evaluate()` used at the end of training,
-so the procedure is identical: one environment, deterministic policy, episode
-seeds `seed + i`. With the default seed the first 20 episodes are exactly the
-ones already evaluated, so a longer run extends the series instead of replacing
-it — and all methods face the same 200 scenarios.
-
-```bash
-# every run of the thesis campaigns, 44 at a time
-find outputs/thesis_runs/th_1mh4* -name agent_final.zip -exec dirname {} \; \
-  | xargs -P 44 -I{} python scripts/evaluate_checkpoints.py {}
-```
-
-It writes `final_eval_200.json` next to each checkpoint and skips runs that
-already have one, so it can be interrupted and restarted. One run takes about 20
-seconds on a single core.
-
-The evaluation is deterministic within one environment but not across
-environments: re-running it on a machine with a different SUMO or torch version
-gives returns that agree to about 0.01%, not to the last digit.
-
-The per-run and aggregated results used in the thesis are in
-`results_200_episodes.csv` and `results_200_episodes_summary.csv` in the thesis
-folder.
+Evaluation uses episode seeds `seed + i` from a fixed base, so every method faces
+the same 200 scenarios, whatever its training seed.
 
 ## Figures
-
-`plots/` is the toolkit used for the thesis figures. It indexes the W&B runs and
-exports each panel as a standalone `pgfplots` source, so the figures in the
-thesis contain the real data and are recompiled by LaTeX rather than included as
-images. It has its own dependencies:
 
 ```bash
 pip install -r plots/requirements.txt
@@ -267,12 +169,29 @@ python plots/scripts/build_index.py     # indexes the W&B projects
 python plots/scripts/selector.py        # interactive selector on :8770
 ```
 
-`plots/` is independent of the training code — nothing under `scripts/` or
-`human-feedback-rl/` imports it — so changing it cannot affect the experiments.
-See `plots/README.md` for details.
+`plots/` reads Weights & Biases and therefore reports the 20-episode evaluation
+logged during training. That is deliberate: it keeps the toolkit in sync with
+what the runs actually recorded. The 200-episode numbers are in `results/`.
 
-## Notes
+## Checking that the reorganisation preserved the experiments
 
-`scripts/` also contains the tuning and earlier campaign launchers used during
-development. They are kept because the hyperparameters in `ARMS` come from those
-searches, but they are not needed to reproduce the results above.
+```bash
+pytest tests/
+```
+
+`tests/fixtures/thesis_resolved_configs/` holds the 21 configurations that
+produced the thesis, taken from the code that ran them and cross-checked against
+the configurations Weights & Biases recorded for the runs themselves. The tests
+compare what this repository composes today against them, key by key. If one
+fails, an experiment changed.
+
+## History
+
+This repository was reorganised after the experiments were finished. The original
+execution layer — a launcher, a core scheduler and thirty-odd campaign scripts —
+is preserved at the tag **`pre-reorganization`** (commit `e1c8bbf`, also the head
+of the `thesis-protocol` branch), together with the README describing how it was
+used. The submodule commit that produced the results carries the tag
+**`thesis-experiments`**.
+
+Nothing was archived into a folder: git is the archive.

@@ -162,7 +162,14 @@ train:
 
 hydra:
   job:
+    # Do not chdir into a per-run directory: the code writes where run.output_dir
+    # says, and a changing working directory would break every relative path.
     chdir: false
   run:
     dir: .
+  sweep:
+    # --multirun writes its bookkeeping somewhere; send it under outputs/, which
+    # is already ignored, instead of leaving a multirun/ tree in the root.
+    dir: outputs/multirun
+    subdir: ${hydra.job.num}
   output_subdir: null
