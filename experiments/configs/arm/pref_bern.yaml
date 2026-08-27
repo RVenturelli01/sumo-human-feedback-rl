@@ -1,0 +1,26 @@
+# @package _global_
+#
+# Arm `pref_bern`: hyperparameters only. Anything shared with the other
+# arms belongs in protocol/, and no key may appear in both.
+
+arm_name: pref_bern
+uses_preferences: true
+uses_demonstrations: false
+initial_queries_frac: 0.2
+
+algo:
+  kwargs:
+    batch_size_expert: 64
+    batch_size_pref: 64
+    demo_weight: 0.0
+    gcl_fusion: norm_balance
+    gradient_steps_rew: 99
+    initial_agent_timesteps: 20000
+    l2_rew: 1.1190973215409014e-06
+    label_smoothing: 0.1
+    labels_type: binary_bernoulli
+    lr_rew: 0.0008519268053820848
+    normalize_agent_reward: true
+    pref_temperature: 3.0595414013726767
+    reward_model_kwargs:
+      net_arch: [128, 128]

@@ -1,0 +1,26 @@
+# @package _global_
+#
+# Arm `unw_bern`: hyperparameters only. Anything shared with the other
+# arms belongs in protocol/, and no key may appear in both.
+
+arm_name: unw_bern
+uses_preferences: true
+uses_demonstrations: true
+initial_queries_frac: 0.1
+
+algo:
+  kwargs:
+    batch_size_expert: 64
+    batch_size_pref: 256
+    demo_weight: 1.0
+    gcl_fusion: norm_balance
+    gradient_steps_rew: 78
+    initial_agent_timesteps: 40000
+    l2_rew: 0.0005307422191330497
+    label_smoothing: 0.1
+    labels_type: binary_bernoulli
+    lr_rew: 0.0003080841576274553
+    normalize_agent_reward: false
+    pref_temperature: 3.0595414013726767
+    reward_model_kwargs:
+      net_arch: [32, 32]

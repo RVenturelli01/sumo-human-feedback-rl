@@ -1,0 +1,24 @@
+# @package _global_
+#
+# Arm `demo_only`: hyperparameters only. Anything shared with the other
+# arms belongs in protocol/, and no key may appear in both.
+
+arm_name: demo_only
+uses_preferences: false
+uses_demonstrations: true
+initial_queries_frac: 0.0
+
+algo:
+  kwargs:
+    batch_size_expert: 16
+    batch_size_pref: 128
+    demo_weight: 1.0
+    gcl_fusion: norm_balance
+    gradient_steps_rew: 100
+    initial_agent_timesteps: 20000
+    l2_rew: 5.061862748858848e-06
+    label_smoothing: 0.0
+    lr_rew: 0.0009187069964354144
+    normalize_agent_reward: false
+    reward_model_kwargs:
+      net_arch: [64, 64]

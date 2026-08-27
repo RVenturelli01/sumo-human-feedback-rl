@@ -1,0 +1,26 @@
+# @package _global_
+#
+# Arm `pref_soft`: hyperparameters only. Anything shared with the other
+# arms belongs in protocol/, and no key may appear in both.
+
+arm_name: pref_soft
+uses_preferences: true
+uses_demonstrations: false
+initial_queries_frac: 0.05
+
+algo:
+  kwargs:
+    batch_size_expert: 64
+    batch_size_pref: 64
+    demo_weight: 0.0
+    gcl_fusion: norm_balance
+    gradient_steps_rew: 23
+    initial_agent_timesteps: 40000
+    l2_rew: 0.00012704069184662418
+    label_smoothing: 0.0
+    labels_type: soft
+    lr_rew: 0.001837324265850939
+    normalize_agent_reward: true
+    pref_temperature: 20.0
+    reward_model_kwargs:
+      net_arch: [32, 32]
