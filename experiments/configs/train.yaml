@@ -21,10 +21,13 @@ budget: ???
 
 run:
   seed: 0
-  output_dir: Null
-  # Optional readable W&B identity; null falls back to sac_hybrid_<loss_type>.
-  name: null
-  group: null
+  # Identity is derived from what identifies the experiment -- campaign, arm,
+  # budget, seed -- so a run cannot land in the wrong group because a flag was
+  # forgotten. These are the names the thesis campaigns used, and the ones
+  # `evaluate.py --aggregate` expects to find on disk.
+  group: th_${campaign}_${arm_name}_B${budget}
+  name: ${run.group}-seed${run.seed}
+  output_dir: outputs/thesis_runs/${run.group}/${run.name}
   # Demo budget: null = full dataset. Subsampling keeps the prefix of one
   # seeded permutation, so smaller budgets are nested inside larger ones.
   n_expert_trajectories: ${hfrl.demo_budget:${uses_demonstrations},${budget}}
@@ -45,20 +48,22 @@ run:
   demo_subsample_seed: 1000
 
 wandb:
-  entity: Null
-  project: Null
-  tags: Null
+  # Where the thesis runs live. Point these at your own account to log elsewhere;
+  # set WANDB_MODE=offline to log nowhere.
+  entity: andrea02polimi-politecnico-di-milano
+  project: thesis-final
+  tags: [thesis_final, "${campaign}", "${arm_name}", "B${budget}"]
 
 env:
   id: "HighwayEgo-v0"
   n_envs: 4
-  # false (default): le traiettorie per il feedback vengono da un ambiente
-  # dedicato, con seed disgiunto. Costa il doppio delle interazioni, ma sono
-  # campioni di UNA politica, perche' il rollout gira a pesi fermi.
-  # true: si riusa l'ambiente di training. Le transizioni che l'agente produce
-  # allenandosi diventano il pool da cui l'oracolo pesca. Meta' interazioni, ma
-  # le traiettorie sono una miscela di politiche, perche' i pesi cambiano
-  # durante i timestep di learn().
+  # false: the trajectories the oracle judges come from a dedicated environment
+  # with a disjoint seed. Twice the environment interaction, but they are samples
+  # of ONE policy, because the rollout runs at frozen weights.
+  # true (what the thesis used): the training environment is reused. The
+  # transitions the agent produces while learning become the pool the oracle
+  # draws from. Half the interaction, but the trajectories are a mixture of
+  # policies, because the weights move during learn().
   shared_rollout_env: false
   kwargs:
     ego: "continuous"
@@ -110,7 +115,7 @@ algo:
     # Pavimento numerico di CV^2 = S / ||g_medio||^2.
     alpha_eps: 1e-8
     # Sposta le etichette verso 1/2. Applicato SOLO alle etichette
-    # bernoulliane: quelle soft hanno gia' un ottimo finito.
+    # Bernoulli labels only: soft ones already have a finite optimum.
     label_smoothing: 0.0
     bootstrap_comparisons: null   # null = decide n_ensembles
     # demos-as-preferences baseline (demo_mode=preferences only).
@@ -150,10 +155,10 @@ train:
     log_interval: 100
     checkpoint_interval: 10
     scatter_interval: null
-    # NB: il budget di query NON sta qui. Vive fra i kwargs dell'algoritmo
-    # (algo.kwargs.total_queries), insieme a initial_queries e query_schedule.
-    # Averlo in due posti significava che quello di train() vinceva in
-    # silenzio, e nessuno si accorgeva di aver impostato solo l'altro.
+    # NOTE: the query budget does NOT live here. It sits among the algorithm's
+    # kwargs (algo.kwargs.total_queries), next to initial_queries and
+    # query_schedule. Having it in two places meant train()'s copy silently won,
+    # and nobody noticed they had set only the other one.
 
 hydra:
   job:

@@ -121,11 +121,11 @@ def main(cfg: DictConfig) -> None:
         base_seed=seed,
         **OmegaConf.to_container(cfg.env.kwargs, resolve=True),
     )
-    # rollout_env=None fa passare HybridAlgorithm sul ramo "ambiente condiviso"
-    # di TrajectoryGeneratorFromAgent: il buffering wrapper finisce dentro al
-    # reward wrapper sull'ambiente dell'agente, quindi ogni passo di learn()
-    # viene registrato col reward VERO e sample() lo riusa invece di raccogliere
-    # traiettorie nuove.
+    # rollout_env=None puts HybridAlgorithm on the "shared environment" branch of
+    # TrajectoryGeneratorFromAgent: the buffering wrapper sits inside the reward
+    # wrapper on the agent's own environment, so every step of learn() is recorded
+    # with the TRUE reward and sample() reuses those instead of collecting fresh
+    # trajectories.
     shared_rollout = bool(OmegaConf.select(cfg, "env.shared_rollout_env") or False)
     rollout_env = None if shared_rollout else sge.make_vec_env(
         cfg.env.id,
@@ -133,7 +133,7 @@ def main(cfg: DictConfig) -> None:
         base_seed=seed + 10_000,
         **OmegaConf.to_container(cfg.env.kwargs, resolve=True),
     )
-    print(f"Rollout env: {'condiviso col training' if shared_rollout else 'dedicato'}")
+    print(f"Rollout env: {'shared with training' if shared_rollout else 'dedicated'}")
 
     relabel_rewards = cfg.algo.kwargs.relabel_rewards
     print("Initializing agent...")

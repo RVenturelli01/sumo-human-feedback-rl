@@ -128,11 +128,58 @@ def write_csv(path: Path, rows: list[dict]) -> None:
         w.writerows(rows)
 
 
-def aggregate(root: Path, dest: Path, episodes: int) -> int:
+EXPECTED_BUDGETS = (10, 100, 1000)
+EXPECTED_SEEDS = frozenset(range(1, 11))
+
+
+def check_grid(rows: list[dict]) -> list[str]:
+    """Complaints about a grid that is not the full 7 x 3 x 10 of the thesis.
+
+    Aggregating a partial grid is not an error in itself, but doing it silently
+    is: a cell built from nine seeds looks exactly like one built from ten, and
+    the mean it produces is not the number the thesis reports.
+    """
+    problems = []
+    seen = {(r["method"], r["budget"]): [] for r in rows}
+    for r in rows:
+        seen[(r["method"], r["budget"])].append(r["seed"])
+
+    expected_cells = {(m, b) for m in METHOD_ORDER for b in EXPECTED_BUDGETS}
+    for cell in sorted(expected_cells - set(seen)):
+        problems.append(f"{cell[0]} B={cell[1]}: missing entirely")
+    for cell in sorted(set(seen) - expected_cells):
+        problems.append(f"{cell[0]} B={cell[1]}: not part of the grid")
+
+    for cell, seeds in sorted(seen.items()):
+        if cell not in expected_cells:
+            continue
+        doubles = sorted({s for s in seeds if seeds.count(s) > 1})
+        if doubles:
+            problems.append(f"{cell[0]} B={cell[1]}: duplicated seeds {doubles}")
+        missing = sorted(EXPECTED_SEEDS - set(seeds))
+        if missing:
+            problems.append(f"{cell[0]} B={cell[1]}: missing seeds {missing}")
+        extra = sorted(set(seeds) - EXPECTED_SEEDS)
+        if extra:
+            problems.append(f"{cell[0]} B={cell[1]}: unexpected seeds {extra}")
+    return problems
+
+
+def aggregate(root: Path, dest: Path, episodes: int, allow_incomplete: bool = False) -> int:
     rows = collect(root, episodes)
     if not rows:
         print(f"no final_eval_{episodes}.json under {root}")
         return 1
+
+    problems = check_grid(rows)
+    if problems:
+        head = "aggregating an incomplete grid" if allow_incomplete else "incomplete grid"
+        print(f"{head}: {len(problems)} problem(s)")
+        for pb in problems:
+            print(f"  {pb}")
+        if not allow_incomplete:
+            print("\nrefusing to write. Pass --allow-incomplete to aggregate anyway.")
+            return 1
     dest.mkdir(parents=True, exist_ok=True)
     write_csv(dest / f"results_{episodes}_episodes.csv", rows)
     write_csv(dest / f"results_{episodes}_episodes_summary.csv", summarise(rows))
@@ -181,12 +228,17 @@ def main() -> int:
                         "matches the evaluation at the end of training, so the first "
                         "episodes are the same ones.")
     p.add_argument("--force", action="store_true", help="overwrite an existing file")
+    p.add_argument("--allow-incomplete", action="store_true",
+                   help="with --aggregate: write the tables even if the 7 x 3 x 10 grid "
+                        "has holes. Off by default, because a cell built from nine seeds "
+                        "is indistinguishable from one built from ten.")
     args = p.parse_args()
 
     if args.aggregate:
         if len(args.paths) != 2:
             p.error("--aggregate takes exactly two paths: ROOT and DEST")
-        return aggregate(args.paths[0], args.paths[1], args.episodes)
+        return aggregate(args.paths[0], args.paths[1], args.episodes,
+                         allow_incomplete=args.allow_incomplete)
     return reevaluate(args.paths, args.episodes, args.seed, args.force)
 
 

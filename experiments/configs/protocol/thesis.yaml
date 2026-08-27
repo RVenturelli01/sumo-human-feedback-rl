@@ -6,6 +6,10 @@
 # initial_queries_min is the floor of the initial-query rule; 1 keeps the
 # bootstrap from starting with no feedback at all.
 
+# Campaign label. It goes into the run group, so two campaigns can live in the
+# same W&B project without their seeds mixing.
+campaign: 1mh4
+
 initial_queries_min: 1
 
 agent:

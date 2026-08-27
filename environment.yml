@@ -51,6 +51,9 @@ dependencies:
       #   pip install -r plots/requirements.txt
       - matplotlib==3.11.1
       - pandas==3.0.5
+      # pyarrow 25.0.1 is what the campaigns ran. libsumo prints a warning that
+      # it was compiled against libarrow2400; the runs complete regardless, and
+      # this pairing is the one that produced the results.
       - pyarrow==25.0.1
       - huggingface-hub==1.27.0
 

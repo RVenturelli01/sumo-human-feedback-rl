@@ -77,3 +77,64 @@ def test_la_config_composta_coincide_con_quella_della_tesi(cella):
 
     diverse = {k: (atteso[k], ottenuto[k]) for k in atteso if atteso[k] != ottenuto[k]}
     assert not diverse, f"{cella}: valori diversi (tesi, ora): {diverse}"
+
+
+# --- run identity ------------------------------------------------------------
+# These keys are deliberately outside the semantic fixtures: two runs of the same
+# cell differ in name, seed and paths without differing as experiments. But they
+# are what decides which W&B group a run lands in and where `evaluate.py
+# --aggregate` will look for it, so they need their own check.
+
+IDENTITA = [
+    ("hybrid_soft", "thesis",     1000, 3, "th_1mh4_hybrid_soft_B1000"),
+    ("hybrid_soft", "thesis_b10",   10, 1, "th_1mh4iq5_hybrid_soft_B10"),
+    ("unw_bern",    "thesis_b10",   10, 9, "th_1mh4iq5_unw_bern_B10"),
+    ("demo_only",   "thesis",      100, 7, "th_1mh4_demo_only_B100"),
+    ("pref_bern",   "thesis",       10, 2, "th_1mh4_pref_bern_B10"),
+]
+
+
+def _config_intera(arm: str, protocollo: str, budget: int, seed: int):
+    register_resolvers()
+    with initialize_config_dir(version_base=None, config_dir=str(CONFIGS)):
+        cfg = compose("train", overrides=[
+            f"arm={arm}", f"protocol={protocollo}", f"budget={budget}", f"run.seed={seed}",
+        ])
+    return OmegaConf.to_container(cfg, resolve=True)
+
+
+@pytest.mark.parametrize("arm,protocollo,budget,seed,gruppo", IDENTITA)
+def test_l_identita_della_run_e_quella_delle_campagne(arm, protocollo, budget, seed, gruppo):
+    cfg = _config_intera(arm, protocollo, budget, seed)
+    atteso_nome = f"{gruppo}-seed{seed}"
+    assert cfg["run"]["group"] == gruppo
+    assert cfg["run"]["name"] == atteso_nome
+    # Il doppio annidamento non e' un refuso: train.py crea una sottocartella col
+    # nome della run dentro output_dir, ed e' il percorso che l'aggregatore cerca.
+    assert cfg["run"]["output_dir"] == f"outputs/thesis_runs/{gruppo}/{atteso_nome}"
+
+
+@pytest.mark.parametrize("arm,protocollo,budget,seed,gruppo", IDENTITA)
+def test_l_identita_non_resta_mai_nulla(arm, protocollo, budget, seed, gruppo):
+    """Il difetto che questo test esiste per impedire: con `null` la run parte
+    nel gruppo di ripiego, o non parte affatto."""
+    cfg = _config_intera(arm, protocollo, budget, seed)
+    for chiave in ("group", "name", "output_dir"):
+        assert cfg["run"][chiave], f"run.{chiave} e' vuoto"
+    for chiave in ("entity", "project", "tags"):
+        assert cfg["wandb"][chiave], f"wandb.{chiave} e' vuoto"
+
+
+def test_i_tag_wandb_descrivono_la_cella():
+    cfg = _config_intera("hybrid_soft", "thesis_b10", 10, 1)
+    assert cfg["wandb"]["tags"] == ["thesis_final", "1mh4iq5", "hybrid_soft", "B10"]
+    assert cfg["wandb"]["project"] == "thesis-final"
+
+
+def test_il_protocollo_b10_cambia_la_campagna():
+    """Se le due campagne finissero nello stesso gruppo, le run superate a B=10
+    si mescolerebbero con quelle della tesi."""
+    normale = _config_intera("hybrid_soft", "thesis", 10, 1)["run"]["group"]
+    variante = _config_intera("hybrid_soft", "thesis_b10", 10, 1)["run"]["group"]
+    assert normale != variante
+    assert "iq5" in variante and "iq5" not in normale
