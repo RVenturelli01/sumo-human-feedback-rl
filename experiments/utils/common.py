@@ -155,11 +155,6 @@ def evaluate(model, env_id: str, env_kwargs: dict, n_episodes: int, seed: int) -
             speeds.append(float(ep_metrics.get("performance/ep_avg_speed", np.nan)))
             lengths.append(float(info.get("step", 0)))
 
-            # These four statuses do NOT partition the outcomes: the environment
-            # can also report `teleported` or `removed_unknown`. They are rare —
-            # 2 episodes out of 200 in one run out of 250 — but
-            # without `other` the four rates silently sum to less than one and the
-            # gap reads as an aggregation bug.
             status = info.get("ego_status", EgoStatus.RUNNING)
             arrived = int(status == EgoStatus.ARRIVED.value)
             collided = int(status == EgoStatus.COLLIDED.value)

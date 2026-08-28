@@ -50,6 +50,7 @@ DEFAULT_PROJECTS = os.environ.get(
     "RTPLOTS_WANDB_PROJECTS",
     "thesis-final,thesis-grad-diagnostics,"
     "tuning-thesis-budget-curves-completion,thesis",
+    "reward-learning",
 ).split(",")
 
 
