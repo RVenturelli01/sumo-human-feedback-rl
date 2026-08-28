@@ -30,9 +30,6 @@ human-feedback-rl/    submodule: the algorithm
 sumo-rl-ego/          submodule: the environment
 ```
 
-No launcher and no scheduler. An experiment is a configuration; a grid is
-`--multirun`.
-
 ## Setup
 
 ```bash
@@ -43,15 +40,13 @@ conda activate sumo-rlhf
 
 `setup.sh` creates the environment, installs both submodules in editable mode,
 checks SUMO, downloads the demonstrations and verifies their checksums. If an
-environment of that name already exists it compares the versions and stops
-rather than using it: one with the right name and the wrong contents imports
-fine and quietly changes the numbers.
+environment of that name already exists it checks every pin in `environment.yml`
+against it and stops on any mismatch, rather than using it: an environment with
+the right name and the wrong contents imports fine and quietly changes the
+numbers.
 
 Activation is a separate line because a script cannot change the shell that
 called it.
-
-The demonstrations sit in a **private** Hugging Face repository. Without access
-the download stops with a message saying so.
 
 ## Running one experiment
 
@@ -154,25 +149,3 @@ python plots/scripts/selector.py        # interactive selector on :8770
 
 `plots/` reads Weights & Biases, so it shows the 20-episode evaluation logged
 during training. The 200-episode numbers come from `evaluate.py --aggregate`.
-
-## Checking that a change preserved the experiments
-
-```bash
-pytest tests/
-```
-
-`tests/fixtures/reference_configs/` holds the 21 configurations that produced the
-results, taken from the launcher this layer replaced and cross-checked against
-what Weights & Biases recorded for the runs themselves. The tests compare what
-the repository composes today against them, key by key. A failure means a
-configuration changed, which means an experiment changed.
-
-## History
-
-The repository was reorganised after the experiments finished. The previous
-execution layer — a launcher, a core scheduler and about thirty campaign scripts
-— is preserved at the tag `pre-reorganization`, together with the README
-describing how it was used. The submodule commit that produced the results
-carries the tag `thesis-experiments`.
-
-Nothing was archived into a folder: git is the archive.

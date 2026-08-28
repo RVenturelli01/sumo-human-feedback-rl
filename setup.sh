@@ -24,35 +24,46 @@ command -v conda >/dev/null || {
 if conda env list | grep -qE "^${ENV_NAME}\s"; then
     # An environment with the right name but the wrong contents is worse than no
     # environment: everything imports and the numbers quietly differ.
-    say "Environment '${ENV_NAME}' already exists, checking it"
-    if conda run -n "${ENV_NAME}" python - <<'CHECK'
+    # An environment with the right name but the wrong contents is worse than no
+    # environment: everything imports and the numbers quietly differ.
+    say "Environment '${ENV_NAME}' already exists, checking it against environment.yml"
+    # --no-capture-output, or conda run does not pass this script to python at all
+    # and reports success without having run anything.
+    if conda run -n "${ENV_NAME}" --no-capture-output python - "${REPO}/environment.yml" <<'CHECK'
+import re
 import sys
 from importlib.metadata import version, PackageNotFoundError
 
-want = {"torch": "2.13.0", "numpy": "2.5.2", "gymnasium": "1.3.0",
-        "stable-baselines3": "2.9.0", "libsumo": "1.27.1"}
+spec = open(sys.argv[1]).read()
+want_python = re.search(r"^\s*-\s*python=([\d.]+)", spec, re.M).group(1)
+want = dict(re.findall(r"^\s*-\s*([A-Za-z0-9_.-]+)==([^\s#]+)", spec, re.M))
+
 bad = []
-if sys.version_info[:2] != (3, 12):
-    bad.append(f"python {sys.version_info[0]}.{sys.version_info[1]}, expected 3.12")
-for pkg, expected in want.items():
+got_python = ".".join(str(n) for n in sys.version_info[:3])
+if got_python != want_python:
+    bad.append(f"python {got_python}, expected {want_python}")
+for pkg, expected in sorted(want.items()):
     try:
-        got = version(pkg).split("+")[0]
+        got = version(pkg)
     except PackageNotFoundError:
         bad.append(f"{pkg} missing")
         continue
-    if got != expected:
+    # Compare without the local build tag: the reference runs used torch's +cpu
+    # wheel, which macOS does not publish.
+    if got.split("+")[0] != expected.split("+")[0]:
         bad.append(f"{pkg} {got}, expected {expected}")
+
 for line in bad:
     print(f"  {line}")
 sys.exit(1 if bad else 0)
 CHECK
     then
-        echo "  versions match"
+        echo "  matches"
     else
         cat >&2 <<MSG
 
   The existing '${ENV_NAME}' environment does not match environment.yml.
-  Remove it and run this again, or use a different name:
+  Remove it and run this again, or install into a different name:
 
       conda env remove -n ${ENV_NAME}
       ./setup.sh
