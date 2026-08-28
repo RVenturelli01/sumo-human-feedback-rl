@@ -98,30 +98,10 @@ command -v sumo >/dev/null \
     || echo "  system sumo not in PATH (fine unless you want the GUI; SUMO_HOME must be set for it)"
 
 # --- 4. demonstrations -------------------------------------------------------
-# The dataset repository on Hugging Face is PRIVATE. Without access the download
-# fails with a 401 and there is nothing this script can do about it: ask the
-# author to grant access to `Andrea02/sumo-rlhf-datasets`.
+# `Andrea02/sumo-rlhf-datasets` is public, so this needs no Hugging Face
+# account. The download is pinned to the commit the checksums below were taken
+# from; see experiments/download_datasets.py.
 say "Fetching the demonstrations"
-if ! $RUN python -c "
-from huggingface_hub import HfApi
-import sys
-try:
-    HfApi().whoami()
-except Exception:
-    sys.exit(1)
-" 2>/dev/null; then
-    cat >&2 <<'MSG'
-  Not authenticated with Hugging Face.
-
-  The demonstrations live in a private dataset repository, so an anonymous
-  download returns 401. Log in first:
-
-      hf auth login
-
-  and make sure your account has access to Andrea02/sumo-rlhf-datasets.
-MSG
-    exit 1
-fi
 $RUN python "${REPO}/experiments/download_datasets.py"
 
 # --- 5. checksums ------------------------------------------------------------

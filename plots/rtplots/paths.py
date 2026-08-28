@@ -43,14 +43,14 @@ WANDB_ENTITY = os.environ.get("RTPLOTS_WANDB_ENTITY", "andrea02polimi-politecnic
 #  - thesis-grad-diagnostics                : schemi di fusione, ablation della
 #                                             normalizzazione, frozen probe
 #  - thesis                                 : ablation a sorgente singola
+#  - reward-learning                        : run esplorative precedenti
 #
 # Servono insieme perche' un confronto ibrido vs solo-preferenze vs
 # solo-dimostrazioni pesca da progetti diversi.
 DEFAULT_PROJECTS = os.environ.get(
     "RTPLOTS_WANDB_PROJECTS",
     "thesis-final,thesis-grad-diagnostics,"
-    "tuning-thesis-budget-curves-completion,thesis",
-    "reward-learning",
+    "tuning-thesis-budget-curves-completion,thesis,reward-learning",
 ).split(",")
 
 

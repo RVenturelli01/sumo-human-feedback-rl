@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Fetch the expert demonstrations from Hugging Face.
 
-The dataset repository is private, so you need access and one of:
-
-    hf auth login
-    export HF_TOKEN=hf_...
+The repository is public: no login is needed. `--token` is there only for the
+case where it is made private again.
 
 Usage:
     python experiments/download_datasets.py
@@ -19,6 +17,9 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 
 REPO_ID = "Andrea02/sumo-rlhf-datasets"
+#: The commit the checksums in datasets/SHA256SUMS were taken from. Pinned so a
+#: later upload to the dataset repository does not silently change the data.
+REVISION = "70d5165605c0c2a9bb4d1970c3e1fe24c0ae5f63"
 DEFAULT_OUT = Path(__file__).resolve().parents[1] / "datasets"
 
 
@@ -31,13 +32,16 @@ def main() -> None:
                    help="specific file names (default: every .pkl)")
     p.add_argument("--token", default=None,
                    help="HF token; falls back to the login cache or HF_TOKEN")
+    p.add_argument("--revision", default=REVISION,
+                   help=f"commit to download (default: {REVISION[:12]})")
     args = p.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
-    print(f"Downloading {REPO_ID} -> {args.out}")
+    print(f"Downloading {REPO_ID}@{args.revision[:12]} -> {args.out}")
     local = snapshot_download(
         repo_id=REPO_ID,
         repo_type="dataset",
+        revision=args.revision,
         local_dir=args.out,
         allow_patterns=list(args.files) if args.files else ["*.pkl"],
         token=args.token,

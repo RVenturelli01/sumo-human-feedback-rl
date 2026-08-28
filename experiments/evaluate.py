@@ -46,10 +46,15 @@ METHOD_NAMES = {
     "unw_soft": "NB-soft", "unw_bern": "NB-Bernoulli",
 }
 METHOD_ORDER = list(METHOD_NAMES.values())
-#: <campaign>_<arm>_B<budget>-seed<n>. The arm is matched by name because both
-#: the campaign label and the arm names contain underscores.
+#: <campaign>_<arm>_B<budget>-seed<n>, with the `_NN` that make_run_dir appends
+#: when the directory already exists. Those repeats are matched on purpose: a
+#: re-run is a second copy of a cell, and check_grid should say so rather than
+#: let the aggregate quietly keep reading the older one.
+#: The arm is matched by name because both the campaign label and the arm names
+#: contain underscores.
 RUN_DIR_RE = re.compile(
-    r"(?P<campaign>.+)_(?P<arm>" + "|".join(METHOD_NAMES) + r")_B(?P<budget>\d+)-seed(?P<seed>\d+)$"
+    r"(?P<campaign>.+)_(?P<arm>" + "|".join(METHOD_NAMES)
+    + r")_B(?P<budget>\d+)-seed(?P<seed>\d+)(?:_\d{2})?$"
 )
 
 
