@@ -1,11 +1,13 @@
 # @package _global_
 #
-# Arm `unw_bern`: hyperparameters only. Anything shared with the other
-# arms belongs in protocol/, and no key may appear in both.
+# Arm `unw_bern`. Hyperparameters only; anything shared lives in protocol/.
 
 arm_name: unw_bern
 uses_preferences: true
 uses_demonstrations: true
+  # alpha is not estimable below 5 comparisons; the norm-balanced
+  # ablations use the same floor so both collect feedback alike.
+initial_queries_min: 5
 initial_queries_frac: 0.1
 
 algo:

@@ -1,11 +1,11 @@
 # @package _global_
 #
-# Arm `demo_only`: hyperparameters only. Anything shared with the other
-# arms belongs in protocol/, and no key may appear in both.
+# Arm `demo_only`. Hyperparameters only; anything shared lives in protocol/.
 
 arm_name: demo_only
 uses_preferences: false
 uses_demonstrations: true
+initial_queries_min: 1
 initial_queries_frac: 0.0
 
 algo:

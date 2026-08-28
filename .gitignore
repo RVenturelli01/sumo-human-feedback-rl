@@ -237,7 +237,8 @@ tensorboard.DS_Store
 !environment.yml
 *.pkl
 
-# --- output trees and historical material ---
+# --- output trees ---
+/results
 /reports
 /dashboard
 /output

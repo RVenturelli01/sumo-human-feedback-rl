@@ -1,24 +1,17 @@
 #!/usr/bin/env python
 """Re-evaluate saved policies on more episodes, and aggregate the results.
 
-Training ends with a 20-episode evaluation, which is enough to follow a run but
-too coarse for the final tables: with 20 episodes a single collision moves the
-mean return by about 8 points, more than the differences between the methods.
+Training ends with a 20-episode evaluation, enough to follow a run but too coarse
+for a table: one collision moves the mean by about 8 points, more than the
+differences between methods.
 
-    # re-evaluate: reads agent_final.zip, writes final_eval_200.json beside it
-    python experiments/evaluate.py outputs/thesis_runs/th_1mh4*/*/*
+    python experiments/evaluate.py outputs/runs/*/*
+    python experiments/evaluate.py --aggregate outputs/runs results
 
-    # aggregate those files into the two result tables
-    python experiments/evaluate.py --aggregate outputs/thesis_runs results
-
-Re-evaluation calls the same `evaluate()` used at the end of training, so the
-procedure is identical: one environment, deterministic policy, episode seeds
-`seed + i`. With the same starting seed the first 20 episodes are the ones
-already evaluated, so a longer run extends the series instead of replacing it,
-and every method faces the same scenarios.
-
-It writes `final_eval_<episodes>.json` next to the checkpoint and skips runs that
-already have one, so it can be interrupted and restarted.
+Re-evaluation reuses the evaluate() from training, so the procedure is identical
+and the episode seeds line up: with the same base seed the first 20 episodes are
+the ones already measured. Results are written next to each checkpoint and
+existing ones are skipped, so it can be interrupted.
 """
 from __future__ import annotations
 
@@ -38,24 +31,26 @@ ENV_KWARGS = {"ego": "continuous", "reward": "fast"}
 
 # --- aggregation -------------------------------------------------------------
 
-#: At B=10 the four two-channel methods ran in a separate campaign with five
-#: initial comparisons. The `th_1mh4_*_B10` groups for those arms are the
-#: superseded earlier runs; picking them up silently changes two cells of the
-#: ablation table.
-IQ5_ARMS = {"hybrid_soft", "hybrid_bern", "unw_soft", "unw_bern"}
+#: Groups that were re-run and whose earlier version must not be read back. Both
+#: versions are still on disk, and mixing them gives a cell twenty seeds deep --
+#: or, if the newer one is missing, quietly wrong numbers.
+SUPERSEDED = {
+    "th_1mh4_hybrid_soft_B10", "th_1mh4_hybrid_bern_B10",
+    "th_1mh4_unw_soft_B10", "th_1mh4_unw_bern_B10",
+}
 
-#: Names as they appear in the thesis.
+#: Display names.
 METHOD_NAMES = {
     "demo_only": "Demo-only", "pref_soft": "Pref-soft", "pref_bern": "Pref-Bernoulli",
     "hybrid_soft": "Hybrid-soft", "hybrid_bern": "Hybrid-Bernoulli",
     "unw_soft": "NB-soft", "unw_bern": "NB-Bernoulli",
 }
 METHOD_ORDER = list(METHOD_NAMES.values())
-RUN_DIR_RE = re.compile(r"th_(1mh4(?:iq5)?)_(.+)_B(\d+)-seed(\d+)")
-
-
-def expected_campaign(arm: str, budget: int) -> str:
-    return "1mh4iq5" if (budget == 10 and arm in IQ5_ARMS) else "1mh4"
+#: <campaign>_<arm>_B<budget>-seed<n>. The arm is matched by name because both
+#: the campaign label and the arm names contain underscores.
+RUN_DIR_RE = re.compile(
+    r"(?P<campaign>.+)_(?P<arm>" + "|".join(METHOD_NAMES) + r")_B(?P<budget>\d+)-seed(?P<seed>\d+)$"
+)
 
 
 def other_rate(metrics: dict) -> float:
@@ -74,12 +69,13 @@ def other_rate(metrics: dict) -> float:
 
 def collect(root: Path, episodes: int) -> list[dict]:
     rows = []
-    for path in sorted(root.glob(f"th_1mh4*/*/*/final_eval_{episodes}.json")):
+    # rglob, not a fixed depth: older runs sit one directory deeper.
+    for path in sorted(root.rglob(f"final_eval_{episodes}.json")):
         m = RUN_DIR_RE.fullmatch(path.parent.name)
         if not m:
             continue
-        campaign, arm, budget, seed = m.group(1), m.group(2), int(m.group(3)), int(m.group(4))
-        if arm not in METHOD_NAMES or campaign != expected_campaign(arm, budget):
+        arm, budget, seed = m["arm"], int(m["budget"]), int(m["seed"])
+        if f"{m['campaign']}_{arm}_B{budget}" in SUPERSEDED:
             continue
         d = json.loads(path.read_text())
         rows.append({
@@ -108,7 +104,10 @@ def summarise(rows: list[dict]) -> list[dict]:
             v = [r["mean_return"] for r in cell]
             out.append({
                 "method": name, "budget": budget, "n_seeds": len(cell),
-                "mean_return": round(st.mean(v), 3), "std_return": round(st.stdev(v), 3),
+                # A single seed has no spread; leave the field empty rather than
+                # write a 0 that reads like a measurement.
+                "mean_return": round(st.mean(v), 3),
+                "std_return": round(st.stdev(v), 3) if len(v) > 1 else "",
                 "median_return": round(st.median(v), 3),
                 "min_return": round(min(v), 3), "max_return": round(max(v), 3),
                 "seeds_below_zero": sum(1 for x in v if x < 0),
@@ -133,11 +132,11 @@ EXPECTED_SEEDS = frozenset(range(1, 11))
 
 
 def check_grid(rows: list[dict]) -> list[str]:
-    """Complaints about a grid that is not the full 7 x 3 x 10 of the thesis.
+    """Complaints about a grid that is not the full 7 x 3 x 10.
 
     Aggregating a partial grid is not an error in itself, but doing it silently
     is: a cell built from nine seeds looks exactly like one built from ten, and
-    the mean it produces is not the number the thesis reports.
+    the mean it produces is not the one the reference numbers report.
     """
     problems = []
     seen = {(r["method"], r["budget"]): [] for r in rows}

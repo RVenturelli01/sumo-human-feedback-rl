@@ -1,25 +1,25 @@
-"""The budget rule, the protocol guard, and the separation between the groups.
+"""The budget rule and the separation between the two config groups.
 
-These cover what the submodule's own tests cannot see: they are about how a run
-is *configured*, not about how the algorithm behaves once configured.
+These cover what the submodule's tests cannot see: how a run is configured,
+rather than how the algorithm behaves once it is.
 """
 from pathlib import Path
 
 import pytest
 from omegaconf import DictConfig, OmegaConf
 
-from utils.budget import ALPHA_MIN_PREFS, check_protocol, demo_budget, initial_queries, total_queries
+from utils.budget import ALPHA_MIN_PREFS, demo_budget, initial_queries, total_queries
 
 REPO = Path(__file__).resolve().parents[1]
 CONFIGS = REPO / "experiments" / "configs"
 
 # Shares taken from the arm files themselves, so the table below is a statement
-# about the thesis and not a copy of the implementation.
+# about the reference runs and not a copy of the implementation.
 QUOTE = {"demo_only": 0.0, "pref_soft": 0.05, "pref_bern": 0.20,
          "hybrid_soft": 0.10, "hybrid_bern": 0.10, "unw_soft": 0.10, "unw_bern": 0.10}
 
-# What the thesis campaigns actually collected, budget by budget. The B=10 column
-# holds the standard floor of 1; the raised floor of 5 is tested separately.
+# What the reference campaigns collected, budget by budget, at floor 1. The
+# per-arm floor is checked separately.
 ATTESI = {
     "demo_only":   (0, 0, 0),
     "pref_soft":   (1, 5, 50),
@@ -51,20 +51,12 @@ def _foglie(percorso: Path) -> set[str]:
 
 
 @pytest.mark.parametrize("arm,attesi", ATTESI.items())
-def test_le_quote_riproducono_le_query_iniziali_della_tesi(arm, attesi):
+def test_le_quote_riproducono_le_query_iniziali_di_riferimento(arm, attesi):
     usa_pref = arm != "demo_only"
     ottenuti = tuple(
         initial_queries(usa_pref, QUOTE[arm], b, floor=1) for b in (10, 100, 1000)
     )
     assert ottenuti == attesi
-
-
-def test_il_pavimento_alzato_vale_solo_a_budget_dieci():
-    # A B=10 il pavimento decide; ai budget maggiori la quota lo supera comunque,
-    # quindi alzarlo non cambierebbe nulla -- ma la guardia lo vieta lo stesso,
-    # perche' un protocollo deve descrivere una cosa sola.
-    assert initial_queries(True, 0.10, 10, floor=ALPHA_MIN_PREFS) == 5
-    assert initial_queries(True, 0.10, 100, floor=ALPHA_MIN_PREFS) == 10
 
 
 def test_i_canali_spenti_azzerano_il_budget():
@@ -74,31 +66,22 @@ def test_i_canali_spenti_azzerano_il_budget():
     assert demo_budget(True, 1000) == 1000
 
 
-def _cfg(**kw) -> DictConfig:
-    base = dict(budget=10, initial_queries_min=5, arm_name="hybrid_soft",
-                uses_preferences=True, uses_demonstrations=True)
-    base.update(kw)
-    return OmegaConf.create(base)
+PAVIMENTI = {"demo_only": 1, "pref_soft": 1, "pref_bern": 1,
+             "hybrid_soft": 5, "hybrid_bern": 5, "unw_soft": 5, "unw_bern": 5}
 
 
-def test_la_guardia_accetta_la_combinazione_prevista():
-    check_protocol(_cfg())
+@pytest.mark.parametrize("arm,atteso", PAVIMENTI.items())
+def test_il_pavimento_e_dichiarato_dal_braccio(arm, atteso):
+    """Cinque solo dove il peso di affidabilita' va stimato; uno altrove."""
+    cfg = OmegaConf.load(CONFIGS / "arm" / f"{arm}.yaml")
+    assert cfg.initial_queries_min == atteso
 
 
-@pytest.mark.parametrize("kw,atteso", [
-    (dict(budget=100), "budget=10"),
-    (dict(budget=1000), "budget=10"),
-    (dict(arm_name="pref_soft", uses_demonstrations=False), "two-channel"),
-    (dict(arm_name="demo_only", uses_preferences=False), "two-channel"),
-])
-def test_la_guardia_rifiuta_le_combinazioni_sbagliate(kw, atteso):
-    with pytest.raises(ValueError, match=atteso):
-        check_protocol(_cfg(**kw))
-
-
-def test_il_protocollo_standard_non_attiva_la_guardia():
-    check_protocol(_cfg(initial_queries_min=1, budget=1000,
-                        arm_name="demo_only", uses_preferences=False))
+def test_a_budget_dieci_il_pavimento_decide_solo_dove_serve():
+    assert initial_queries(True, 0.10, 10, floor=ALPHA_MIN_PREFS) == 5   # due canali
+    assert initial_queries(True, 0.05, 10, floor=1) == 1                 # solo preferenze
+    # Ai budget maggiori la quota supera il pavimento e lo rende ininfluente.
+    assert initial_queries(True, 0.10, 100, floor=ALPHA_MIN_PREFS) == 10
 
 
 def test_bracci_e_protocolli_non_definiscono_la_stessa_chiave():
@@ -108,7 +91,7 @@ def test_bracci_e_protocolli_non_definiscono_la_stessa_chiave():
     i bracci fissano lr_rew, net_arch e il resto. Se una foglia comparisse in
     entrambi, l'ordine di composizione deciderebbe in silenzio quale vince.
     """
-    protocollo = _foglie(CONFIGS / "protocol" / "thesis.yaml")
+    protocollo = _foglie(CONFIGS / "protocol" / "standard.yaml")
     for arm in sorted(QUOTE):
         sovrapposte = protocollo & _foglie(CONFIGS / "arm" / f"{arm}.yaml")
         assert not sovrapposte, f"{arm} ridefinisce chiavi del protocollo: {sorted(sovrapposte)}"
@@ -116,5 +99,5 @@ def test_bracci_e_protocolli_non_definiscono_la_stessa_chiave():
 
 def test_il_protocollo_tocca_davvero_chiavi_algo():
     """Se un giorno smettesse, il test sopra diventerebbe vacuo senza accorgersene."""
-    algo = {k for k in _foglie(CONFIGS / "protocol" / "thesis.yaml") if k.startswith("algo.")}
+    algo = {k for k in _foglie(CONFIGS / "protocol" / "standard.yaml") if k.startswith("algo.")}
     assert len(algo) >= 10, f"attese >=10 chiavi algo.* nel protocollo, trovate {len(algo)}"

@@ -22,7 +22,43 @@ command -v conda >/dev/null || {
 }
 
 if conda env list | grep -qE "^${ENV_NAME}\s"; then
-    say "Environment '${ENV_NAME}' already exists, leaving it alone."
+    # An environment with the right name but the wrong contents is worse than no
+    # environment: everything imports and the numbers quietly differ.
+    say "Environment '${ENV_NAME}' already exists, checking it"
+    if conda run -n "${ENV_NAME}" python - <<'CHECK'
+import sys
+from importlib.metadata import version, PackageNotFoundError
+
+want = {"torch": "2.13.0", "numpy": "2.5.2", "gymnasium": "1.3.0",
+        "stable-baselines3": "2.9.0", "libsumo": "1.27.1"}
+bad = []
+if sys.version_info[:2] != (3, 12):
+    bad.append(f"python {sys.version_info[0]}.{sys.version_info[1]}, expected 3.12")
+for pkg, expected in want.items():
+    try:
+        got = version(pkg).split("+")[0]
+    except PackageNotFoundError:
+        bad.append(f"{pkg} missing")
+        continue
+    if got != expected:
+        bad.append(f"{pkg} {got}, expected {expected}")
+for line in bad:
+    print(f"  {line}")
+sys.exit(1 if bad else 0)
+CHECK
+    then
+        echo "  versions match"
+    else
+        cat >&2 <<MSG
+
+  The existing '${ENV_NAME}' environment does not match environment.yml.
+  Remove it and run this again, or use a different name:
+
+      conda env remove -n ${ENV_NAME}
+      ./setup.sh
+MSG
+        exit 1
+    fi
 else
     say "Creating the '${ENV_NAME}' environment (this takes a few minutes)"
     conda env create -f "${REPO}/environment.yml"
@@ -83,7 +119,7 @@ $RUN python "${REPO}/experiments/download_datasets.py"
 say "Verifying the datasets"
 cd "${REPO}"
 if shasum -a 256 -c datasets/SHA256SUMS; then
-    echo "  all four datasets match the ones used in the thesis"
+    echo "  all four datasets match the reference ones"
 else
     echo "  CHECKSUM MISMATCH -- the numbers will not reproduce" >&2
     exit 1

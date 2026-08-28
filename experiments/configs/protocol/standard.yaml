@@ -1,16 +1,9 @@
 # @package _global_
 #
-# Protocol of the thesis campaigns (W&B groups th_1mh4_*).
-# Every arm shares these; a file under arm/ must never redefine one of them.
-#
-# initial_queries_min is the floor of the initial-query rule; 1 keeps the
-# bootstrap from starting with no feedback at all.
+# Settings shared by every method. An arm must never redefine one of these.
 
-# Campaign label. It goes into the run group, so two campaigns can live in the
-# same W&B project without their seeds mixing.
-campaign: 1mh4
-
-initial_queries_min: 1
+# Goes into the run group, so campaigns stay apart in W&B.
+campaign: main
 
 agent:
   kwargs:

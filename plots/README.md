@@ -274,7 +274,7 @@ figura (si salva e si ridisegna senza riavviare il selettore).
   indicizzare; di default tutti e tre. Aggiungerne uno è una riga in
   `rtplots/paths.py`, non un modulo nuovo: la convenzione di lettura
   (`rtplots/source.py`) è la stessa per ogni progetto generato da
-  `scripts/train_hybrid_sac.py`. Un gruppo con una sintassi di livello nuova
+  `experiments/train.py`. Un gruppo con una sintassi di livello nuova
   invece va aggiunto a `parse_group`, altrimenti `budget_level` resta vuoto e
   le curve di budget di quel progetto non escono.
 * Le regole di colore in `style.toml` per `fusion` stanno **prima** di quelle

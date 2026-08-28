@@ -106,17 +106,6 @@ def load_expert_trajectories(
         seed=seed,
     )
     subset = [trajectories[i] for i in indices]
-    # --- EXTENSION PLACEHOLDER: demonstration noise -------------------------
-    # Planned experiment ("rumore sulle dimostrazioni"): corrupt the expert
-    # data right here, after subsampling, via a new knob, e.g.
-    # ``demo_noise: float = 0.0`` (seeded with the same rng):
-    #   * action noise — add clipped Gaussian noise to each transition's
-    #     action (std = demo_noise * action range), i.e. a sloppier expert;
-    #   * or trajectory swap — replace a demo_noise fraction of expert
-    #     trajectories with random agent-quality ones (mislabeled demos).
-    # Loading is the single choke point every consumer goes through, so the
-    # corruption applies uniformly to the IRL losses AND to the
-    # demos-as-preferences pairs. With demo_noise=0.0 behaviour is unchanged.
     if not return_manifest:
         return subset
     manifest = subsample_manifest(
@@ -168,7 +157,7 @@ def evaluate(model, env_id: str, env_kwargs: dict, n_episodes: int, seed: int) -
 
             # These four statuses do NOT partition the outcomes: the environment
             # can also report `teleported` or `removed_unknown`. They are rare —
-            # 2 episodes out of 200 in one run out of the 250 in the thesis — but
+            # 2 episodes out of 200 in one run out of 250 — but
             # without `other` the four rates silently sum to less than one and the
             # gap reads as an aggregation bug.
             status = info.get("ego_status", EgoStatus.RUNNING)

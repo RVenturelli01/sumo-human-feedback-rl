@@ -1,11 +1,11 @@
 # @package _global_
 #
-# Arm `pref_soft`: hyperparameters only. Anything shared with the other
-# arms belongs in protocol/, and no key may appear in both.
+# Arm `pref_soft`. Hyperparameters only; anything shared lives in protocol/.
 
 arm_name: pref_soft
 uses_preferences: true
 uses_demonstrations: false
+initial_queries_min: 1
 initial_queries_frac: 0.05
 
 algo:

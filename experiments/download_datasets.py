@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Scarica i dataset .pkl SUMO-RLHF dal repo privato su Hugging Face.
+"""Fetch the expert demonstrations from Hugging Face.
 
-Repo: https://huggingface.co/datasets/Andrea02/sumo-rlhf-datasets (privato)
+The dataset repository is private, so you need access and one of:
 
-Autenticazione (necessaria perche' il dataset e' privato), scegli una via:
-  - `hf auth login`               (token salvato in locale)
-  - export HF_TOKEN=hf_xxx        (variabile d'ambiente)
+    hf auth login
+    export HF_TOKEN=hf_...
 
-Uso:
-    python scripts/download_datasets.py
-    python scripts/download_datasets.py --out data_for_training
-    python scripts/download_datasets.py --files expert_trajectories.pkl
+Usage:
+    python experiments/download_datasets.py
+    python experiments/download_datasets.py --out somewhere/else
+    python experiments/download_datasets.py --files expert_trajectories.pkl
 """
 from __future__ import annotations
 
@@ -20,47 +19,34 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 
 REPO_ID = "Andrea02/sumo-rlhf-datasets"
-REPO_TYPE = "dataset"
-DEFAULT_OUT = Path(__file__).resolve().parent.parent / "datasets"
+DEFAULT_OUT = Path(__file__).resolve().parents[1] / "datasets"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--out",
-        type=Path,
-        default=DEFAULT_OUT,
-        help="Cartella di destinazione (default: <repo>/datasets).",
-    )
-    parser.add_argument(
-        "--files",
-        nargs="*",
-        default=None,
-        help="Nomi di file specifici da scaricare (default: tutti i .pkl).",
-    )
-    parser.add_argument(
-        "--token",
-        default=None,
-        help="HF token; se omesso usa `hf auth login` o la env var HF_TOKEN.",
-    )
-    args = parser.parse_args()
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--out", type=Path, default=DEFAULT_OUT,
+                   help="destination (default: <repo>/datasets)")
+    p.add_argument("--files", nargs="*", default=None,
+                   help="specific file names (default: every .pkl)")
+    p.add_argument("--token", default=None,
+                   help="HF token; falls back to the login cache or HF_TOKEN")
+    args = p.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
-    patterns = list(args.files) if args.files else ["*.pkl"]
-
-    print(f"Scarico {REPO_ID} -> {args.out}")
-    local_path = snapshot_download(
+    print(f"Downloading {REPO_ID} -> {args.out}")
+    local = snapshot_download(
         repo_id=REPO_ID,
-        repo_type=REPO_TYPE,
+        repo_type="dataset",
         local_dir=args.out,
-        allow_patterns=patterns,
-        token=args.token,  # None => usa cache login / HF_TOKEN
+        allow_patterns=list(args.files) if args.files else ["*.pkl"],
+        token=args.token,
     )
 
-    downloaded = sorted(Path(local_path).glob("*.pkl"))
-    print(f"\nFatto. {len(downloaded)} file in {local_path}:")
-    for f in downloaded:
-        print(f"  {f.name:40s} {f.stat().st_size / 1e6:7.1f} MB")
+    files = sorted(Path(local).glob("*.pkl"))
+    print(f"\n{len(files)} file(s) in {local}:")
+    for f in files:
+        print(f"  {f.name:44s} {f.stat().st_size / 1e6:7.1f} MB")
 
 
 if __name__ == "__main__":

@@ -1,21 +1,15 @@
-"""Train one arm of the experiment. The single training entry point.
+"""Train one arm. The single entry point.
 
-    python experiments/train.py arm=hybrid_soft protocol=thesis budget=1000 run.seed=3
+    python experiments/train.py arm=hybrid_soft budget=1000 run.seed=3
 
-An arm is a file under ``configs/arm/``, a protocol one under
-``configs/protocol/``; Hydra composes them over ``configs/train.yaml``. All seven
-arms are the same algorithm with one or both feedback channels enabled: the
-preference-only arms set ``demo_weight=0``, the demonstration-only arm sets
-``total_queries=0``.
+An arm is a file under configs/arm/, the shared settings live in
+configs/protocol/, and Hydra composes them over configs/train.yaml. All seven
+arms are the same algorithm with one or both feedback channels on: the
+preference-only ones set demo_weight=0, the demonstration-only one
+total_queries=0.
 
-Writes per-iteration ``metrics.jsonl``, a final held-out ``final_eval.json`` and
-``agent_final.zip`` in the run directory, and mirrors the final evaluation as
-``sweep/*`` metrics on W&B.
-
-To reproduce a whole grid, let Hydra do it -- there is no scheduler here:
-
-    python experiments/train.py --multirun arm=demo_only,hybrid_soft \
-        protocol=thesis budget=100,1000 run.seed=1,2,3
+Writes metrics.jsonl, final_eval.json and agent_final.zip in the run directory.
+For a grid, use Hydra's --multirun; there is no scheduler here.
 """
 
 import json
@@ -40,7 +34,7 @@ from human_feedback_rl.common.replay_buffers import (
 
 from human_feedback_rl.common.demo_subsampling import DEMO_SUBSAMPLE_SEED
 
-from utils.budget import check_protocol, register_resolvers
+from utils.budget import register_resolvers
 from utils.common import (
     evaluate,
     init_wandb_run,
@@ -57,7 +51,6 @@ register_resolvers()
 
 @hydra.main(version_base=None, config_path="configs", config_name="train")
 def main(cfg: DictConfig) -> None:
-    check_protocol(cfg)
     seed = cfg.run.seed
     rng = seed_everything(seed)
 
