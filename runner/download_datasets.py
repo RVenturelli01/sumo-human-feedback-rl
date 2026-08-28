@@ -5,9 +5,9 @@ The repository is public: no login is needed. `--token` is there only for the
 case where it is made private again.
 
 Usage:
-    python experiments/download_datasets.py
-    python experiments/download_datasets.py --out somewhere/else
-    python experiments/download_datasets.py --files expert_trajectories.pkl
+    python runner/download_datasets.py
+    python runner/download_datasets.py --out somewhere/else
+    python runner/download_datasets.py --files expert_trajectories.pkl
 """
 from __future__ import annotations
 

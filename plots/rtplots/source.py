@@ -2,8 +2,8 @@
 
 Un solo file (a differenza del progetto di ispirazione, che aveva una `RunSource`
 per convenzione perche' univa piu' campagne eterogenee): qui tutte le run vengono
-da un solo entry point (`experiments/train.py`), quindi la config e' sempre
-la stessa struttura annidata (`experiments/configs/train.yaml`: run/env/agent/algo/
+da un solo entry point (`runner/train.py`), quindi la config e' sempre
+la stessa struttura annidata (`runner/configs/train.yaml`: run/env/agent/algo/
 train/eval), disponibile solo dopo `run.load(force=True)` (la lista di
 `api.runs()` restituisce `config == {}`, verificato empiricamente su questo
 progetto: e' la stessa trappola documentata nel progetto di ispirazione per le
@@ -33,7 +33,7 @@ GROUP_LEVEL_RE = re.compile(r"^budget_(?P<tag>[a-z0-9]+(?:_[a-z0-9]+)*)_(?P<leve
 # `budget_level` resterebbe vuoto per tutte le run del progetto e la modalita'
 # curva-di-budget non produrrebbe nulla.
 GD_LEVEL_RE = re.compile(r"^gd_(?P<tag>[a-z0-9]+(?:_[a-z0-9]+)*)_B(?P<level>\d+)$")
-# thesis-final (le run finali della tesi, experiments/configs/) usa il
+# thesis-final (le run finali della tesi, runner/configs/) usa il
 # prefisso `th_`: `th_hybrid_soft_B1000` -> ("hybrid_soft", 1000). Stessa
 # sintassi di gd_, prefisso diverso perche' e' una campagna diversa. Senza
 # questo pattern quelle run non avrebbero budget_level e sparirebbero dalle

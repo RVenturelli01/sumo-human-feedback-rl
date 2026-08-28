@@ -24,8 +24,6 @@ command -v conda >/dev/null || {
 if conda env list | grep -qE "^${ENV_NAME}\s"; then
     # An environment with the right name but the wrong contents is worse than no
     # environment: everything imports and the numbers quietly differ.
-    # An environment with the right name but the wrong contents is worse than no
-    # environment: everything imports and the numbers quietly differ.
     say "Environment '${ENV_NAME}' already exists, checking it against environment.yml"
     # --no-capture-output, or conda run does not pass this script to python at all
     # and reports success without having run anything.
@@ -100,9 +98,9 @@ command -v sumo >/dev/null \
 # --- 4. demonstrations -------------------------------------------------------
 # `Andrea02/sumo-rlhf-datasets` is public, so this needs no Hugging Face
 # account. The download is pinned to the commit the checksums below were taken
-# from; see experiments/download_datasets.py.
+# from; see runner/download_datasets.py.
 say "Fetching the demonstrations"
-$RUN python "${REPO}/experiments/download_datasets.py"
+$RUN python "${REPO}/runner/download_datasets.py"
 
 # --- 5. checksums ------------------------------------------------------------
 # The demonstrations decide the experiment as much as the code does: a different

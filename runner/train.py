@@ -1,6 +1,6 @@
 """Train one arm. The single entry point.
 
-    python experiments/train.py arm=hybrid_soft budget=1000 run.seed=3
+    python runner/train.py arm=hybrid_soft budget=1000 run.seed=3
 
 An arm is a file under configs/arm/, the shared settings live in
 configs/protocol/, and Hydra composes them over configs/train.yaml. All seven

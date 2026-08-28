@@ -5,8 +5,8 @@ Training ends with a 20-episode evaluation, enough to follow a run but too coars
 for a table: one collision moves the mean by about 8 points, more than the
 differences between methods.
 
-    python experiments/evaluate.py outputs/runs/*/*
-    python experiments/evaluate.py --aggregate outputs/runs results
+    python runner/evaluate.py outputs/runs/*/*
+    python runner/evaluate.py --aggregate outputs/runs results
 
 Re-evaluation reuses the evaluate() from training, so the procedure is identical
 and the episode seeds line up: with the same base seed the first 20 episodes are
@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "experiments"))
+sys.path.insert(0, str(REPO / "runner"))
 
 ENV_ID = "HighwayEgo-v0"
 ENV_KWARGS = {"ego": "continuous", "reward": "fast"}

@@ -16,7 +16,7 @@ from omegaconf import OmegaConf
 from utils.budget import register_resolvers
 
 REPO = Path(__file__).resolve().parents[1]
-CONFIGS = REPO / "experiments" / "configs"
+CONFIGS = REPO / "runner" / "configs"
 FIXTURES = REPO / "tests" / "fixtures" / "reference_configs"
 
 PREFISSI = ("algo.", "env.", "agent.", "train.", "eval.")

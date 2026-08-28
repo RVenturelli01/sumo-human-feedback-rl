@@ -13,7 +13,7 @@ channel switched off.
 ## Layout
 
 ```
-experiments/          everything needed to run something
+runner/               everything needed to run something
   train.py              the entry point: one run
   evaluate.py           re-evaluation on more episodes, and the result tables
   download_datasets.py  fetches the demonstrations
@@ -51,7 +51,7 @@ called it.
 ## Running one experiment
 
 ```bash
-python experiments/train.py arm=hybrid_soft budget=1000 run.seed=3
+python runner/train.py arm=hybrid_soft budget=1000 run.seed=3
 ```
 
 Three things identify a run:
@@ -81,7 +81,7 @@ Seven methods × three budgets × ten seeds, 1M environment steps each.
 | `unw_soft`, `unw_bern` | both, combined by norm balancing — the ablation |
 
 ```bash
-python experiments/train.py --multirun \
+python runner/train.py --multirun \
   arm=demo_only,pref_soft,pref_bern,hybrid_soft,hybrid_bern,unw_soft,unw_bern \
   budget=10,100,1000 run.seed=1,2,3,4,5,6,7,8,9,10
 ```
@@ -127,8 +127,8 @@ the differences between methods. The reported numbers come from 200 episodes,
 re-run from the saved policies:
 
 ```bash
-python experiments/evaluate.py outputs/runs/*/*
-python experiments/evaluate.py --aggregate outputs/runs results
+python runner/evaluate.py outputs/runs/*/*
+python runner/evaluate.py --aggregate outputs/runs results
 ```
 
 The first writes `final_eval_200.json` next to each checkpoint and skips runs

@@ -26,7 +26,7 @@ from human_feedback_rl.common.demo_subsampling import (
 )
 from human_feedback_rl.common.loggers import configure_wandb_metrics
 
-# experiments/utils/common.py -> parents[2] is the repository root.
+# runner/utils/common.py -> parents[2] is the repository root.
 DATA_DIR = Path(__file__).resolve().parents[2] / "datasets"
 MAX_RUN_DIR_NAME_LENGTH = 180
 

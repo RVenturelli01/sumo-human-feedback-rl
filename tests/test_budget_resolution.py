@@ -11,7 +11,7 @@ from omegaconf import DictConfig, OmegaConf
 from utils.budget import ALPHA_MIN_PREFS, demo_budget, initial_queries, total_queries
 
 REPO = Path(__file__).resolve().parents[1]
-CONFIGS = REPO / "experiments" / "configs"
+CONFIGS = REPO / "runner" / "configs"
 
 # Shares taken from the arm files themselves, so the table below is a statement
 # about the reference runs and not a copy of the implementation.

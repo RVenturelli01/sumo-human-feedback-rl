@@ -34,10 +34,10 @@ WANDB_ENTITY = os.environ.get("RTPLOTS_WANDB_ENTITY", "andrea02polimi-politecnic
 
 # Progetti indicizzati di default. La convenzione di lettura
 # (rtplots/source.py) e' la stessa per tutti: vengono tutti dallo stesso entry
-# point (experiments/train.py), quindi aggiungerne uno e' una riga qui.
+# point (runner/train.py), quindi aggiungerne uno e' una riga qui.
 #
 #  - thesis-final                           : le run finali della tesi
-#                                             (experiments/configs/),
+#                                             (runner/configs/),
 #                                             protocollo unico, gruppi th_*
 #  - tuning-thesis-budget-curves-completion : campagna di budget curves
 #  - thesis-grad-diagnostics                : schemi di fusione, ablation della
