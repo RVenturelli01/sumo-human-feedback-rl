@@ -1,43 +1,34 @@
-"""Catalogo delle metriche plottabili.
+"""Catalogue of the metrics that can be plotted.
 
-Due generi, non due fonti come nel progetto di ispirazione (che distingueva
-`.npz` locali da history W&B: qui non ci sono file locali raggiungibili, e' tutto
-W&B, vedi `paths.py`):
+Two kinds:
 
-  - `curve`   una serie storica per run (valore per iterazione/timestep),
-              aggregata sui seed in `curves.py` -> curve di apprendimento;
-  - `summary` un solo valore finale per run (`run.summary[...]`, scritto da
-              `log_sweep_summary` a fine training), aggregato sui seed per
-              livello di budget in `budget.py` -> curve di budget.
+  - `curve`   one time series per run, aggregated over seeds in `curves.py`
+  - `summary` one final value per run, aggregated per budget in `budget.py`
 
-Le curve hanno **due assi x diversi** a seconda di chi le logga (verificato sui
-dati reali di `tuning-thesis-budget-curves-completion`, non assunto):
-  - l'agente SAC logga sotto il prefisso `agent/` (via `PrefixedLogger`), il suo
-    asse naturale e' `agent/time/total_timesteps`;
-  - l'algoritmo di reward learning logga tutto il resto (`reward/*`,
-    `rollout/*`, `reward_val/*`, `imitation/*`) senza prefisso, sul contatore
-    `iterations` (vedi `base_reward_learning_algorithm.py:record("iterations", ...)`).
-Usare l'asse sbagliato per una metrica la farebbe sembrare vuota (tutti NaN),
-quindi ogni voce del catalogo porta il proprio `step_key`.
+Curves come on two different x axes, depending on who logs them. The SAC agent
+logs under the `agent/` prefix against `agent/time/total_timesteps`; the reward
+learning algorithm logs everything else against `iterations`. Plotting a metric
+on the wrong axis makes it look empty, all NaN, so every entry carries its own
+`step_key`.
 """
 from __future__ import annotations
 
 AGENT_STEP = "agent/time/total_timesteps"
 ITER_STEP = "iterations"
 
-# (gruppo, [(chiave, etichetta UI, etichetta asse y, genere, step_key)])
+# (group, [(key, UI label, y-axis label, kind, step_key)])
 METRIC_GROUPS = [
-    ("Eval finale (budget curves)", [
+    ("Final evaluation (budget curves)", [
         ("sweep/mean_fast_return", "Return (fast)", "mean_fast_return", "summary", None),
         ("sweep/mean_comfort_return", "Return (comfort)", "mean_comfort_return", "summary", None),
-        ("sweep/mean_speed", "Velocità media", "mean_speed", "summary", None),
-        ("sweep/mean_ep_length", "Lunghezza episodio", "mean_ep_length", "summary", None),
+        ("sweep/mean_speed", "Mean speed", "mean_speed", "summary", None),
+        ("sweep/mean_ep_length", "Episode length", "mean_ep_length", "summary", None),
         ("sweep/success_rate", "Success rate", "success_rate", "summary", None),
         ("sweep/collision_rate", "Collision rate", "collision_rate", "summary", None),
         ("sweep/off_road_rate", "Off-road rate", "off_road_rate", "summary", None),
         ("sweep/timeout_rate", "Timeout rate", "timeout_rate", "summary", None),
     ]),
-    ("Agente (curva di apprendimento)", [
+    ("Agent (learning curve)", [
         ("agent/rewards/ep_fast_return", "Return (fast, training)", "ep_fast_return",
          "curve", AGENT_STEP),
         ("agent/rewards/ep_comfort_return", "Return (comfort, training)", "ep_comfort_return",
@@ -45,7 +36,7 @@ METRIC_GROUPS = [
         ("agent/rewards/ep_env_return", "Return ambiente", "ep_env_return", "curve", AGENT_STEP),
         ("agent/rollout/ep_rew_mean", "Return di rollout (SB3)", "ep_rew_mean",
          "curve", AGENT_STEP),
-        ("agent/performance/ep_avg_speed", "Velocità media episodio", "ep_avg_speed",
+        ("agent/performance/ep_avg_speed", "Mean episode speed", "ep_avg_speed",
          "curve", AGENT_STEP),
         ("agent/event_rate/successes", "Success rate (training)", "successes",
          "curve", AGENT_STEP),
@@ -63,10 +54,10 @@ METRIC_GROUPS = [
         ("reward/loss", "Loss totale", "loss", "curve", ITER_STEP),
         ("reward/loss_pref_train", "Loss BT (train)", "loss_pref_train", "curve", ITER_STEP),
         ("reward/loss_pref_val", "Loss BT (val)", "loss_pref_val", "curve", ITER_STEP),
-        ("reward/acc_pref_train", "Accuratezza BT (train)", "acc_pref_train", "curve", ITER_STEP),
-        ("reward/acc_pref_val", "Accuratezza BT (val)", "acc_pref_val", "curve", ITER_STEP),
-        ("reward/grad_norm", "Norma gradiente", "grad_norm", "curve", ITER_STEP),
-        ("reward/weight_norm", "Norma pesi", "weight_norm", "curve", ITER_STEP),
+        ("reward/acc_pref_train", "BT accuracy (train)", "acc_pref_train", "curve", ITER_STEP),
+        ("reward/acc_pref_val", "BT accuracy (val)", "acc_pref_val", "curve", ITER_STEP),
+        ("reward/grad_norm", "Gradient norm", "grad_norm", "curve", ITER_STEP),
+        ("reward/weight_norm", "Weight norm", "weight_norm", "curve", ITER_STEP),
         ("reward/expert_model_margin", "Margine esperto/modello", "expert_model_margin",
          "curve", ITER_STEP),
         ("reward/expert_return_mean", "Return predetto (esperto)", "expert_return_mean",
@@ -78,7 +69,7 @@ METRIC_GROUPS = [
          "curve", ITER_STEP),
         ("reward/hybrid_pref_loss", "Loss preferenze (hybrid)", "hybrid_pref_loss",
          "curve", ITER_STEP),
-        ("reward/grad_norm_demo_pref_ratio", "Rapporto gradienti demo/pref",
+        ("reward/grad_norm_demo_pref_ratio", "Gradient ratio, demo over pref",
          "grad_norm_demo_pref_ratio", "curve", ITER_STEP),
     ]),
     ("Validazione reward (correlazione pred/true)", [
@@ -101,13 +92,13 @@ METRIC_GROUPS = [
     # esistono solo nelle run lanciate dopo quel cambiamento: sulle precedenti
     # la curva risulta vuota, che e' corretto.
     ("Stima di α — varianza di campionamento", [
-        ("reward/hybrid_alpha", "Peso delle dimostrazioni (α)", "alpha",
+        ("reward/hybrid_alpha", "Weight on demonstrations (alpha)", "alpha",
          "curve", ITER_STEP),
         ("reward/hybrid_alpha_active", "α stimato (1) o fissato a 1 (0)", "attivo",
          "curve", ITER_STEP),
-        ("alpha/S_pref", "Var. della media — preferenze (S_p)", "S_pref",
+        ("alpha/S_pref", "Variance of the mean, preferences (S_p)", "S_pref",
          "curve", ITER_STEP),
-        ("alpha/S_demo", "Var. della media — dimostrazioni (S_d)", "S_demo",
+        ("alpha/S_demo", "Variance of the mean, demonstrations (S_d)", "S_demo",
          "curve", ITER_STEP),
         ("alpha/cv2_pref", "CV² — preferenze", "cv2_pref", "curve", ITER_STEP),
         ("alpha/cv2_demo", "CV² — dimostrazioni", "cv2_demo", "curve", ITER_STEP),
@@ -130,8 +121,8 @@ METRIC_GROUPS = [
     # chiavi non esistono e la curva risulta vuota, che e' corretto.
     #
     # Da agosto 2026 questi probe NON alimentano piu' alpha: restano
-    # diagnostica, la stima vive nel gruppo qui sopra.
-    ("Gradienti — frozen probe (grad-diagnostics)", [
+    # diagnostic; the estimate itself lives in the group above.
+    ("Gradients, frozen probe", [
         ("reward/grad_probe_dir_var_pref", "Var. direzionale — preferenze (CV_p²)",
          "dir_var_pref", "curve", ITER_STEP),
         ("reward/grad_probe_dir_var_demo", "Var. direzionale — dimostrazioni (CV_d²)",
@@ -143,24 +134,24 @@ METRIC_GROUPS = [
         ("reward/grad_probe_cosine_of_means", "Coseno fra i gradienti medi",
          "coseno", "curve", ITER_STEP),
         ("reward/grad_probe_cosine", "Coseno per campione", "coseno", "curve", ITER_STEP),
-        ("reward/grad_probe_var_pref", "Varianza — preferenze", "var_pref",
+        ("reward/grad_probe_var_pref", "Variance, preferences", "var_pref",
          "curve", ITER_STEP),
-        ("reward/grad_probe_var_demo", "Varianza — dimostrazioni", "var_demo",
+        ("reward/grad_probe_var_demo", "Variance, demonstrations", "var_demo",
          "curve", ITER_STEP),
-        ("reward/grad_probe_mean_sq_norm_pref", "Norma quadratica — preferenze",
+        ("reward/grad_probe_mean_sq_norm_pref", "Squared norm, preferences",
          "mean_sq_norm_pref", "curve", ITER_STEP),
-        ("reward/grad_probe_mean_sq_norm_demo", "Norma quadratica — dimostrazioni",
+        ("reward/grad_probe_mean_sq_norm_demo", "Squared norm, demonstrations",
          "mean_sq_norm_demo", "curve", ITER_STEP),
         ("reward/demo_2_expert_softmax_mass", "Massa softmax sugli esperti (demo_2)",
          "expert_softmax_mass", "curve", ITER_STEP),
     ]),
-    # Il reward consegnato all'agente, non quello con cui si allena il modello:
+    # The reward handed to the agent, not the one the model trains on:
     # e' qui che si vede la normalizzazione (sigma = 1 esatto quando e' attiva).
-    ("Normalizzazione del reward", [
+    ("Reward normalization", [
         ("reward_val/current_rollout/post_update/reward_std",
-         "Sigma del reward visto dall'agente", "reward_std", "curve", ITER_STEP),
+         "Sigma of the reward the agent sees", "reward_std", "curve", ITER_STEP),
         ("reward_val/current_rollout/post_update/reward_mean",
-         "Media del reward visto dall'agente", "reward_mean", "curve", ITER_STEP),
+         "Mean reward the agent sees", "reward_mean", "curve", ITER_STEP),
         ("reward/normalization_raw_std", "Sigma grezzo del modello (solo norm ON)",
          "raw_std", "curve", ITER_STEP),
         ("replay_relabel_debug/delta_abs_mean",
@@ -173,7 +164,7 @@ METRIC_GROUPS = [
          "curve", ITER_STEP),
         ("rollout/mean_model_reward", "Reward predetto medio", "mean_model_reward",
          "curve", ITER_STEP),
-        ("rollout/mean_length", "Lunghezza traiettoria", "mean_length", "curve", ITER_STEP),
+        ("rollout/mean_length", "Trajectory length", "mean_length", "curve", ITER_STEP),
     ]),
     ("Dimostrazioni (imitation)", [
         ("imitation/action_rmse", "RMSE azione vs esperto", "action_rmse",
@@ -209,7 +200,7 @@ def metric_info(key: str) -> dict:
 
 
 def ui_groups(kind: str | None = None) -> list[dict]:
-    """Struttura per le tendine della pagina, filtrabile per genere (curve/summary)."""
+    """The page dropdowns, filtered by kind: curve or summary."""
     out = []
     for group, items in METRIC_GROUPS:
         options = [{"key": k, "label": lab, "kind": knd}

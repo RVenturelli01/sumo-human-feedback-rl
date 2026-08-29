@@ -1,13 +1,12 @@
-"""Selezioni salvate: lettura, scrittura, storico.
+"""Saved selections: reading, writing, and the history.
 
-Una selezione e' quello che il selettore ha in mano quando premi «Salva»: le
-run scelte, i filtri con cui ci sei arrivato e — la parte che conta per gli
-script — lo `FigureSpec` con cui la pagina stava disegnando. Salvare e' quindi
-salvare la figura, non solo l'elenco delle run: `plot_curves.py --runs-file`
-(o `plot_budget.py --runs-file`) rifa' esattamente quella figura.
+A selection is what the selector holds when you press Save: the runs chosen, the
+filters you reached them with, and the `FigureSpec` the page was drawing with.
+Saving therefore saves the figure, not only the list of runs, and
+`--runs-file` redraws exactly that figure.
 
-`selection.json` e' sempre l'ultima salvata (quella che gli script usano senza
-argomenti); `selections/<slug>.json` e' lo storico per nome.
+`selection.json` is always the most recent one, the one the scripts use with no
+arguments; `selections/<slug>.json` keeps the earlier ones by name.
 """
 from __future__ import annotations
 
@@ -22,17 +21,15 @@ from .paths import SELECTION_JSON, SELECTIONS_DIR
 def slugify(name: str) -> str:
     slug = "".join(c if c.isalnum() else "-" for c in name.strip().lower())
     slug = "-".join(p for p in slug.split("-") if p)[:60]
-    return slug or datetime.now().strftime("selezione-%Y%m%d-%H%M%S")
+    return slug or datetime.now().strftime("selection-%Y%m%d-%H%M%S")
 
 
 def free_slug(slug: str, name: str) -> str:
-    """Slug libero per `name`, senza sovrascrivere una selezione diversa.
+    """A free slug for `name`, without overwriting a different selection.
 
-    Risalvare con lo *stesso* nome deve aggiornare la selezione esistente (e'
-    la via per correggere una selezione salvata), ma due nomi diversi che
-    collassano sullo stesso slug — succede col nome di default, che ha la
-    risoluzione al minuto, e con nomi che coincidono nei primi 60 caratteri —
-    non devono cancellarsi a vicenda in silenzio.
+    Saving again under the same name should update the existing selection, which
+    is how a saved one gets corrected. But two different names that collapse to
+    the same slug must not quietly erase each other.
     """
     candidate, n = slug, 1
     while True:
@@ -41,7 +38,7 @@ def free_slug(slug: str, name: str) -> str:
             return candidate
         try:
             if json.loads(stored.read_text()).get("name") == name:
-                return candidate          # stessa selezione: aggiornamento voluto
+                return candidate          # same selection: updating on purpose
         except (json.JSONDecodeError, OSError):
             return candidate              # file illeggibile: rimpiazzarlo va bene
         n += 1
@@ -49,17 +46,17 @@ def free_slug(slug: str, name: str) -> str:
 
 
 def read(path: str | Path) -> dict:
-    """Selezione da file."""
+    """Read a selection from a file."""
     path = Path(path)
     if not path.exists():
-        raise FileNotFoundError(f"Selezione non trovata: {path} (salvala dal selettore)")
+        raise FileNotFoundError(f"Selection not found: {path} (save one from the selector)")
     data = json.loads(path.read_text())
     data.setdefault("version", SPEC_VERSION)
     return data
 
 
 def spec_from(path: str | Path) -> tuple[FigureSpec, dict]:
-    """(FigureSpec, selezione) da un file: quello che serve agli script."""
+    """(FigureSpec, selection) from a file: what the scripts need."""
     data = read(path)
     spec = FigureSpec.from_dict(data.get("spec") or {})
     if not spec.run_ids:
@@ -67,14 +64,14 @@ def spec_from(path: str | Path) -> tuple[FigureSpec, dict]:
     return spec, data
 
 
-# --- storico ----------------------------------------------------------------
+# --- history ----------------------------------------------------------------
 
 def path_for(slug: str) -> Path:
     return SELECTIONS_DIR / f"{slugify(slug)}.json"
 
 
 def listing() -> list[dict]:
-    """Storico delle selezioni salvate, dalla piu' recente."""
+    """The saved selections, most recent first."""
     items = []
     for path in SELECTIONS_DIR.glob("*.json"):
         try:
@@ -93,7 +90,7 @@ def listing() -> list[dict]:
 
 
 def write(payload: dict) -> Path:
-    """Salva la selezione e la rende quella attiva (`selection.json`)."""
+    """Save the selection and make it the active one."""
     SELECTIONS_DIR.mkdir(parents=True, exist_ok=True)
     stored = path_for(payload["slug"])
     text = json.dumps(payload, indent=1, default=str)
@@ -103,7 +100,7 @@ def write(payload: dict) -> Path:
 
 
 def activate(slug: str) -> dict:
-    """Rende attiva una selezione dello storico e la restituisce."""
+    """Make a stored selection the active one, and return it."""
     data = read(path_for(slug))
     SELECTION_JSON.write_text(json.dumps(data, indent=1, default=str))
     return data

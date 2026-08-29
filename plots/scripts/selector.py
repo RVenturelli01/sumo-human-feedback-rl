@@ -1,19 +1,16 @@
 #!/usr/bin/env python
-"""Selettore interattivo delle run: filtri a schermo, copertura e anteprima.
+"""Interactive run selector: filters, coverage and a live preview.
 
-    .venv/bin/python plots/scripts/selector.py            # http://127.0.0.1:8770
-    .venv/bin/python plots/scripts/selector.py --port 9000
+    python plots/scripts/selector.py            # http://127.0.0.1:8770
+    python plots/scripts/selector.py --port 9000
 
-Serve una pagina locale (nessuna dipendenza esterna: solo libreria standard piu'
-quelle gia' usate dai plot). L'indice viene riletto a ogni query, quindi dopo un
-build_index.py i nuovi run compaiono senza riavviare.
+It serves a local page with no external dependencies. The index is reread on
+every query, so runs added by build_index.py appear without a restart.
 
-Il bottone "Salva selezione" scrive `plots/.cache/selection.json` con dentro la
-figura completa (filtri, griglia, colori): da quel momento
-`plot_curves.py --runs-file` (curve di apprendimento) o
-`plot_budget.py --runs-file` (curve di budget) rifanno esattamente quella figura.
+"Save selection" writes the whole figure -- filters, grid, colours -- so that
+`plot_curves.py --runs-file` or `plot_budget.py --runs-file` redraw exactly it.
 
-Il codice sta in rtplots/webui/: `api.py` la logica, `server.py` il trasporto.
+The code is in rtplots/webui/: `api.py` the logic, `server.py` the transport.
 """
 import argparse
 

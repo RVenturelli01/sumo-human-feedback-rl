@@ -1,15 +1,13 @@
-"""Le definizioni matematiche delle metriche dei gradienti e delle fusioni.
+"""What the gradient and fusion metrics mean, written as formulas.
 
-Trascritte da `human_feedback_rl/algorithms/hybrid/gradient_statistics.py` e da
-`hybrid_algorithm.py:_alpha_weight/_fusion_components`, non dalla memoria: sono
-il contratto fra quello che il grafico mostra e quello che il codice calcola, e
-se divergono e' la formula qui a essere sbagliata.
+These are the contract between what a figure shows and what the code computed.
+The alpha formulas come from `alpha_estimation.py`. The frozen-probe metrics
+come from an earlier diagnostic branch that is no longer part of the package:
+the runs that logged them are still on W&B, and this is what their axes mean.
 
-Il rendering passa da mathtext di matplotlib (gia' una dipendenza del toolkit)
-invece che da MathJax/KaTeX, cosi' il selettore resta senza dipendenze
-esterne come il resto della pagina. Mathtext copre un sottoinsieme di LaTeX:
-niente ambienti (`align`, `cases`), niente `\\text{}` — si usa `\\mathrm{}` — e
-ogni riga va resa per conto suo.
+Rendering goes through matplotlib mathtext rather than MathJax, so the selector
+keeps no external dependencies. Mathtext covers a subset of LaTeX: no
+environments, no `\\text{}` (use `\\mathrm{}`), and every line renders on its own.
 """
 from __future__ import annotations
 
@@ -17,8 +15,8 @@ import io
 
 K = r"K"
 
-# Valgono per tutte le metriche del frozen probe, mostrate una volta sola in
-# testa al pannello invece che ripetute in ogni voce.
+# Shared by every frozen-probe metric, shown once at the top of the panel
+# rather than repeated in each entry.
 PREAMBLE = [
     r"$K=32$ probe indipendenti agli stessi parametri $\theta_t$,"
     r" canale $c\in\{p,d\}$",
@@ -29,73 +27,65 @@ PREAMBLE = [
     r"$m_c=\frac{1}{K}\sum_i \bar g_c^{(i)}$",
 ]
 
-# metrica -> (titolo, [righe mathtext], nota in prosa)
+# metric -> (title, [mathtext lines], prose note)
 METRIC_FORMULAS: dict[str, tuple[str, list[str], str]] = {
     "reward/grad_probe_dir_var_pref": (
-        "Varianza direzionale (preferenze)",
+        "Directional variance (preferences)",
         [r"$\mathrm{CV}_p^2=\frac{1}{K-1}\sum_i\|\bar g_p^{(i)}-m_p\|_2^2"
          r"=\frac{K}{K-1}\left(1-\|m_p\|_2^2\right)$"],
-        "Dispersione delle sole direzioni, le lunghezze divise via. 0 = tutti i "
-        "probe puntano uguale; 1 = direzioni indipendenti (riferimento del caso). "
-        "L'angolo tipico fra un probe e il consenso è arccos√(1−CV²·(K−1)/K).",
+        "Scatter of the directions alone, lengths divided out. 0 means every probe points the "
+         "same way, 1 is what independent directions would give. The typical angle between a "
+         "probe and the consensus is arccos of sqrt(1 - CV^2 (K-1)/K).",
     ),
     "reward/grad_probe_dir_var_demo": (
-        "Varianza direzionale (dimostrazioni)",
+        "Directional variance (demonstrations)",
         [r"$\mathrm{CV}_d^2=\frac{1}{K-1}\sum_i\|\bar g_d^{(i)}-m_d\|_2^2$"],
-        "Stessa quantità sul canale delle dimostrazioni. È il denominatore "
-        "dell'altro termine di α.",
+        "The same quantity on the demonstration channel, and the denominator of the other term "
+         "in alpha.",
     ),
     "reward/grad_probe_precond_dir_var_pref": (
-        "Varianza direzionale post-Adam (preferenze)",
-        [r"$\mathrm{CV}_p^2$ calcolata su $u_p^{(i)}$ invece che su $g_p^{(i)}$"],
-        "Esiste solo negli schemi a due Adam: con un Adam solo sul gradiente già "
-        "fuso non ci sono direzioni post-Adam per canale.",
+        "Directional variance after Adam (preferences)",
+        ['$\\mathrm{CV}_p^2$ computed on $u_p^{(i)}$ instead of $g_p^{(i)}$'],
+        "Only exists in the two-Adam schemes. With one Adam on the already fused gradient "
+         "there are no per-channel directions after Adam.",
     ),
     "reward/grad_probe_precond_dir_var_demo": (
-        "Varianza direzionale post-Adam (dimostrazioni)",
-        [r"$\mathrm{CV}_d^2$ calcolata su $u_d^{(i)}$ invece che su $g_d^{(i)}$"],
-        "È questa, non la grezza, l'ingresso di α negli schemi a due Adam.",
+        "Directional variance after Adam (demonstrations)",
+        ['$\\mathrm{CV}_d^2$ computed on $u_d^{(i)}$ instead of $g_d^{(i)}$'],
+        "In the two-Adam schemes this one, not the raw one, is what feeds alpha.",
     ),
     "reward/hybrid_alpha": (
-        "Peso delle dimostrazioni",
+        "Weight on the demonstrations",
         [r"$\alpha=\frac{\mathrm{CV}_p^2}{\mathrm{CV}_p^2+\mathrm{CV}_d^2}$"],
-        "α pesa le DIMOSTRAZIONI e cresce quando il canale preferenze è più "
-        "disperso. Vale 1 (solo dimostrazioni) finché il dataset di preferenze ha "
-        "meno di 5 confronti, cioè finché la sua dispersione non è stimabile. "
-        "ATTENZIONE al confronto fra campagne: nelle run precedenti ad agosto 2026 "
-        "le due CV² erano varianze direzionali misurate FRA probe batch e lisciate "
-        "con una EMA a β=0.9; da lì in poi vengono dalla varianza di campionamento "
-        "per campione (vedi S_p, S_d) e non c'è più alcuna EMA.",
+        'alpha weights the DEMONSTRATIONS, and rises when the preference channel scatters more. It is 1, demonstrations only, until the preference dataset holds five comparisons, because below that its dispersion cannot be estimated. Careful when comparing campaigns: in the earlier runs the two CV^2 were directional variances measured between probe batches and smoothed with an EMA; since then they come from the per-sample sampling variance and there is no EMA.',
     ),
     "reward/hybrid_alpha_active": (
         "α stimato o fissato",
-        [r"$1$ se $N_p\ge 5$ e le due dispersioni sono finite, $0$ altrimenti"],
-        "Quando vale 0 la curva di α è piatta a 1 per costruzione, non perché il "
-        "canale preferenze sia stato giudicato inaffidabile: sotto cinque confronti "
-        "la sua dispersione non è stimabile e il peso è fissato d'ufficio.",
+        ['$1$ if $N_p\\ge 5$ and both dispersions are finite, $0$ otherwise'],
+        'When this is 0 the alpha curve is flat at 1 by construction, not because the preference channel was judged unreliable: below five comparisons its dispersion cannot be estimated and the weight is pinned.',
     ),
     "reward/grad_probe_cosine_of_means": (
-        "Coseno fra i gradienti medi",
+        "Cosine between the mean gradients",
         [r"$\cos=\frac{\langle \hat g_p,\hat g_d\rangle}"
          r"{\|\hat g_p\|_2\,\|\hat g_d\|_2}$"],
-        "Allineamento della parte sistematica: mediare su K probe abbatte il "
-        "rumore di √K. Fra direzioni indipendenti in R^d ci si aspetta ±1/√d.",
+        "How aligned the systematic parts are. Averaging over K probes cuts the noise by "
+         "sqrt(K). Independent directions in R^d would give about plus or minus 1/sqrt(d).",
     ),
     "reward/grad_probe_cosine": (
         "Coseno per campione",
         [r"$\overline{\cos}=\frac{1}{K}\sum_i\frac{\langle g_p^{(i)},g_d^{(i)}\rangle}"
          r"{\|g_p^{(i)}\|_2\,\|g_d^{(i)}\|_2}$"],
-        "Media dei coseni, non coseno delle medie: include il rumore di ogni "
-        "singolo probe, quindi è attenuato verso 0 rispetto all'altro.",
+        "The mean of the cosines, not the cosine of the means. It carries the noise of every "
+         "probe, so it sits closer to zero.",
     ),
     "reward/grad_probe_var_pref": (
-        "Varianza totale (preferenze)",
+        "Total variance (preferences)",
         [r"$\widehat V_p=\frac{1}{K-1}\sum_i\|g_p^{(i)}-\hat g_p\|_2^2$"],
-        "In unità di gradiente al quadrato: dipende dalla scala, a differenza "
-        "della varianza direzionale.",
+        "In squared-gradient units, so unlike the directional variance it depends on the "
+         "scale.",
     ),
     "reward/grad_probe_var_demo": (
-        "Varianza totale (dimostrazioni)",
+        "Total variance (demonstrations)",
         [r"$\widehat V_d=\frac{1}{K-1}\sum_i\|g_d^{(i)}-\hat g_d\|_2^2$"],
         "",
     ),
@@ -103,8 +93,8 @@ METRIC_FORMULAS: dict[str, tuple[str, list[str], str]] = {
         "Norma quadratica del gradiente medio (preferenze)",
         [r"$\|\hat g_p\|_2^2\qquad$ stimatore gonfiato: "
          r"$\mathbb{E}\|\hat g_p\|_2^2=\|\bar g_p\|_2^2+\widehat V_p/K$"],
-        "Il termine V/K è il rumore residuo della media: se è confrontabile con "
-        "il valore stimato, la 'media' è rumore.",
+        "The V/K term is the noise left in the mean. When it is comparable to the estimate, "
+         "the mean is noise.",
     ),
     "reward/grad_probe_mean_sq_norm_demo": (
         "Norma quadratica del gradiente medio (dimostrazioni)",
@@ -112,152 +102,126 @@ METRIC_FORMULAS: dict[str, tuple[str, list[str], str]] = {
         "",
     ),
     "reward/demo_2_expert_softmax_mass": (
-        "Massa softmax sugli esperti",
+        "Softmax mass on the experts",
         [r"$\sum_{i\in E} p_i,\quad p=\mathrm{softmax}\left(R_E\cup R_M\right)$"],
-        "Quota della funzione di partizione della demo_2 sostenuta dalle "
-        "traiettorie esperte. Vicino a 1 la loss è satura: le traiettorie "
-        "dell'agente, unica sorgente di variabilità, non pesano più.",
+        "The share of the demo_2 partition carried by the expert trajectories. Near 1 the loss "
+         "is saturated: the agent trajectories, the only source of variation, no longer count.",
     ),
     "reward_val/current_rollout/post_update/reward_std": (
-        "Deviazione standard del reward visto dall'agente",
-        [r"$r_{\mathrm{agente}}=(r-\mu)/\sigma$ con normalizzazione attiva,"
-         r"$\;r$ altrimenti"],
-        "Con la normalizzazione attiva vale 1 per costruzione; senza, è la scala "
-        "naturale del modello. Il rapporto fra le due è il guadagno imposto.",
+        "Standard deviation of the reward the agent sees",
+        ['$r_{\\mathrm{agent}}=(r-\\mu)/\\sigma$ with normalization on,$\\;r$ otherwise'],
+        "With normalization on it is 1 by construction. Without it, it is the model's own "
+         "scale, and the ratio between the two is the gain applied.",
     ),
     "replay_relabel_debug/delta_abs_mean": (
         "Scarto fra reward in buffer e ricalcolato",
         [r"$\frac{1}{N}\sum_j\left|r_{\mathrm{stored}}(j)-r_{\theta_t}(j)\right|$"],
-        "μ e σ sono stimati sul rollout t e applicati al t+1, dopo che il modello "
-        "è cambiato: questo scarto misura quel ritardo.",
+        'mu and sigma are estimated on rollout t and applied to t+1, after the model has changed. This gap measures that lag.',
     ),
 }
 
-# --- stima di α: varianza di campionamento per campione ----------------------
-# N e B hanno ruoli diversi e vanno tenuti distinti nel pannello, perché è
-# proprio la loro confusione che rendeva sbagliata la stima precedente.
+# --- alpha: per-sample sampling variance -------------------------------------
+# N and B play different roles and are kept apart in the panel: confusing the
+# two is what made the earlier estimate wrong.
 _ALPHA_N_B = (
-    r"$N_c$ = campioni disponibili nel canale; "
-    r"$B_c=\min(\text{batch\_size}_c, N_c)$ = minibatch usato dall'ottimizzatore"
+    '$N_c$ = samples available in the channel; $B_c=\\min(\\text{batch\\_size}_c, N_c)$ = the minibatch the optimizer uses'
 )
 
 METRIC_FORMULAS["alpha/V_pref"] = (
-    "Varianza del processo (preferenze)",
+    "Process variance (preferences)",
     [r"$V_p=\frac{1}{N_p-1}\sum_{i=1}^{N_p}\bigl\|g_i^p-\bar g_p\bigr\|_2^2$",
      r"$g_i^p=(p_i-y_i)\,\nabla_\theta\Delta_i$ — gradiente del SINGOLO confronto"],
-    "Quanto disperde il gradiente indotto da un singolo feedback attorno al "
-    "gradiente medio. NON dipende dal budget: più campioni migliorano la "
-    "precisione della stima, non il valore stimato. Se cala sistematicamente col "
-    "budget c'è qualcosa che non torna.",
+    'How much the gradient from a single piece of feedback scatters around the mean gradient. It does NOT depend on the budget: more samples make the estimate more precise, they do not change what is estimated. If it falls steadily with the budget, something is wrong.',
 )
 METRIC_FORMULAS["alpha/V_demo"] = (
-    "Varianza del processo (dimostrazioni)",
+    "Process variance (demonstrations)",
     [r"$V_d=\frac{1}{N_d-1}\sum_{i=1}^{N_d}\bigl\|g_i^d-\bar g_d\bigr\|_2^2$",
      r"$g_i^d=(w_{\text{last}}-1)\nabla R_i^E+\sum_j w_j\nabla R_j^M$, "
      r"$\;w=\mathrm{softmax}\bigl(\{R_j^M\}\cup\{R_i^E\}\bigr)$"],
-    "Stessa quantità sul canale dimostrazioni. `demo_2` non si decompone, quindi "
-    "il campione i-esimo è definito come la loss che si vedrebbe con quella sola "
-    "dimostrazione più tutto il rollout, tenuto congelato perché non è feedback.",
+    'The same quantity on the demonstration channel. `demo_2` does not decompose, so sample i is the loss of that one demonstration against the whole rollout, held frozen because it is not feedback.',
 )
 METRIC_FORMULAS["alpha/S_pref"] = (
-    "Varianza della media campionaria (preferenze)",
+    "Variance of the sample mean (preferences)",
     [r"$S_p=\dfrac{V_p}{B_p}$", _ALPHA_N_B],
-    "È il rumore del gradiente che l'ottimizzatore applica davvero. DEVE calare "
-    "al crescere del budget: è il sanity check dello stimatore. Il calo si ferma "
-    "dove il budget supera il minibatch, perché lì B smette di crescere.",
+    'The noise of the gradient the optimizer actually applies. It MUST fall as the budget grows: that is the sanity check on the estimator. The fall stops once the budget passes the minibatch, because B stops growing there.',
 )
 METRIC_FORMULAS["alpha/S_demo"] = (
-    "Varianza della media campionaria (dimostrazioni)",
+    "Variance of the sample mean (demonstrations)",
     [r"$S_d=\dfrac{V_d}{B_d}$", _ALPHA_N_B],
-    "A budget grande resta $S_p=V_p/256$ contro $S_d=V_d/64$: l'asimmetria fra i "
-    "due minibatch è voluta, perché il gradiente delle preferenze è davvero "
-    "mediato su quattro volte più campioni.",
+    'At a large budget it settles at $S_p=V_p/256$ against $S_d=V_d/64$. The asymmetry between the two minibatches is deliberate: the preference gradient really is averaged over four times as many samples.',
 )
 METRIC_FORMULAS["alpha/cv2_pref"] = (
     "CV² (preferenze)",
     [r"$\mathrm{CV}_p^2=\dfrac{S_p}{\|\bar g_p\|_2^2}$"],
-    "Reso adimensionale: le due loss hanno scale diverse, e senza dividere per la "
-    "lunghezza del gradiente medio α dipenderebbe da `pref_temperature` e dalla "
-    "scala del reward invece che dalla statistica.",
+    'Made dimensionless. The two losses have different scales, and without dividing by the length of the mean gradient alpha would depend on `pref_temperature` and on the reward scale instead of on the statistics.',
 )
 METRIC_FORMULAS["alpha/cv2_demo"] = (
     "CV² (dimostrazioni)",
     [r"$\mathrm{CV}_d^2=\dfrac{S_d}{\|\bar g_d\|_2^2}$"],
-    "L'altro ingrediente di α. Il rapporto fra i due CV² è tutto ciò che conta: "
-    "un fattore comune ai due canali non sposta il peso.",
+    'The other ingredient of alpha. Only the ratio between the two CV^2 matters: a factor common to both channels does not move the weight.',
 )
 METRIC_FORMULAS["alpha/gradmean_norm_sq_pref"] = (
-    "Norma quadratica del gradiente medio (preferenze)",
-    [r"$\|\bar g_p\|_2^2$, con $\bar g_p=\frac{1}{N_p}\sum_i g_i^p$"],
-    "Denominatore di CV². Quando collassa verso zero il canale non ha più una "
-    "direzione sistematica e CV² esplode: è il segnale da guardare se α si "
-    "incolla a un estremo.",
+    "Squared norm of the mean gradient (preferences)",
+    ['$\\|\\bar g_p\\|_2^2$, with $\\bar g_p=\\frac{1}{N_p}\\sum_i g_i^p$'],
+    'The denominator of CV^2. When it collapses towards zero the channel has no systematic direction left and CV^2 blows up: this is what to look at when alpha sticks to an extreme.',
 )
 METRIC_FORMULAS["alpha/gradmean_norm_sq_demo"] = (
-    "Norma quadratica del gradiente medio (dimostrazioni)",
+    "Squared norm of the mean gradient (demonstrations)",
     [r"$\|\bar g_d\|_2^2$"],
-    "Stesso ruolo sul canale dimostrazioni.",
+    'The same role on the demonstration channel.',
 )
 METRIC_FORMULAS["alpha/n_pref"] = (
-    "Campioni usati per stimare V (preferenze)",
+    'Samples used to estimate V (preferences)',
     [r"$N_p=$ confronti raccolti finora"],
-    "Cresce lungo la run col riempirsi del budget. Senza validation set tende a B "
-    "esatto; con lo split vecchio si sarebbe fermato a 0.8·B.",
+    'Grows through the run as the budget fills up. With no validation split it reaches exactly B; the old split would have stopped at 0.8 B.',
 )
 METRIC_FORMULAS["alpha/n_demo"] = (
-    "Campioni usati per stimare V (dimostrazioni)",
+    'Samples used to estimate V (demonstrations)',
     [r"$N_d=$ traiettorie esperte disponibili"],
-    "Costante lungo la run: le dimostrazioni sono tutte disponibili dall'inizio.",
+    'Constant through the run: every demonstration is available from the start.',
 )
 METRIC_FORMULAS["alpha/batch_pref"] = (
-    "Minibatch delle preferenze",
+    "Preference minibatch",
     [r"$B_p=\min(\text{batch\_size\_pref}, N_p)$"],
-    "A budget piccolo è troncato al pool, quindi il minibatch coincide col "
-    "dataset intero e il gradiente è full-batch: non è una scelta del tuning, è "
-    "un effetto del troncamento.",
+    'At a small budget it is clipped to the pool, so the minibatch is the whole dataset and the gradient is full-batch. That is the clipping, not a tuning choice.',
 )
 METRIC_FORMULAS["alpha/batch_demo"] = (
-    "Minibatch delle dimostrazioni",
+    "Demonstration minibatch",
     [r"$B_d=\min(\text{batch\_size\_expert}, N_d)$"],
-    "Stesso troncamento sul canale dimostrazioni.",
+    'The same clipping on the demonstration channel.',
 )
 
 METRIC_FORMULAS["reward/normalization_raw_std"] = (
     "Sigma grezzo del reward model",
-    [r"$\sigma=\mathrm{std}\left(r_\theta(\tau)\right)$ sul rollout corrente,"
-     r" prima della normalizzazione"],
-    "Loggata solo quando la normalizzazione e' attiva: il guadagno imposto "
-    "all'agente e' 1/sigma. Nel braccio senza normalizzazione la chiave non "
-    "esiste, quindi la curva risulta vuota.",
+    ['$\\sigma=\\mathrm{std}\\left(r_\\theta(\\tau)\\right)$ on the current rollout, before normalization'],
+    'Logged only when normalization is on, where the gain applied to the agent is 1/sigma. Without normalization the key does not exist and the curve comes out empty.',
 )
 METRIC_FORMULAS["replay_relabel_debug/current_reward_std"] = (
-    "Sigma del reward nel replay buffer",
+    'Reward sigma in the replay buffer',
     [r"$\mathrm{std}\left(r_{\theta_t}(j)\right)$ sulle transizioni in buffer"],
-    "E' la scala su cui il critico fa davvero regressione, ricalcolata col "
-    "modello corrente.",
+    'The scale the critic actually regresses on, recomputed with the current model.',
 )
 
-# Alias: le due chiavi condividono definizione e nota.
+# Aliases: these keys share a definition and a note.
 METRIC_FORMULAS["reward_val/current_rollout/post_update/reward_mean"] = (
-    "Media del reward visto dall'agente",
+    "Mean reward the agent sees",
     [r"$r_{\mathrm{agente}}=(r-\mu)/\sigma$"],
-    "Vale 0 sul rollout su cui μ è stato stimato, non su quello successivo.",
+    'Zero on the rollout mu was estimated from, not on the next one.',
 )
 
-ADAM_LINE = (r"$u_c=\mathrm{Adam}_c(g_c)=\hat m_c/(\sqrt{\hat v_c}+\epsilon)$,"
-             r" uno stato per canale")
+ADAM_LINE = ('$u_c=\\mathrm{Adam}_c(g_c)=\\hat m_c/(\\sqrt{\\hat v_c}+\\epsilon)$, one state per channel')
 
-# fusione -> (titolo, [righe mathtext])
+# fusion -> (title, [mathtext lines])
 FUSION_FORMULAS: dict[str, tuple[str, list[str]]] = {
     "norm_balance": ("norm_balance (baseline)", [
         r"$s=\min\left(w\frac{\|g_p\|_2}{\|g_d\|_2+\epsilon},\,100\right)$",
         r"$\theta\leftarrow\theta-\eta\,\mathrm{Adam}(g_p+s\,g_d)$",
     ]),
-    "alpha_norm_single_adam": ("prova 1 — un Adam sul gradiente fuso", [
+    "alpha_norm_single_adam": ("one Adam on the fused gradient", [
         r"$g^{\mathrm{fin}}=(1-\alpha)\,\bar g_p+\alpha\,\bar g_d$",
         r"$\theta\leftarrow\theta-\eta\,\mathrm{Adam}(g^{\mathrm{fin}})$",
     ]),
-    "dual_adam_alpha": ("prova 2 — un Adam per canale", [
+    "dual_adam_alpha": ("one Adam per channel", [
         r"$\theta\leftarrow\theta-\eta\left[(1-\alpha)\,u_p+\alpha\,u_d\right]$",
     ]),
     "dual_adam_sum": ("due Adam, somma", [
@@ -268,7 +232,7 @@ FUSION_FORMULAS: dict[str, tuple[str, list[str]]] = {
         r"$\theta\leftarrow\theta-\eta\,B\left[(1-\alpha)\frac{u_p}{\|u_p\|_2}"
         r"+\alpha\frac{u_d}{\|u_d\|_2}\right]$",
     ]),
-    "dual_adam_alpha_unit_nobudget": ("due Adam, alpha su direzioni unitarie", [
+    "dual_adam_alpha_unit_nobudget": ("two Adams, alpha on unit directions", [
         r"$\theta\leftarrow\theta-\eta\left[(1-\alpha)\frac{u_p}{\|u_p\|_2}"
         r"+\alpha\frac{u_d}{\|u_d\|_2}\right]\qquad(B=1)$",
     ]),
@@ -276,7 +240,7 @@ FUSION_FORMULAS: dict[str, tuple[str, list[str]]] = {
 
 
 def blocks(metric: str | None, fusions=()) -> list[dict]:
-    """Blocchi da mostrare: definizione della metrica + fusioni in selezione."""
+    """The blocks to show: the metric definition, plus the selected fusions."""
     out: list[dict] = []
     entry = METRIC_FORMULAS.get(metric or "")
     if entry:
@@ -287,8 +251,8 @@ def blocks(metric: str | None, fusions=()) -> list[dict]:
                     "note": note})
     known = [f for f in dict.fromkeys(fusions) if f in FUSION_FORMULAS]
     if known:
-        note = ("α pesa le dimostrazioni; u_p e u_d sono gli update di Adam, "
-                "uno stato per canale." if any(f != "norm_balance" for f in known) else "")
+        note = ("alpha weights the demonstrations; u_p and u_d are the Adam updates, one state "
+                 "per channel." if any(f != "norm_balance" for f in known) else "")
         lines: list[str] = []
         if any(f != "norm_balance" and f != "alpha_norm_single_adam" for f in known):
             lines.append(ADAM_LINE)
@@ -296,22 +260,21 @@ def blocks(metric: str | None, fusions=()) -> list[dict]:
             title, body = FUSION_FORMULAS[f]
             lines.append(f"__{title}__")
             lines.extend(body)
-        out.append({"title": "Schemi di fusione nella selezione",
+        out.append({"title": 'Fusion schemes in the selection',
                     "lines": lines, "note": note})
     return out
 
 
 def render_png(blocks_: list[dict], width: float = 4.6, dpi: int = 300) -> bytes:
-    """Gli stessi blocchi in raster, per affiancarli alla figura esportata.
+    """The same blocks as a raster image, to sit beside the exported figure.
 
-    Stessa funzione di disegno dell'SVG: quello che vedi nel pannello e' quello
-    che finisce nell'immagine.
+    Drawn by the same function as the SVG, so the panel and the image agree.
     """
     return _render(blocks_, width, fmt="png", dpi=dpi)
 
 
 def render_svg(blocks_: list[dict], width: float = 4.6) -> str:
-    """I blocchi come SVG, via mathtext (nessuna dipendenza JS nella pagina)."""
+    """The blocks as SVG, through mathtext, so the page needs no JavaScript."""
     return _render(blocks_, width, fmt="svg")
 
 
@@ -332,8 +295,8 @@ def _render(blocks_: list[dict], width: float, fmt: str, dpi: int = 100):
             lines.append(("note", b["note"]))
     del rows
 
-    # Altezza stimata per riga: le note vanno mandate a capo, quindi contano di
-    # piu' di una formula.
+    # Estimated height per line: notes wrap, so they count for more than a
+    # formula does.
     import textwrap
     laid: list[tuple[str, str]] = []
     for kind, text in lines:
@@ -345,8 +308,8 @@ def _render(blocks_: list[dict], width: float, fmt: str, dpi: int = 100):
     base = {"title": 0.30, "sub": 0.24, "math": 0.32, "note": 0.19, "gap": 0.18}
 
     def height(kind: str, text: str) -> float:
-        # Una frazione o una sommatoria occupano sopra e sotto la linea di base:
-        # senza spazio in piu' il numeratore finisce sulla riga precedente.
+        # A fraction or a sum reaches above and below the baseline: without the
+        # extra room the numerator lands on the line before.
         extra = 0.16 if kind == "math" and ("frac" in text or "sum" in text) else 0.0
         return base[kind] + extra
 

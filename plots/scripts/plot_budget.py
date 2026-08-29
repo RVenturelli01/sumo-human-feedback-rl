@@ -1,30 +1,31 @@
 #!/usr/bin/env python
-"""Curve di budget (eval finale vs livello di budget) su griglia di pannelli.
+"""Budget curves: final evaluation against budget level, on a panel grid.
 
-Ogni run vale un solo numero (la valutazione finale held-out, `sweep/*`),
-aggregato sui seed per livello di budget — asse x logaritmico, errorbar invece
-di banda continua (pochi livelli discreti, non una serie nel tempo). Stampa
-anche il budget minimo per serie con la regola del 90%: il livello piu' piccolo
-per cui la metrica scelta resta >=90% del livello massimo, con il successivo
-che passa anche lui (stessa regola di `scripts/report_budget_curves.py`, qui
-generalizzata a qualunque selezione/hue invece dei soli 4 bracci baseline).
+Each run is worth one number, the final held-out evaluation, aggregated over
+seeds per budget level. The x axis is logarithmic and the spread is drawn as
+error bars rather than a band, because the levels are few and discrete.
 
-L'elenco completo delle metriche disponibili (le `sweep/*`):
+It also prints the minimum budget per series under the 90% rule: the smallest
+level where the chosen metric stays at 90% of its best, with the level after it
+passing as well.
+
     python plots/scripts/plot_budget.py --list-metrics
 
-Esempi:
-    # Tutti gli arm pref/hybrid: budget query, return finale
-    python plots/scripts/plot_budget.py --filter arm_family=pref,hybrid --name budget_pref
+Examples:
 
-    # Solo i due demo-only: budget traiettorie, success rate
+    # every preference and hybrid method: query budget, final return
+    python plots/scripts/plot_budget.py --filter arm_family=pref,hybrid \
+        --name budget_pref
+
+    # the demonstration-only methods: trajectory budget, success rate
     python plots/scripts/plot_budget.py --filter arm_family=demo \
-        --metric sweep/success_rate --budget-x demo_budget --name budget_demo_success
+        --metric sweep/success_rate --budget-x demo_budget --name budget_demo
 """
 import argparse
 
 import matplotlib
 
-matplotlib.use("Agg")  # niente display su questa macchina: mai un backend interattivo
+matplotlib.use("Agg")  # no display here: never an interactive backend
 
 import _bootstrap  # noqa: F401,E402
 from _common import (add_aggregation_args, add_grid_args, add_output_args,  # noqa: E402
@@ -48,13 +49,13 @@ def print_metrics():
 
 
 def print_minimum_budgets(series: F.Series):
-    """Il budget minimo per ogni serie disegnata, con la regola del 90%."""
-    print("\n[budget] budget minimo per serie (regola del 90%, vedi docstring):")
+    """The minimum budget for each series drawn, under the 90% rule."""
+    print('\n[budget] minimum budget per series, under the 90% rule:')
     for label, g in series.agg.groupby("label"):
         g = g.sort_values("step")
-        minimo = minimum_budget(g["step"], {"metric": g["mean"]})
+        smallest = minimum_budget(g["step"], {"metric": g["mean"]})
         levels = ", ".join(str(int(v)) for v in sorted(g["step"].unique()))
-        print(f"  {label}: livelli [{levels}] -> minimo {minimo}")
+        print(f"  {label}: levels [{levels}] -> minimum {smallest}")
 
 
 def main():

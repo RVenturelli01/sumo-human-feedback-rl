@@ -1,12 +1,10 @@
 #!/usr/bin/env python
-"""Scarica in cache curve e/o summary, cosi' selettore e script non aspettano W&B.
+"""Fill the cache with curves and summaries, so nothing waits on W&B later.
 
-Tutto qui passa da W&B (niente file locali raggiungibili, vedi
-`docs/analysis-pipeline-guide.md`): la prima apertura di una figura su una
-selezione grande puo' pagare una richiesta per run. Questo script riempie la
-cache in un colpo solo, in parallelo.
+Everything comes from W&B, so opening a figure over a large selection can cost
+one request per run. This fills the cache in one go, in parallel.
 
-    python plots/scripts/prefetch_curves.py                       # curva default + tutte le sweep/*
+    python plots/scripts/prefetch_curves.py                 # default curve + sweep/*
     python plots/scripts/prefetch_curves.py --filter arm_family=hybrid
     python plots/scripts/prefetch_curves.py --metric reward/loss_pref_val --no-summary
 """

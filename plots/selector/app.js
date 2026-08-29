@@ -1,33 +1,33 @@
-/* Selettore run: filtri -> /api/query (copertura) e /api/preview (grafico). */
+/* Run selector: filters -> /api/query (coverage) and /api/preview (figure). */
 
 const state = {
-  // colonna -> {op, values}: l'operatore decide se i valori scelti si tengono
-  // (è / fra) o si escludono (non è / non fra), e se se ne puo' scegliere piu' di uno
+  // column -> {op, values}: the operator decides whether the chosen values are
+  // kept or excluded, and whether more than one can be picked
   dims: {},
   seeds: { min: null, max: null },
-  // run tolte a mano dalla tabella di copertura: restano visibili in tabella
-  // ma non entrano nel grafico
+  // runs removed by hand from the coverage table: still listed there, but
+  // left out of the figure
   excluded: new Set(),
-  // i colori delle serie sono sempre automatici (una curva per ogni
-  // configurazione che varia): niente controllo in pagina per sceglierli a mano.
-  // kind: "curve" (apprendimento, nel tempo) | "budget" (eval finale per livello
-  // di budget): cambiano sia i dati (curves.py vs budget.py) sia i controlli
-  // disponibili (smooth non ha senso per il budget).
-  // budget_x non e' scelto dalla pagina: resta il default del backend
-  // (budget_level, robusto per ogni arm — vedi rtplots/figure.py).
+  // series colours are always automatic, one curve per configuration that
+  // varies, so the page offers no control to pick them by hand.
+  // kind: "curve" over time, or "budget", the final evaluation per budget
+  // level. Both the data and the available controls change with it: smoothing
+  // means nothing for a budget curve.
+  // budget_x is not chosen here: it stays the backend default, budget_level,
+  // which is robust for every method.
   grid: { kind: "curve", rows: "", cols: "", band: "se", smooth: 5,
           metric: "", legend: "outside_right", panel_size: [3.4, 2.5],
-          // solo per le curve di budget: le curve di apprendimento separano
-          // gia' per schema di fusione da sole (auto_hue lato server).
+          // budget curves only: learning curves already split by fusion
+          // scheme on their own, server side.
           compare_fusion: false, compare_norm: false, compare_smoothing: false,
-          // ylim: null = automatico. Il campo esiste gia' nello spec ed e' usato
-          // dalla riga di comando (--ylim/--logy); qui si limita a esporlo.
+          // ylim: null means automatic. The field already exists in the spec
+          // and is used from the command line; here it is only exposed.
           ylim: null, logy: false },
-  // ritocchi a mano delle serie: etichetta di partenza -> {name, color}
+  // hand touch-ups of the series: starting label -> {name, color}
   series_overrides: {},
-  showFormula: true,     // pannello delle definizioni accanto all'anteprima
-  series: [],            // ultimo elenco di serie disegnate
-  seriesSel: null,       // quale e' selezionata nell'elenco
+  showFormula: true,     // the definitions panel beside the preview
+  series: [],            // the series drawn last
+  seriesSel: null,       // which one is selected in the list
   palette: [],
   meta: null,
 };
@@ -51,7 +51,7 @@ function toast(msg) {
   setTimeout(() => el.classList.remove("show"), 2600);
 }
 
-/* --- filtri --------------------------------------------------------------- */
+/* --- filters -------------------------------------------------------------- */
 
 const pillIndex = {};   // colonna -> valore -> {input, label, countEl}
 const opIndex = {};     // colonna -> <select> dell'operatore
@@ -230,8 +230,8 @@ function renderGridControls(fields) {
   });
   const readYlim = () => {
     const lo = parseFloat($("#grid-ymin").value), hi = parseFloat($("#grid-ymax").value);
-    // Entrambi vuoti = automatico; uno solo non e' un intervallo, quindi si
-    // ignora finche' non c'e' anche l'altro.
+    // Both empty means automatic; one alone is not a range, so it is ignored
+    // until the other arrives.
     state.grid.ylim = (Number.isFinite(lo) && Number.isFinite(hi)) ? [lo, hi] : null;
     maybeAutoPreview();
   };
@@ -273,7 +273,7 @@ async function runQuery() {
   $("#n-configs").textContent = data.n_configs;
   $("#states").innerHTML = Object.entries(data.states || {})
     .map(([k, v]) => `<span class="badge ${k}">${k}: ${v}</span>`).join("") +
-    (data.n_excluded ? `<span class="badge excluded">escluse: ${data.n_excluded}</span>` : "");
+    (data.n_excluded ? `<span class="badge excluded">excluded: ${data.n_excluded}</span>` : "");
   state.filterArgs = data.filter_args || [];
   applyCounts(data.counts);
   renderCoverage(data.coverage);
@@ -283,7 +283,7 @@ async function runQuery() {
 function renderCoverage(cov) {
   const box = $("#coverage");
   if (!cov || !cov.rows.length) {
-    box.innerHTML = `<p class="placeholder">Nessuna run per questi filtri.</p>`;
+    box.innerHTML = `<p class="placeholder">No run matches these filters.</p>`;
     $("#coverage-note").textContent = "";
     return;
   }
@@ -329,24 +329,24 @@ function renderCoverage(cov) {
   const note = $("#coverage-note");
   const off = cov.rows.filter((r) => !r.on).length;
   const notes = [];
-  if (cov.truncated) notes.push("(elenco troncato)");
-  if (off) notes.push(`${off} combinazioni escluse dal grafico`);
+  if (cov.truncated) notes.push("(list truncated)");
+  if (off) notes.push(`${off} combinations excluded from the figure`);
   note.textContent = notes.join(" · ");
   if (off) {
     const btn = document.createElement("button");
     btn.className = "ghost small";
-    btn.textContent = "includi tutte";
+    btn.textContent = "include all";
     btn.addEventListener("click", () => { state.excluded.clear(); runQuery(); });
     note.append(" ", btn);
   }
 }
 
-/* --- anteprima ------------------------------------------------------------ */
+/* --- preview -------------------------------------------------------------- */
 
 function maybeAutoPreview() {
   if ($("#auto-preview").checked) { runPreview(); return; }
-  // Con l'anteprima automatica spenta la figura a schermo e' quella di prima:
-  // senza segnalarlo, contraddice in silenzio l'impostazione appena cambiata.
+  // With auto-preview off the figure on screen is still the old one. Unmarked,
+  // it would quietly contradict the setting just changed.
   const box = $("#preview-box");
   if (box.querySelector("img")) box.classList.add("stale");
 }
@@ -364,26 +364,26 @@ async function runPreview() {
   if (data.error) { box.innerHTML = `<p class="error">${data.error}</p>`; return; }
   const hue = (data.hue || []).join(" × ");
   const merged = (data.merged || []).join(", ");
-  box.innerHTML = `<img src="data:image/png;base64,${data.png}" alt="anteprima">` +
-    `<p class="hint">${esc(data.metric || "")} · ${data.series} serie · ` +
-    `${data.panels} pannelli · ${data.elapsed}s` +
-    (hue ? ` · colori${data.auto_hue ? " (auto)" : ""}: ${esc(hue)}` : "") + `</p>` +
+  box.innerHTML = `<img src="data:image/png;base64,${data.png}" alt="preview">` +
+    `<p class="hint">${esc(data.metric || "")} · ${data.series} series · ` +
+    `${data.panels} panels · ${data.elapsed}s` +
+    (hue ? ` · colours${data.auto_hue ? " (auto)" : ""}: ${esc(hue)}` : "") + `</p>` +
     (merged ? `<p class="error merged-warning">${esc(merged)} ${
-      data.merged.length > 1 ? "variano" : "varia"} senza separare le curve: ` +
-      `configurazioni diverse sono mediate insieme.</p>` : "") +
+      data.merged.length > 1 ? "vary" : "varies"} without splitting the curves: ` +
+      `different configurations are averaged together.</p>` : "") +
     ((data.truncated || []).length
-      ? `<p class="error merged-warning">La serie si ferma a ${
-          fmtStep(data.truncated[0].end)} invece di ${fmtStep(data.truncated[0].longest)}: ` +
-        `una run del gruppo e' piu' corta delle altre e la griglia comune si adegua ` +
-        `alla piu' corta.</p>`
+      ? `<p class="error merged-warning">The series stops at ${
+          fmtStep(data.truncated[0].end)} instead of ${fmtStep(data.truncated[0].longest)}: ` +
+        `one run in the group is shorter than the others, and the shared grid ` +
+        `follows the shortest.</p>`
       : "");
   renderSeries(data.series_list || [], data.palette || []);
   refreshFormula();
 }
 
-/* --- formule delle metriche ----------------------------------------------- */
+/* --- metric formulas ------------------------------------------------------ */
 
-// Rese lato server con mathtext (nessuna dipendenza JS): l'SVG arriva pronto.
+// Rendered server side with mathtext, no JS dependency: the SVG arrives ready.
 async function refreshFormula() {
   const box = $("#formula-box");
   if (!state.showFormula) { box.hidden = true; return; }
@@ -393,7 +393,7 @@ async function refreshFormula() {
   $("#formula-body").innerHTML = data.svg;
 }
 
-/* --- ritocchi alle serie -------------------------------------------------- */
+/* --- series touch-ups ----------------------------------------------------- */
 
 function renderSeries(items, palette) {
   state.series = items;
@@ -450,7 +450,7 @@ function copySeriesRule() {
   const chosen = (state.series || []).find((s) => s.key === state.seriesSel);
   if (!chosen) return;
   navigator.clipboard.writeText(chosen.rule)
-    .then(() => toast("Regola copiata: incollala in plots/style.toml"))
+    .then(() => toast("Rule copied: paste it into plots/style.toml"))
     .catch(() => toast("Copia non riuscita"));
 }
 
@@ -466,7 +466,7 @@ function plainText(html) {
 async function downloadHparams(cov, i, btn) {
   const row = cov.rows[i];
   const label = btn.textContent;
-  // La config completa arriva da W&B: la prima volta e' una richiesta per run.
+  // The full config comes from W&B: the first time it is one request per run.
   btn.disabled = true;
   btn.textContent = "…";
   try {
@@ -507,7 +507,7 @@ async function exportFigure(format) {
   const old = btn.textContent;
   btn.disabled = true; btn.textContent = "…";
   try {
-    // Il .tex ha le sue macro: le formule come immagine avrebbero poco senso.
+    // The .tex has its own macros, so formulas as an image make little sense.
     const data = await post("/api/export", {
       ...payload(), format,
       include_formula: format !== "tex" && !!state.showFormula,
@@ -516,7 +516,7 @@ async function exportFigure(format) {
     download(data.url, data.filename);
     showDownloadLink(data);
     toast(format === "tex"
-      ? `${data.n_panels} pannelli + snippet · ${data.filename}`
+      ? `${data.n_panels} panels + snippet · ${data.filename}`
       : data.filename);
   } finally {
     btn.disabled = false; btn.textContent = old;
@@ -544,7 +544,7 @@ function renderSelections(items) {
   selectionItems = items || [];
   const box = $("#selections");
   if (!selectionItems.length) {
-    box.innerHTML = `<p class="placeholder">Nessuna selezione salvata.</p>`;
+    box.innerHTML = `<p class="placeholder">No saved selection.</p>`;
     return;
   }
   box.innerHTML = selectionItems.map((it) => `
@@ -675,7 +675,7 @@ function applySelection(entry) {
 function copyFilters() {
   const text = (state.filterArgs || []).join(" ");
   navigator.clipboard.writeText(text)
-    .then(() => toast(text ? `Copiato: ${text}` : "Nessun filtro attivo"))
+    .then(() => toast(text ? `Copied: ${text}` : "No filter active"))
     .catch(() => toast(text || "nessun filtro"));
 }
 

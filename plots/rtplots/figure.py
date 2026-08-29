@@ -1,16 +1,15 @@
-"""Dalla selezione alla figura: una sola pipeline, usata da CLI e selettore.
+"""From a selection to a figure: one pipeline, used by the CLI and the selector.
 
-Un solo oggetto serializzabile, `FigureSpec`, e' anche il formato con cui il
-selettore salva le selezioni: «rifammi questa figura» e' letteralmente
-rileggere lo spec.
+`FigureSpec` is a single serializable object, and also the format the selector
+saves selections in: "draw this again" is literally rereading the spec.
 
-`kind` sceglie la pipeline dei dati (non solo lo stile del disegno):
-  - "curve"   una serie storica per run, aggregata nel tempo (`curves.py`);
-  - "budget"  un solo numero per run (l'eval finale), aggregato per livello di
-              budget (`budget.py`).
-Sono percorsi diversi perche' i dati di partenza sono diversi (una history W&B
-campionata nel tempo contro un `run.summary` scalare), non solo perche' il
-grafico si disegna diversamente.
+`kind` chooses the data pipeline, not just the drawing style:
+
+    curve    one time series per run, aggregated over time
+    budget   one number per run, the final evaluation, aggregated per budget
+
+They are different paths because the data is different: a W&B history sampled
+over time against a scalar `run.summary`.
 """
 from __future__ import annotations
 
@@ -31,47 +30,46 @@ from .select import select_runs
 
 SPEC_VERSION = 1
 
-# Assi di budget disponibili come x delle curve di budget: budget_level e'
-# quello robusto di default (sempre popolato, un solo livello per gruppo,
-# indipendente dal fatto che l'arm scali query o traiettorie); query_budget e
-# demo_budget restano scelte esplicite per confronti a un solo braccio.
+# Which column can act as the x axis of a budget curve. budget_level is the
+# safe default: always filled, one level per group, and indifferent to whether
+# the method scales queries or trajectories. The other two are explicit
+# choices, for comparing one method with itself.
 BUDGET_X_CHOICES = ("budget_level", "query_budget", "demo_budget")
 
 
 @dataclass
 class FigureSpec:
-    """Tutto quello che serve per disegnare una figura, e nient'altro."""
+    """Everything needed to draw one figure, and nothing else."""
 
     kind: str = "curve"                  # curve | budget
-    # cosa
-    run_ids: list | None = None          # selezione esplicita (dal selettore)
+    # what to draw
+    run_ids: list | None = None          # explicit selection, from the selector
     filters: list = field(default_factory=list)
     state: str | None = "finished"
     metric: str = ""                     # "" = default del kind (vedi __post_init__)
     budget_x: str = "budget_level"       # solo per kind="budget"
-    # come si dividono le curve
+    # how the curves are split
     rows: str | None = None
     cols: str | None = None
     hue: list | None = None              # None = automatico
-    # Solo per kind="budget": aggiunge `fusion` all'identita' della serie, cosi'
-    # schemi di fusione diversi dello stesso arm diventano curve distinte
-    # invece di essere mediati insieme. Le curve di apprendimento separano gia'
-    # per `fusion` da sole (auto_hue), quindi la' non cambia niente.
+    # Budget curves only: adds `fusion` to the series identity, so two fusion
+    # schemes of one method become separate curves instead of being averaged
+    # together. Learning curves already split on `fusion` by themselves.
     compare_fusion: bool = False
-    # Stessa idea per l'ablation della normalizzazione: senza, ON e OFF dello
-    # stesso braccio finiscono nella stessa curva.
+    # Same for the normalization ablation: without it, ON and OFF of one
+    # method end up in the same curve.
     compare_norm: bool = False
-    # E per l'ablation del label smoothing (eps=0 contro eps>0).
+    # And for the label-smoothing ablation, eps=0 against eps>0.
     compare_smoothing: bool = False
     hue_order: list | None = None
     label_fields: list | None = None     # None = come hue
     min_seeds: int = 1
-    # aggregazione (i default vengono da plots/style.toml, vedi rules.py)
+    # aggregation; the defaults come from plots/style.toml
     band: str = field(default_factory=lambda: R.get("lines", "band"))
     smooth: int = field(default_factory=lambda: int(R.get("lines", "smooth")))
     grid_points: int | None = None
     xmax: float | None = None
-    # aspetto
+    # appearance
     paper: bool = True
     share: str = field(default_factory=lambda: R.get("figure", "share"))
     panel_size: tuple = field(default_factory=lambda: tuple(R.get("figure", "panel_size")))
@@ -86,14 +84,14 @@ class FigureSpec:
     xscale: float = field(default_factory=lambda: float(R.get("figure", "xscale")))
     ylim: tuple | None = None
     logy: bool = False
-    ylabel: str | None = None            # None = quella della metrica
+    ylabel: str | None = None            # None = whatever the metric says
     series_overrides: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if not self.metric:
             self.metric = DEFAULT_SUMMARY_METRIC if self.kind == "budget" else DEFAULT_CURVE_METRIC
 
-    # --- serializzazione -----------------------------------------------------
+    # --- serialization -------------------------------------------------------
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -112,14 +110,14 @@ class FigureSpec:
             spec.panel_size = tuple(spec.panel_size)
         return spec
 
-    # --- opzioni di disegno --------------------------------------------------
+    # --- drawing options -----------------------------------------------------
 
     def grid_options(self, hue, ylabel: str) -> GridOptions:
         is_budget = self.kind == "budget"
-        # `[figure].xscale` e `xlabel` valgono per l'asse dell'agente (timestep,
-        # in milioni). Le metriche che l'algoritmo di reward learning logga
-        # stanno sul contatore `iterations`, che va da 0 a ~100: dividerlo per
-        # 1e6 lo schiaccia a zero e l'etichetta diventa falsa.
+        # `[figure].xscale` and `xlabel` are meant for the agent axis, in
+        # millions of timesteps. The reward-learning metrics sit on the
+        # `iterations` counter, which runs from 0 to about 100: dividing that
+        # by 1e6 flattens it to zero and makes the label a lie.
         on_iteration_axis = (
             not is_budget
             and metric_info(self.metric).get("step_key") == ITER_STEP
@@ -143,28 +141,24 @@ class FigureSpec:
         )
 
 
-# --- scelta delle serie -----------------------------------------------------
+# --- choosing the series ----------------------------------------------------
 
-# Tratti usati per separare serie che una regola di style.toml colorerebbe
-# allo stesso modo (vedi _decollide).
+# Line styles used to separate series that one style.toml rule would colour
+# identically; see _decollide.
 DASH_CYCLE = ("solid", "dashed", "dotted", "dashdot", (0, (5, 1, 1, 1)))
 
 
 def _decollide(styles: dict, order: list, matches: dict | None = None) -> None:
-    """Distingue col tratto le serie che finirebbero identiche.
+    """Tell apart, by line style, series that would come out identical.
 
-    Le regole di `style.toml` applicano la PRIMA che combacia, quindi non
-    possono esprimere "colore dal braccio, tratto dall'ablation": se si
-    confrontano due configurazioni dello stesso arm (normalizzazione on/off,
-    schemi di fusione, ...) la regola per `arm` le colora entrambe uguali e le
-    curve diventano indistinguibili. Qui il colore resta quello della regola e
-    si differenzia solo il tratto.
+    A `style.toml` rule applies the first match, so it cannot say "colour by
+    method, dash by ablation". Comparing two configurations of one method would
+    colour both the same and the curves would be indistinguishable. Here the
+    colour stays what the rule says and only the dash pattern changes.
 
-    Dentro un gruppo che collide, le configurazioni "di base" prendono il tratto
-    continuo: fra due valori booleani va per prima la condizione disattivata, in
-    modo che l'ablation sia sempre la tratteggiata e la convenzione non cambi da
-    una figura all'altra (la legenda invece elenca i booleani con `si` per
-    primo, e quello non lo tocchiamo).
+    Inside a colliding group the baseline configuration keeps the solid line:
+    between two booleans the disabled one comes first, so the ablation is always
+    the dashed curve and the convention does not move between figures.
     """
     groups: dict = {}
     for lab in order:
@@ -199,7 +193,7 @@ def _series_styles(agg, ckey_colors: dict) -> dict:
 
 
 def _apply_overrides(agg, order, styles, matches, overrides: dict):
-    """Applica i ritocchi fatti a mano nell'anteprima (nome e colore di una serie)."""
+    """Apply the touch-ups made by hand in the preview: a name, a colour."""
     overrides = {k: v for k, v in (overrides or {}).items() if k in styles}
     if not overrides:
         return agg, order, styles, matches
@@ -221,7 +215,7 @@ def _apply_overrides(agg, order, styles, matches, overrides: dict):
 
 
 def auto_hue(df, exclude=()) -> list:
-    """Serie = tutte le dimensioni di ablation che variano nella selezione."""
+    """One series per ablation dimension that varies in the selection."""
     exclude = {c for c in exclude if c}
     hue = [c for c in schema.SERIES_FIELDS
            if c in df.columns and c not in exclude and df[c].nunique(dropna=False) > 1]
@@ -236,7 +230,7 @@ def auto_hue(df, exclude=()) -> list:
 
 
 def merged_dims(df, hue, panels=()) -> list:
-    """Dimensioni che variano ma non separano le curve: finiscono mediate."""
+    """Dimensions that vary but do not split the curves, so get averaged."""
     covered = set(hue) | {c for c in panels if c}
     return [c for c in schema.SERIES_FIELDS
             if c in df.columns and c not in covered and df[c].nunique(dropna=False) > 1]
@@ -251,23 +245,23 @@ def _sort_ascending(df, cols) -> list:
 
 @dataclass
 class Series:
-    """Risultato della preparazione: i dati e come vanno disegnati."""
+    """The result of preparing: the data, and how to draw it."""
 
-    sel: pd.DataFrame           # run selezionati
+    sel: pd.DataFrame           # the selected runs
     agg: pd.DataFrame           # curve aggregate sui seed
-    order: list                 # ordine delle serie in legenda
+    order: list                 # series order in the legend
     styles: dict                # etichetta -> {color, width, style, band_alpha, latex}
     matches: dict               # etichetta -> valori che la identificano (per style.toml)
     hue: list                   # dimensioni che decidono il colore
     ylabel: str
     metric_label: str
-    merged: list                # dimensioni che variano senza separare le curve
+    merged: list                # dimensions that vary without splitting curves
     truncated: list = field(default_factory=list)  # serie accorciate da una run corta
     late_start: list = field(default_factory=list)  # serie che iniziano dopo lo step 0
 
 
 def select(index: pd.DataFrame, spec: FigureSpec) -> pd.DataFrame:
-    """Run che la figura deve usare (selezione esplicita + filtri + stato)."""
+    """The runs the figure should use: explicit selection, filters and state."""
     df = index[index.run_id.isin(spec.run_ids)] if spec.run_ids is not None else index
     return select_runs(df, spec.filters, state=spec.state)
 
@@ -283,16 +277,16 @@ def _load_aggregate(sel: pd.DataFrame, spec: FigureSpec, group_cols: list,
                        grid_points=spec.grid_points, xmax=spec.xmax)
 
 
-# Dimensioni che nelle curve di budget non separano da sole ma non sono
-# nemmeno proxy del livello: se variano senza essere su hue/righe/colonne,
-# configurazioni diverse finiscono davvero mediate insieme.
+# In budget curves these do not split the data by themselves, and they are not
+# proxies for the level either: if they vary without being on hue, rows or
+# columns, different configurations really do get averaged together.
 BUDGET_ABLATIONS = (("fusion", "compare_fusion"),
                     ("normalize_agent_reward", "compare_norm"),
                     ("label_smoothing", "compare_smoothing"))
 
 
 def _merged_budget_dims(sel, hue, spec: FigureSpec) -> list:
-    """Colonne di ablation che finirebbero mediate nella stessa serie."""
+    """Ablation columns that would be averaged into the same series."""
     separated = set(hue) | {spec.rows, spec.cols}
     return [col for col, _ in BUDGET_ABLATIONS
             if col in sel.columns
@@ -301,47 +295,45 @@ def _merged_budget_dims(sel, hue, spec: FigureSpec) -> list:
 
 
 def prepare(index: pd.DataFrame, spec: FigureSpec, verbose: bool = True) -> Series:
-    """Selezione -> dati -> aggregazione -> etichette e colori."""
+    """Selection -> data -> aggregation -> labels and colours."""
     sel = select(index, spec)
     if sel.empty:
-        raise ValueError("Nessun run corrisponde ai filtri.")
+        raise ValueError("No run matches the filters.")
 
     info = metric_info(spec.metric)
     hue = [c for c in (spec.hue or []) if c in sel.columns]
     if spec.kind == "budget":
-        # Ogni livello di budget gira con il best-config *di quel livello*
-        # (Optuna tunato per punto): quasi ogni iperparametro (initial_queries,
-        # pref_temperature, reward_net_arch, ...) covaria col livello stesso.
-        # L'auto_hue generico li terrebbe come dimensioni "necessarie" solo
-        # perche' proxy del livello — che pero' e' gia' l'asse x, non una
-        # dimensione di colore. Qui il default e' un braccio = una serie;
-        # un'ablation vera (es. normalize_agent_reward) si chiede con --hue.
+        # Each budget level runs with the best config for that level, so almost
+        # every hyperparameter covaries with the level itself. The generic
+        # auto_hue would keep them as "needed" dimensions only because they
+        # proxy the level, which is already the x axis. The default here is one
+        # method per series; a real ablation is asked for with --hue.
         hue = hue or ["arm"] + [col for col, flag in BUDGET_ABLATIONS
                                 if getattr(spec, flag)]
         # `merged_dims` resta spento qui per il motivo sopra, ma queste due
-        # colonne non sono proxy del livello: se variano e nessuno le separa,
+        # columns are not proxies for the level: if they vary unseparated,
         # configurazioni diverse finiscono davvero mediate insieme e va detto.
         merged = _merged_budget_dims(sel, hue, spec)
     else:
         hue = hue or auto_hue(sel, exclude=(spec.rows, spec.cols))
         merged = merged_dims(sel, hue, (spec.rows, spec.cols))
     if verbose:
-        print(f"[plot] {len(sel)} run selezionati; serie per: {', '.join(hue)}")
+        print(f"[plot] {len(sel)} runs selected; series by: {', '.join(hue)}")
         if merged:
             flags = {col: flag for col, flag in BUDGET_ABLATIONS}
             opts = [f"--{flags[c].replace('_', '-')}" for c in merged if c in flags]
-            fix = (f"usa {' e '.join(opts)}" if len(opts) == len(merged)
-                   else "togli --hue per le serie automatiche")
-            print(f"[plot] ATTENZIONE: {', '.join(merged)} variano ma non separano le "
-                  f"curve: configurazioni diverse finiscono mediate insieme ({fix})")
+            fix = (f"'use '{' e '.join(opts)}" if len(opts) == len(merged)
+                   else 'drop --hue for automatic series')
+            print(f"[plot] WARNING: {', '.join(merged)} vary but do not split the "
+                  f"curves: different configurations get averaged together ({fix})")
 
     group_cols = sorted(set(hue) | {"arm"} | {c for c in (spec.rows, spec.cols) if c})
     agg = _load_aggregate(sel, spec, group_cols, verbose)
     if agg.empty:
-        raise ValueError(f"Nessun dato per «{info['label']}» in questa selezione.")
+        raise ValueError(f"No data for «{info['label']}» in this selection.")
     agg = agg[agg.n_seeds >= spec.min_seeds].copy()
     if agg.empty:
-        raise ValueError(f"Nessuna serie con almeno {spec.min_seeds} seed.")
+        raise ValueError(f"No series with at least {spec.min_seeds} seeds.")
 
     label_fields = tuple(spec.label_fields or hue) + ("arm",)
     agg["label"] = [L.series_label(r, fields=label_fields, paper=spec.paper)
@@ -370,15 +362,15 @@ def prepare(index: pd.DataFrame, spec: FigureSpec, verbose: bool = True) -> Seri
     truncated = list(agg.attrs.get("truncated") or [])
     if verbose and truncated:
         for t in truncated:
-            print(f"[plot] ATTENZIONE: la serie si ferma a {t['end']:,.0f} invece di "
-                  f"{t['longest']:,.0f}: la run {t['run_id']} e' piu' corta delle altre "
-                  f"del suo gruppo e la griglia comune si adegua alla piu' corta")
+            print(f"'[plot] WARNING: the series stops at '{t['end']:,.0f} invece di "
+                  f"{t['longest']:,.0f}: run {t['run_id']} is shorter than the others "
+                  f"in its group, and the shared grid follows the shortest")
     late_start = list(agg.attrs.get("late_start") or [])
     if verbose and late_start:
         for t in late_start:
-            print(f"[plot] la serie parte da {t['start']:,.0f} invece di "
-                  f"{t['earliest']:,.0f}: la run {t['run_id']} inizia a loggare questa "
-                  f"metrica piu' tardi delle altre del suo gruppo")
+            print(f"'[plot] the series starts at '{t['start']:,.0f} invece di "
+                  f"{t['earliest']:,.0f}: run {t['run_id']} starts logging this metric "
+                  f"later than the others in its group")
     ylabel = spec.ylabel or info["ylabel"]
     return Series(sel=sel, agg=agg, order=order, styles=styles, hue=hue,
                   matches=matches, ylabel=ylabel, metric_label=info["label"], merged=merged,
@@ -386,20 +378,20 @@ def prepare(index: pd.DataFrame, spec: FigureSpec, verbose: bool = True) -> Seri
 
 
 def draw(series: Series, spec: FigureSpec):
-    """Figura matplotlib a partire da un `Series` gia' preparato."""
+    """A matplotlib figure from an already prepared `Series`."""
     return draw_grid(series.agg, series.order, series.styles,
                      spec.grid_options(series.hue, series.ylabel))
 
 
 def build(index: pd.DataFrame, spec: FigureSpec, verbose: bool = True):
-    """(figura, Series) — il percorso completo, uguale per CLI e selettore."""
+    """(figure, Series): the whole path, the same for the CLI and the selector."""
     series = prepare(index, spec, verbose=verbose)
     return draw(series, spec), series
 
 
 @dataclass
 class Panel:
-    """Un riquadro della griglia, disegnabile da solo."""
+    """One cell of the grid, drawable on its own."""
 
     series: Series
     spec: FigureSpec
@@ -423,7 +415,7 @@ def _slug_value(value) -> str:
 
 
 def split_panels(series: Series, spec: FigureSpec) -> list:
-    """La griglia spacchettata in pannelli indipendenti, uno per figura (export .tex)."""
+    """The grid unpacked into independent panels, one figure each."""
     from dataclasses import replace as dc_replace
 
     from .grid import panel_values

@@ -1,23 +1,18 @@
-"""Iperparametri di un gruppo di run, in YAML.
+"""The hyperparameters of a group of runs, as YAML.
 
-Perche' serve un modulo e non due righe in `api.py`: l'indice
-(`rtplots/source.py`) conserva solo le colonne su cui si filtra e si colora --
-arm, budget, temperatura, smoothing, architettura. Gli iperparametri che si
-vogliono davvero rileggere dopo (``lr_rew``, ``l2_rew``, ``gradient_steps_rew``,
-``batch_size_expert``, ``batch_size_model``, ``batch_size_pref``) NON sono
-nell'indice. L'unica fonte e' la config Hydra completa, che W&B restituisce solo
-dopo ``run.load(force=True)`` -- la stessa trappola gia' documentata in
-`source.py`, dove ``api.runs()`` da' ``config == {}``.
+The index keeps only the columns used for filtering and colouring. The
+hyperparameters worth rereading later, like ``lr_rew`` or ``gradient_steps_rew``,
+are not in it: the only source is the full Hydra config, which W&B returns only
+after ``run.load(force=True)``. That is one network request per run, cached on
+disk like the curves and the summaries.
 
-Quindi: una richiesta di rete per run, cachata su disco come gia' fanno curve e
-summary. Una riga della tabella di copertura e' un GRUPPO (tipicamente tre
-seed), quindi lo YAML separa cio' che le run condividono da cio' che le
-distingue: se il gruppo e' sano, l'unica differenza e' ``run.seed``.
+One row of the coverage table is a group, usually three seeds, so the YAML keeps
+what the runs share apart from what tells them apart. In a healthy group the
+only difference is ``run.seed``.
 
-L'emissione YAML e' fatta a mano invece che con PyYAML per due motivi: il
-selettore dichiara di girare con la sola libreria standard piu' quello che i
-plot gia' usano (PyYAML non e' in `plots/requirements.txt`), e servono commenti
-nel file prodotto, che PyYAML non sa scrivere.
+The YAML is written by hand rather than with PyYAML: the selector runs on the
+standard library plus what the plots already need, and the output has comments,
+which PyYAML cannot write.
 """
 from __future__ import annotations
 
@@ -29,10 +24,10 @@ from .paths import CACHE_DIR, ensure_dirs, wandb_path
 
 CONFIG_DIR = CACHE_DIR / "configs"
 
-# Sezioni della config Hydra, nell'ordine in cui vale la pena leggerle.
+# Hydra config sections, in the order worth reading them.
 SECTION_ORDER = ("run", "algo", "agent", "env", "train", "eval", "wandb")
 
-# Chiavi che descrivono dove la run e' finita, non come e' stata configurata.
+# Keys saying where the run ended up, not how it was configured.
 NOISE_KEYS = (
     "run.output_dir", "run.name", "run.group", "wandb.entity", "wandb.project",
     "wandb.tags", "wandb.mode", "wandb.id",
@@ -44,12 +39,11 @@ def _cache_file(project: str, run_id: str) -> Path:
 
 
 def load_config(run_id: str, project: str, state: str = "") -> dict:
-    """Config Hydra completa di una run, cachata su disco.
+    """The full Hydra config of one run, cached on disk.
 
-    Una run non ancora ``finished`` non viene cachata: e' la stessa regola di
-    `budget.load_summary` e `curves.curve_from_wandb`. Qui in realta' la config
-    non cambia piu' dopo il lancio, ma tenere una sola regola per tutta la cache
-    costa meno che ricordarsi l'eccezione.
+    A run that is not finished is not cached, the same rule the curves and the
+    summaries follow. A config does not really change after launch, but one rule
+    for the whole cache costs less than remembering the exception.
     """
     ensure_dirs()
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -60,21 +54,21 @@ def load_config(run_id: str, project: str, state: str = "") -> dict:
 
     api = wandb.Api()
     run = api.run(f"{wandb_path(project)}/{run_id}")
-    run.load(force=True)                      # senza questo config e' {}
+    run.load(force=True)                      # without this, config is {}
     cfg = dict(run.config or {})
     if run.state == "finished":
         cache_file.write_text(json.dumps(cfg, default=str))
     return cfg
 
 
-# --- appiattimento ----------------------------------------------------------
+# --- flattening -------------------------------------------------------------
 
 def flatten(cfg: dict, prefix: str = "") -> Dict[str, Any]:
     """`{"algo": {"kwargs": {"lr_rew": 1e-3}}}` -> `{"algo.kwargs.lr_rew": 1e-3}`.
 
-    Le liste restano valori: `net_arch: [64, 64]` e' un iperparametro solo, e
-    spezzarlo in `net_arch.0` / `net_arch.1` renderebbe illeggibile il diff fra
-    due run che usano architetture di profondita' diversa.
+    Lists stay values: `net_arch: [64, 64]` is one hyperparameter, and splitting
+    it into `net_arch.0` and `net_arch.1` would make the diff between two
+    different depths unreadable.
     """
     out: Dict[str, Any] = {}
     for key, value in cfg.items():
@@ -92,11 +86,11 @@ def _section_rank(key: str) -> tuple:
 
 
 def split_common(per_run: Dict[str, Dict[str, Any]]) -> tuple[dict, Dict[str, dict]]:
-    """Divide le chiavi condivise da tutte le run da quelle che differiscono.
+    """Split the keys every run shares from the keys that differ.
 
-    Una chiave assente in una run e presente in un'altra conta come differenza:
-    non e' un dettaglio, e' esattamente il caso in cui una run e' stata lanciata
-    con un'opzione che le altre non avevano.
+    A key present in one run and missing from another counts as a difference:
+    that is exactly the case where one run was launched with an option the
+    others did not have.
     """
     if not per_run:
         return {}, {}
@@ -122,7 +116,7 @@ def _same(a, b) -> bool:
     return a == b
 
 
-# --- emissione YAML ---------------------------------------------------------
+# --- writing the YAML -------------------------------------------------------
 
 _PLAIN_OK = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./+")
 
@@ -135,8 +129,8 @@ def _scalar(v) -> str:
     if isinstance(v, (int,)):
         return str(v)
     if isinstance(v, float):
-        # repr tiene le cifre significative: lr_rew = 0.0011542956981980379 deve
-        # restare confrontabile con l'export di Optuna, non diventare 0.00115.
+        # repr keeps the significant digits: lr_rew = 0.0011542956981980379
+        # has to stay comparable, not become 0.00115.
         return repr(v)
     if isinstance(v, (list, tuple)):
         return "[" + ", ".join(_scalar(x) for x in v) + "]"
@@ -152,10 +146,10 @@ def _emit(mapping: Dict[str, Any], indent: int) -> List[str]:
 
 
 def to_yaml(blocks: Sequence[tuple]) -> str:
-    """`[(commento|None, chiave|None, mapping)]` -> testo YAML.
+    """`[(comment|None, key|None, mapping)]` -> YAML text.
 
-    Volutamente minimale: le config Hydra di questo progetto sono mappe annidate
-    di scalari e liste, gia' appiattite qui in chiavi puntate.
+    Deliberately minimal: these configs are nested maps of scalars and lists,
+    already flattened here into dotted keys.
     """
     lines: List[str] = []
     for comment, key, mapping in blocks:
@@ -173,26 +167,26 @@ def to_yaml(blocks: Sequence[tuple]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-# --- documento finale -------------------------------------------------------
+# --- the finished document --------------------------------------------------
 
 def run_hparams(cfg: dict) -> Dict[str, Any]:
-    """Config Hydra -> chiavi puntate, senza quelle che non sono iperparametri.
+    """Hydra config -> dotted keys, without the ones that are not parameters.
 
-    ``run.output_dir``, ``run.name``, ``wandb.*`` dicono dove la run e' finita,
-    non come e' stata configurata: lasciarle dentro farebbe comparire ogni run
-    del gruppo nella sezione "differenze" e seppellirebbe l'unica riga che conta.
+    ``run.output_dir``, ``run.name`` and ``wandb.*`` say where a run ended up,
+    not how it was configured. Leaving them in would put every run of the group
+    under "differences" and bury the one line that matters.
     """
     return {k: v for k, v in flatten(cfg).items() if k not in NOISE_KEYS}
 
 
 def group_yaml(records: Iterable[dict], cells: Sequence[str] = (),
                columns: Sequence[str] = (), loader=None) -> str:
-    """YAML degli iperparametri di un gruppo di run della tabella di copertura.
+    """The hyperparameters of one coverage-table group, as YAML.
 
-    ``records`` sono righe dell'indice (run_id, project, state, name, seed).
-    ``loader`` e' iniettabile per i test; risolto qui e non come default della
-    firma, altrimenti resterebbe legato alla funzione vista alla definizione del
-    modulo e un monkeypatch su ``load_config`` non avrebbe effetto.
+    ``records`` are index rows. ``loader`` is injectable for the tests, and is
+    resolved here rather than as a default argument: a default would bind to the
+    function seen at import time, and monkeypatching ``load_config`` would have
+    no effect.
     """
     loader = loader or load_config
     records = list(records)
@@ -202,34 +196,34 @@ def group_yaml(records: Iterable[dict], cells: Sequence[str] = (),
         run_id = rec["run_id"]
         try:
             cfg = loader(run_id, rec.get("project") or "", rec.get("state") or "")
-        except Exception as exc:                       # una run rotta non blocca il resto
+        except Exception as exc:                       # one broken run must not stop the rest
             errors[run_id] = f"{type(exc).__name__}: {exc}"
             continue
         per_run[run_id] = run_hparams(cfg)
 
     common, differing = split_common(per_run)
 
-    identita = {}
+    identity = {}
     for col, cell in zip(columns, cells):
-        identita[str(col)] = cell
-    identita["n_run"] = len(records)
-    identita["run_ids"] = [r["run_id"] for r in records]
+        identity[str(col)] = cell
+    identity["n_run"] = len(records)
+    identity["run_ids"] = [r["run_id"] for r in records]
     names = [r.get("name") for r in records if r.get("name")]
     if names:
-        identita["run_names"] = names
+        identity["run_names"] = names
 
     blocks = [
-        ("Iperparametri di questa riga della tabella di copertura.\n"
-         "Generato dal selettore (plots/), dalla config Hydra registrata su W&B.",
-         "gruppo", identita),
-        (f"Condivisi da tutte le {len(per_run)} run del gruppo.", "comune", common),
+        ("Hyperparameters of this row of the coverage table.\n"
+         "Written by the selector, from the Hydra config recorded on W&B.",
+         "group", identity),
+        (f"Shared by all {len(per_run)} runs in the group.", "shared", common),
     ]
     if differing:
         diff_flat = {f"{key} [{rid}]": val
                      for key, per in differing.items() for rid, val in per.items()}
         blocks.append(
-            ("Chiavi su cui le run del gruppo NON coincidono.\n"
-             "In un gruppo sano qui c'e' solo run.seed.", "differenze", diff_flat))
+            ("Keys the runs in the group do NOT agree on.\n"
+             "In a healthy group this is only run.seed.", "differences", diff_flat))
     if errors:
-        blocks.append(("Run che non e' stato possibile leggere.", "errori", errors))
+        blocks.append(("Runs that could not be read.", "errors", errors))
     return to_yaml(blocks)

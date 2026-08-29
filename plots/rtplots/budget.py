@@ -1,16 +1,13 @@
-"""Caricamento e aggregazione delle curve di budget.
+"""Loading and aggregating the budget curves.
 
-A differenza delle curve di apprendimento (`curves.py`, una serie storica per
-run), qui ogni run vale **un solo numero**: la valutazione finale held-out,
-scritta da `log_sweep_summary` come `run.summary["sweep/<metrica>"]` (vedi
-`scripts/_common.py:evaluate`). Si aggrega sui seed per livello di budget,
-non nel tempo — stessa logica di `scripts/report_budget_curves.py`, generalizzata
-per passare dalla stessa selezione/griglia del resto del motore invece di un
-regex sul nome del gruppo.
+Where a learning curve is a time series per run, here each run is worth a
+single number: the final held-out evaluation, written to
+`run.summary["sweep/<metric>"]`. Runs are aggregated over seeds per budget
+level rather than over time.
 
-`run.summary` e' disponibile senza il costoso `run.load(force=True)` che serve
-invece per la config (vedi `source.py`): una richiesta per run, messa in cache
-su disco perche' non cambia piu' una volta che la run e' `finished`.
+`run.summary` comes without the expensive `run.load(force=True)` the config
+needs, so it is one request per run, cached on disk because it stops changing
+once the run is finished.
 """
 from __future__ import annotations
 
@@ -24,7 +21,7 @@ import pandas as pd
 from .paths import CACHE_DIR, ensure_dirs, wandb_path
 
 SUMMARY_DIR = CACHE_DIR / "summary"
-PASS_RATIO = 0.90  # regola del budget minimo: entrambe le metriche >=90% del livello massimo
+PASS_RATIO = 0.90  # minimum-budget rule: both metrics at 90% of the best level
 
 
 def _cache_file(project: str, run_id: str) -> Path:
@@ -32,9 +29,9 @@ def _cache_file(project: str, run_id: str) -> Path:
 
 
 def load_summary(run_id: str, project: str, state: str = "finished") -> dict:
-    """Il summary completo di una run (tutte le chiavi `sweep/*` incluse).
+    """The full summary of one run, `sweep/*` keys included.
 
-    Le run non ancora `finished` non si cachano: il summary puo' ancora cambiare.
+    Unfinished runs are not cached: their summary can still change.
     """
     ensure_dirs()
     SUMMARY_DIR.mkdir(parents=True, exist_ok=True)
@@ -52,7 +49,7 @@ def load_summary(run_id: str, project: str, state: str = "finished") -> dict:
 
 
 def load_summaries(index: pd.DataFrame, workers: int = 8, verbose: bool = True) -> pd.DataFrame:
-    """Summary di tutte le run dell'indice, in formato tidy [run_id, <metrica>...]."""
+    """Summaries of every run in the index, as [run_id, <metric>...]."""
     def fetch(rec):
         return rec["run_id"], load_summary(rec["run_id"], rec["project"], rec.get("state", ""))
 
@@ -68,11 +65,10 @@ def load_summaries(index: pd.DataFrame, workers: int = 8, verbose: bool = True) 
 
 def aggregate(index: pd.DataFrame, group_cols, x_col: str, metric: str,
              band: str = "se") -> pd.DataFrame:
-    """Media sui seed di `metric` per ogni combinazione di (*group_cols, x_col).
+    """Mean of `metric` over seeds, per (*group_cols, x_col).
 
-    Ritorna [*group_cols, step, mean, lo, hi, n_seeds] — stesse colonne
-    dell'output di `curves.aggregate`, cosi' `grid.py` disegna entrambe con lo
-    stesso codice (qui `step` e' il livello di budget, non il tempo).
+    Returns the same columns as `curves.aggregate`, so `grid.py` draws both with
+    one code path. Here `step` is the budget level, not time.
     """
     group_cols = list(group_cols)
     summaries = load_summaries(index)
@@ -112,10 +108,9 @@ def aggregate(index: pd.DataFrame, group_cols, x_col: str, metric: str,
 
 
 def _relative_score(series: pd.Series, reference: float) -> pd.Series:
-    """Frazione del miglioramento sul livello peggiore ancora presente.
+    """How much of the improvement over the worst level is left.
 
-    Robusto a return negativi: 1.0 al livello di riferimento (il piu' alto),
-    0.0 al livello peggiore.
+    Works with negative returns: 1.0 at the reference level, 0.0 at the worst.
     """
     lo = series.min()
     span = reference - lo
@@ -125,9 +120,11 @@ def _relative_score(series: pd.Series, reference: float) -> pd.Series:
 
 
 def minimum_budget(levels: pd.Series, metrics: dict[str, pd.Series]) -> float | None:
-    """Il livello piu' piccolo per cui TUTTE le metriche in `metrics` restano
-    >=90% del livello massimo, con anche il livello successivo che passa
-    (regola del 90%, come `scripts/report_budget_curves.py:minimum_budget`)."""
+    """The smallest level where every metric stays at 90% of its best.
+
+    The level after it has to pass as well, so a single lucky point does not
+    decide the answer.
+    """
     if len(levels) < 2:
         return None
     full = levels.max()

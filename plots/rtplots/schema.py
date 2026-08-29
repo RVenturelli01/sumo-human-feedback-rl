@@ -1,19 +1,18 @@
-"""Schema dei campi dell'indice: un'unica dichiarazione per colonna.
+"""One declaration per index column.
 
-Stessa idea del progetto di ispirazione (vedi `plots/README.md`): ogni colonna
-si dichiara una volta sola con come si scrive nella UI, se puo' finire su
-righe/colonne/colori e cosa aggiunge alla legenda — invece di ripetere le
-stesse liste a mano nella sidebar, nei filtri e nei titoli dei pannelli.
+Each column says once how it is written in the UI, whether it can go on rows,
+columns or colours, and what it adds to a legend, instead of repeating the same
+lists by hand in the sidebar, the filters and the panel titles.
 
-Le colonne vengono da `rtplots/source.py` (config Hydra -> riga dell'indice).
-L'ordine qui sotto e' anche l'ordine della sidebar del selettore.
+The columns come from `source.py`. The order below is also the order of the
+selector sidebar.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable
 
-# Nomi leggibili dei bracci (title case, monospace nel grafico via labels.py).
+# Readable method names, rendered in monospace by labels.py.
 ARM_NAMES = {
     "demo_1": "demo_1",
     "demo_2": "demo_2",
@@ -26,19 +25,19 @@ ARM_NAMES = {
 }
 
 
-# Schemi di fusione dei due canali (`algo.kwargs.gcl_fusion`). I nomi brevi
-# sono quelli usati con il relatore, il valore grezzo resta quello del codice.
+# How the two channels are fused (`algo.kwargs.gcl_fusion`). The short names
+# are for reading; the raw value stays the one in the code.
 FUSION_NAMES = {
     "norm_balance": "norm_balance (baseline)",
-    "alpha_norm_single_adam": "prova 1 (un Adam sul gradiente fuso)",
-    "dual_adam_alpha": "prova 2 (un Adam per canale)",
+    "alpha_norm_single_adam": 'one Adam on the fused gradient',
+    "dual_adam_alpha": 'one Adam per channel',
     "dual_adam_sum": "due Adam, somma",
     "dual_adam_alpha_unit": "due Adam, alpha + budget",
     "dual_adam_alpha_unit_nobudget": "due Adam, alpha su direzioni unitarie",
-    # Schemi provati prima della richiesta del relatore e poi rimossi da
-    # VALID_GCL_FUSIONS: le run restano nell'indice, il nome le marca.
-    "dual_adam_reliability": "dual_adam_reliability (storico)",
-    "demo_anchor_inv_var": "demo_anchor_inv_var (storico)",
+    # Schemes tried and later dropped from VALID_GCL_FUSIONS. Their runs stay
+    # in the index, and the name marks them.
+    "dual_adam_reliability": 'dual_adam_reliability (earlier)',
+    "demo_anchor_inv_var": 'demo_anchor_inv_var (earlier)',
 }
 
 
@@ -62,7 +61,7 @@ class Field:
     legend: Callable | None = None
 
 
-def _bool_html(yes: str = "sì", no: str = "no"):
+def _bool_html(yes: str = 'yes', no: str = "no"):
     return lambda v: yes if v in (True, "True") else no
 
 
@@ -71,8 +70,11 @@ def _int_html(suffix: str = ""):
 
 
 def _num_html(fmt: str = "{:g}"):
-    """Come _int_html ma per i float: alza su valori mancanti invece di stampare
-    'nan' (float(nan) non alza da solo, a differenza di int(nan))."""
+    """Like _int_html but for floats.
+
+    Raises on a missing value instead of printing 'nan', which float(nan) would
+    do quietly where int(nan) raises.
+    """
     def _fmt(v):
         if _missing(v):
             raise ValueError("missing")
@@ -81,13 +83,13 @@ def _num_html(fmt: str = "{:g}"):
 
 
 def _eps(value) -> float:
-    """Il valore di label_smoothing, con 0 per le run che non lo dichiarano."""
+    """The label_smoothing value, 0 for runs that do not declare one."""
     return 0.0 if _missing(value) else float(value)
 
 
 def _smoothing_html(value) -> str:
     eps = _eps(value)
-    return "senza smoothing" if not eps else f"con smoothing (eps={eps:g})"
+    return 'no smoothing' if not eps else f"'smoothing (eps='{eps:g})"
 
 
 def _millions_html(v):
@@ -98,82 +100,79 @@ def _millions_html(v):
 
 FIELDS: list[Field] = [
     Field(
-        "arm", "Algoritmo", ui=True, grid=True, series=True,
+        "arm", 'Method', ui=True, grid=True, series=True,
         html=lambda v: ARM_NAMES.get(v, str(v)), title_of=lambda v: ARM_NAMES.get(v, str(v)),
         legend=lambda v: ARM_NAMES.get(v, str(v)),
     ),
-    # Ne' in sidebar ne' fra le dimensioni di griglia/copertura: ridondanti con
-    # "Algoritmo", che gia' elenca le 8 combinazioni (i 4 bracci base + le 4 di
-    # hybrid) come pillole selezionabili una per una. Restano colonne vere,
-    # quindi restano filtrabili da riga di comando (--filter arm_family=hybrid).
-    # Come i due canali vengono combinati (solo hybrid). In sidebar e fra le
-    # dimensioni di griglia perche' e' cio' che distingue i bracci di
-    # thesis-grad-diagnostics fra loro: senza, baseline, prova 1 e prova 2
-    # collassano tutti in "hybrid_demo_2 (soft)".
+    # Not in the sidebar and not a grid dimension: redundant with "Method",
+    # which already lists every combination one by one. They stay real columns,
+    # so they can still be filtered from the command line.
+    # How the two channels are combined, hybrid only. In the sidebar and among
+    # the grid dimensions because it is what tells the grad-diagnostics methods
+    # apart: without it they all collapse into one name.
     Field(
-        "fusion", "Fusione dei gradienti", ui=True, grid=True, series=True,
+        "fusion", 'Gradient fusion', ui=True, grid=True, series=True,
         html=lambda v: FUSION_NAMES.get(v, str(v)),
         title_of=lambda v: FUSION_NAMES.get(v, str(v)),
         legend=lambda v: FUSION_NAMES.get(v, str(v)),
     ),
-    Field("arm_family", "Famiglia", html=str, title_of=str),
-    Field("demo_loss", "Loss dimostrazioni", html=str),
-    Field("pref_labels", "Etichette preferenze", html=str),
-    Field("demo_mode", "Modo dimostrazioni", html=str),
+    Field("arm_family", 'Family', html=str, title_of=str),
+    Field("demo_loss", 'Demonstration loss', html=str),
+    Field("pref_labels", 'Preference labels', html=str),
+    Field("demo_mode", 'Demonstration mode', html=str),
     Field(
-        "query_budget", "Budget preferenze (1 transizione)", ui=True, grid=True, series=True,
+        "query_budget", 'Preference budget (one transition)', ui=True, grid=True, series=True,
         html=_int_html(),
         title_of=lambda v: f"query = {_int(v)}",
         legend=lambda v: f"{_int(v)} query",
     ),
     Field(
-        "demo_budget", "Budget dimostrazioni (traiettoria)", ui=True, grid=True, series=True,
-        html=lambda v: "dataset intero" if _missing(v) else f"{_int(v)} traiettorie",
+        "demo_budget", 'Demonstration budget (trajectories)', ui=True, grid=True, series=True,
+        html=lambda v: 'whole dataset' if _missing(v) else f"{_int(v)}' trajectories'",
         title_of=lambda v: "dataset intero" if _missing(v) else f"{_int(v)} traiettorie",
         legend=lambda v: None if _missing(v) else f"{_int(v)} traj",
     ),
-    # Non in sidebar ne' in copertura/righe/colonne: resta una colonna vera,
-    # usata come asse x di default per le curve di budget (vedi "asse budget"
-    # nel toolbar del grafico — un controllo a parte, non le dimensioni qui).
-    # In griglia (una riga per budget) ma non in sidebar: il filtro si fa gia'
-    # con query_budget/demo_budget. Titolo volutamente neutro, "B = 10": una
-    # riga attraversa piu' bracci, e B significa 10 preferenze + 10 traiettorie
-    # per l'ibrido ma solo una delle due per i bracci a sorgente singola, quindi
-    # la precisazione va nella didascalia, non nel titolo del pannello.
+    # Not in the sidebar, and not a grid dimension: it stays a real column, and
+    # is the default x axis of the budget curves, chosen in the toolbar.
+    # A grid dimension, one row per budget, but not in the sidebar: filtering
+    # happens on query_budget and demo_budget. The title stays neutral, "B =
+    # 10": one row spans several methods, and B means ten preferences and ten
+    # trajectories for the hybrid but only one of the two for the single-source
+    # methods, so that belongs in the caption, not in the panel title.
     Field(
-        "budget_level", "Budget B (dal gruppo)", grid=True,
+        "budget_level", 'Budget B (from the group)', grid=True,
         html=_int_html(), title_of=lambda v: f"B = {_int(v)}",
         legend=lambda v: f"B={_int(v)}",
     ),
-    Field("normalize_agent_reward", "Reward normalizzata", ui=True, grid=True, series=True,
+    Field("normalize_agent_reward", 'Reward normalized', ui=True, grid=True, series=True,
           html=_bool_html(), title_of=lambda v: f"normalize_agent_reward = {bool(v)}",
           legend=lambda v: "norm" if v else "no-norm"),
-    # Il valore di eps, non un booleano: oggi c'e' un solo livello (0.1) e in UI
-    # si legge come con/senza, ma se un domani arriva un secondo eps le curve si
-    # separano da sole invece di collassare due configurazioni in "con".
+    # The eps value, not a boolean. There is one level today and the UI reads
+    # as on or off, but a second eps would split the curves by itself instead
+    # of collapsing two configurations into one.
     Field("label_smoothing", "Label smoothing", ui=True, grid=True, series=True,
           html=_smoothing_html, title_of=_smoothing_html,
           legend=lambda v: None if not _eps(v) else f"eps={_eps(v):g}"),
-    Field("query_schedule", "Schedule query", ui=True, grid=True, series=True, html=str),
+    Field("query_schedule", 'Query schedule', ui=True, grid=True, series=True, html=str),
     Field("fragmenter_type", "Fragmenter", ui=True, grid=True, series=True, html=str),
-    # Ne' in sidebar ne' in copertura/righe/colonne/legenda: iperparametri del
-    # best-config per livello di budget, non dimensioni su cui filtrare o
-    # separare le curve. Restano colonne vere, filtrabili da riga di comando.
-    Field("initial_queries", "Query iniziali (bootstrap)",
+    # Not in the sidebar, the grid or the legend: these are the best-config
+    # hyperparameters of each budget level, not dimensions to filter or split
+    # on. They stay real columns, filterable from the command line.
+    Field("initial_queries", 'Initial queries (bootstrap)',
           html=_int_html(), title_of=lambda v: f"initial_queries = {_int(v)}"),
-    Field("demo_weight", "Peso dimostrazioni",
+    Field("demo_weight", 'Demonstration weight',
           html=_num_html(), title_of=lambda v: f"demo_weight = {float(v):g}"),
-    Field("pref_temperature", "Temperatura oracolo", html=_num_html()),
-    Field("reward_net_arch", "Rete reward model", html=str),
-    Field("demo_subsample_seed", "Seed subsample demo",
+    Field("pref_temperature", 'Oracle temperature', html=_num_html()),
+    Field("reward_net_arch", 'Reward model network', html=str),
+    Field("demo_subsample_seed", 'Demo subsample seed',
           html=lambda v: "= seed" if _missing(v) else str(_int(v))),
-    Field("total_timesteps", "Timesteps totali", html=_millions_html),
-    Field("state", "Stato", ui=True, html=str),
-    Field("project", "Progetto W&B", ui=True, html=str),
-    Field("group_tag", "Tag gruppo", ui=True, html=str),
-    # non filtrabile dalla sidebar (troppi valori unici), ma disponibile per la
-    # tabella di copertura e la legenda
-    Field("group", "Gruppo W&B"),
+    Field("total_timesteps", 'Total timesteps', html=_millions_html),
+    Field("state", 'State', ui=True, html=str),
+    Field("project", 'W&B project', ui=True, html=str),
+    Field("group_tag", 'Group tag', ui=True, html=str),
+    # Too many distinct values for the sidebar, but available to the coverage
+    # table and the legend.
+    Field("group", 'W&B group'),
     Field("seed", "Seed", legend=lambda v: f"seed={_int(v)}"),
 ]
 
@@ -182,7 +181,7 @@ BY_COL: dict[str, Field] = {f.col: f for f in FIELDS}
 UI_DIMENSIONS = [f.col for f in FIELDS if f.ui]
 GRID_FIELDS = [f.col for f in FIELDS if f.grid]
 # Dimensioni che devono separare le curve: se una varia e nessuno l'ha messa su
-# colori/righe/colonne, configurazioni diverse finiscono mediate insieme.
+# colours, rows or columns, different configurations get averaged together.
 SERIES_FIELDS = [f.col for f in FIELDS if f.series]
 
 
@@ -192,7 +191,7 @@ def title(col: str) -> str:
 
 
 def html_value(col: str, value) -> str:
-    """Valore come va scritto nella pagina del selettore."""
+    """The value as it should be written in the selector page."""
     f = BY_COL.get(col)
     if f is not None and f.html is not None:
         try:
@@ -202,14 +201,14 @@ def html_value(col: str, value) -> str:
     if _missing(value):
         return "—"
     if value in (True, "True"):
-        return "sì"
+        return 'yes'
     if value in (False, "False"):
         return "no"
     return str(value)
 
 
 def panel_title(col: str, value, paper: bool = True) -> str:
-    """Titolo di riga/colonna della griglia."""
+    """A row or column title in the grid."""
     if _missing(value):
         return ""
     f = BY_COL.get(col)

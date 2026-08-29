@@ -3,35 +3,35 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>sumo-hfrl · selettore run</title>
+  <title>sumo-hfrl · run selector</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <aside id="sidebar">
     <header>
-      <h1>Selettore run</h1>
-      <p class="hint">Nessuna casella selezionata = dimensione non filtrata.</p>
+      <h1>Run selector</h1>
+      <p class="hint">No box ticked means the dimension is not filtered.</p>
     </header>
     <div id="dimensions"></div>
     <section class="dim">
       <h2>Seed</h2>
       <div class="seed-row">
-        <label>da <input type="number" id="seed-min" min="1" step="1"></label>
-        <label>a <input type="number" id="seed-max" min="1" step="1"></label>
+        <label>from <input type="number" id="seed-min" min="1" step="1"></label>
+        <label>to <input type="number" id="seed-max" min="1" step="1"></label>
       </div>
     </section>
-    <button id="reset" class="ghost">Azzera filtri</button>
+    <button id="reset" class="ghost">Clear filters</button>
   </aside>
 
   <main>
     <div id="summary">
       <div class="stat"><span id="n-runs">–</span><label>run</label></div>
-      <div class="stat"><span id="n-configs">–</span><label>configurazioni</label></div>
+      <div class="stat"><span id="n-configs">–</span><label>configurations</label></div>
       <div id="states"></div>
       <div class="actions">
-        <input type="text" id="save-name" placeholder="nome della selezione" maxlength="60">
-        <button id="save" class="primary">Salva</button>
-        <button id="copy" class="ghost">Copia filtri</button>
+        <input type="text" id="save-name" placeholder="name for this selection" maxlength="60">
+        <button id="save" class="primary">Save</button>
+        <button id="copy" class="ghost">Copy filters</button>
       </div>
     </div>
     <div id="toast" class="toast"></div>
@@ -39,21 +39,21 @@
     <section class="card" id="sel-card">
       <div class="card-head">
         <button id="sel-toggle" class="head-toggle" aria-expanded="true">
-          <span class="chevron">▾</span><h2>Selezioni salvate</h2>
+          <span class="chevron">▾</span><h2>Saved selections</h2>
         </button>
-        <span class="hint">un click le riapplica</span>
+        <span class="hint">click one to reapply it</span>
       </div>
       <div id="selections"></div>
     </section>
 
     <section class="card">
       <div class="card-head">
-        <h2>Anteprima</h2>
+        <h2>Preview</h2>
         <div class="head-actions">
           <label class="check"><input type="checkbox" id="auto-preview"> automatica</label>
-          <label class="check" title="mostra le definizioni matematiche accanto al grafico">
-            <input type="checkbox" id="show-formula" checked> formule</label>
-          <button id="preview" class="primary small">Aggiorna</button>
+          <label class="check" title="show the formulas beside the figure">
+            <input type="checkbox" id="show-formula" checked> formulas</label>
+          <button id="preview" class="primary small">Refresh</button>
           <span class="sep"></span>
           <button id="export-jpeg" class="ghost small">JPEG</button>
           <button id="export-latex" class="ghost small">LaTeX</button>
@@ -61,42 +61,42 @@
       </div>
 
       <div class="kind-row">
-        <span class="field-label">tipo di grafico</span>
+        <span class="field-label">figure type</span>
         <div class="pills" id="grid-kind">
           <label class="pill on"><input type="radio" name="kind" value="curve" checked>
-            <span>curva di apprendimento</span></label>
+            <span>learning curve</span></label>
           <label class="pill"><input type="radio" name="kind" value="budget">
-            <span>curva di budget</span></label>
+            <span>budget curve</span></label>
         </div>
         <label class="check" id="grid-compare-fusion-field"
-               title="Separa anche per schema di fusione dei gradienti. Senza, schemi diversi dello stesso algoritmo finiscono mediati nella stessa curva.">
+               title="Also split by gradient fusion scheme. Without it, different schemes of one method are averaged into the same curve.">
           <input type="checkbox" id="grid-compare-fusion">
-          <span>confronta gli schemi di fusione</span>
+          <span>compare fusion schemes</span>
         </label>
         <label class="check" id="grid-compare-norm-field"
-               title="Separa anche per normalize_agent_reward: stesso colore, tratteggiata = normalizzazione attiva.">
+               title="Also split by normalize_agent_reward: same colour, dashed means normalization on.">
           <input type="checkbox" id="grid-compare-norm">
-          <span>confronta normalizzazione on/off</span>
+          <span>compare normalization on/off</span>
         </label>
         <label class="check" id="grid-compare-smoothing-field"
-               title="Separa anche per label_smoothing: stesso colore, tratteggiata = con smoothing.">
+               title="Also split by label_smoothing: same colour, dashed means smoothing on.">
           <input type="checkbox" id="grid-compare-smoothing">
-          <span>confronta con/senza smoothing</span>
+          <span>compare smoothing on/off</span>
         </label>
       </div>
 
       <div class="toolbar">
         <div class="toolbar-row">
-          <label class="field wide"><span>cosa plottare</span>
+          <label class="field wide"><span>what to plot</span>
             <select id="grid-metric"></select>
           </label>
-          <label class="field"><span>righe</span><select id="grid-rows"></select></label>
-          <label class="field"><span>colonne</span><select id="grid-cols"></select></label>
-          <label class="field"><span>banda</span>
+          <label class="field"><span>rows</span><select id="grid-rows"></select></label>
+          <label class="field"><span>columns</span><select id="grid-cols"></select></label>
+          <label class="field"><span>band</span>
             <select id="grid-band">
-              <option value="se">errore std</option>
-              <option value="std">deviazione std</option>
-              <option value="ci95">IC 95%</option>
+              <option value="se">standard error</option>
+              <option value="std">standard deviation</option>
+              <option value="ci95">95% CI</option>
               <option value="iqr">IQR</option>
               <option value="minmax">min–max</option>
               <option value="none">nessuna</option>
@@ -107,32 +107,32 @@
           </label>
         </div>
         <div class="toolbar-row">
-          <label class="field"><span>legenda</span>
+          <label class="field"><span>legend</span>
             <select id="grid-legend">
-              <option value="outside_right">fuori, a destra</option>
-              <option value="outside_bottom">fuori, sotto</option>
-              <option value="panel">dentro ogni pannello</option>
-              <option value="first">dentro il primo pannello</option>
+              <option value="outside_right">outside, right</option>
+              <option value="outside_bottom">outside, below</option>
+              <option value="panel">inside every panel</option>
+              <option value="first">inside the first panel</option>
               <option value="none">nessuna</option>
             </select>
           </label>
           <div class="field panel-size-field">
-            <span>dimensione pannello</span>
+            <span>panel size</span>
             <div class="panel-size-inputs">
-              <input type="number" id="grid-panel-w" value="3.4" min="1.5" max="14" step="0.1" title="larghezza (pollici)">
+              <input type="number" id="grid-panel-w" value="3.4" min="1.5" max="14" step="0.1" title="width in inches">
               <span class="x">×</span>
-              <input type="number" id="grid-panel-h" value="2.5" min="1.5" max="14" step="0.1" title="altezza (pollici)">
+              <input type="number" id="grid-panel-h" value="2.5" min="1.5" max="14" step="0.1" title="height in inches">
             </div>
           </div>
           <div class="field panel-size-field">
-            <span>asse y</span>
+            <span>y axis</span>
             <div class="panel-size-inputs">
               <input type="number" id="grid-ymin" placeholder="min" step="any"
                      title="lascia vuoti entrambi per il range automatico">
               <span class="x">…</span>
               <input type="number" id="grid-ymax" placeholder="max" step="any"
                      title="lascia vuoti entrambi per il range automatico">
-              <label class="check" title="scala logaritmica sull'asse y">
+              <label class="check" title="logarithmic y axis">
                 <input type="checkbox" id="grid-logy"> log
               </label>
             </div>
@@ -141,27 +141,27 @@
       </div>
 
       <div id="preview-row">
-        <div id="preview-box"><p class="placeholder">Premi «Aggiorna» per disegnare l'anteprima.</p></div>
+        <div id="preview-box"><p class="placeholder">Press «Refresh» to draw the preview.</p></div>
         <aside id="formula-box" hidden>
-          <div class="card-head"><h3>Definizioni</h3></div>
+          <div class="card-head"><h3>Definitions</h3></div>
           <div id="formula-body"></div>
         </aside>
       </div>
 
       <div id="series-box" hidden>
         <div class="card-head">
-          <h3>Serie</h3>
+          <h3>Series</h3>
           <span class="hint">il ritocco vale in tutti i pannelli e resta nella selezione salvata</span>
         </div>
         <div id="series-list"></div>
         <div id="series-edit" hidden>
-          <label class="field wide"><span>nome</span>
+          <label class="field wide"><span>name</span>
             <input type="text" id="series-name" autocomplete="off">
           </label>
-          <div class="field wide"><span>colore</span><div id="series-palette"></div></div>
+          <div class="field wide"><span>colour</span><div id="series-palette"></div></div>
           <div class="head-actions">
-            <button id="series-reset" class="ghost small">Ripristina</button>
-            <button id="series-rule" class="ghost small">Copia regola per style.toml</button>
+            <button id="series-reset" class="ghost small">Reset</button>
+            <button id="series-rule" class="ghost small">Copy rule for style.toml</button>
           </div>
         </div>
       </div>
@@ -170,14 +170,14 @@
     </section>
 
     <section class="card">
-      <div class="card-head"><h2>Copertura</h2><span id="coverage-note" class="hint"></span></div>
+      <div class="card-head"><h2>Coverage</h2><span id="coverage-note" class="hint"></span></div>
       <div id="coverage"></div>
     </section>
 
     <footer>
-      <p class="hint">La selezione salvata finisce in <code id="selection-path"></code>.
-      Poi da riga di comando: <code>plot_curves.py --runs-file</code> o
-      <code>plot_budget.py --runs-file</code> rifanno esattamente questa figura.</p>
+      <p class="hint">The saved selection is written to <code id="selection-path"></code>.
+      From the command line, <code>plot_curves.py --runs-file</code> or
+      <code>plot_budget.py --runs-file</code> redraw exactly this figure.</p>
     </footer>
   </main>
 

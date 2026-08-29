@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-"""Costruisce/aggiorna la cache dei metadati dei run W&B.
+"""Build or refresh the cache of W&B run metadata.
 
-    python plots/scripts/build_index.py            # aggiornamento incrementale
-    python plots/scripts/build_index.py --force    # riscarica tutte le config
-    python plots/scripts/build_index.py --projects tuning-thesis-budget-curves-completion
+    python plots/scripts/build_index.py            # incremental update
+    python plots/scripts/build_index.py --force    # refetch every config
+    python plots/scripts/build_index.py --projects thesis-final
 """
 import argparse
 
@@ -31,7 +31,7 @@ def main():
         broken = df[df.error.notna()] if "error" in df else df.iloc[0:0]
         if len(broken):
             print(f"\n[index] ATTENZIONE: {len(broken)} run non lette correttamente "
-                  f"(vedi colonna 'error')")
+                  f"(see the 'error' column)")
 
 
 if __name__ == "__main__":

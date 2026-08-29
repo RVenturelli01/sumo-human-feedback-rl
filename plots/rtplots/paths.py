@@ -1,56 +1,48 @@
-"""Percorsi condivisi da tutti gli script di plotting.
+"""Paths shared by every plotting script.
 
-A differenza del progetto da cui questo toolkit e' ispirato (che gira su un
-cluster condiviso con cache in /storage), qui l'analisi si fa dalla stessa
-macchina o dal Mac via API pubblica W&B (vedi docs/analysis-pipeline-guide.md):
-niente storage condiviso, niente file locali (metrics.jsonl/evaluations.npz)
-raggiungibili — quelli vivono sul server dove giri il training. La cache
-dell'indice e delle curve sta quindi dentro la repo (`plots/.cache/`,
-ignorata da git), sovrascrivibile con `RTPLOTS_CACHE`.
+The analysis runs from any machine through the W&B API: there is no shared
+storage, and the files written during training stay on the machine that ran it.
+The index and curve caches therefore live inside the repository, in
+`plots/.cache/`, which git ignores. `RTPLOTS_CACHE` overrides it.
 """
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-# Radice della repo (plots/rtplots/paths.py -> plots/ -> repo/)
+# Repository root: plots/rtplots/paths.py -> plots/ -> repo/
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLOTS_ROOT = REPO_ROOT / "plots"
 
-# Cache: sovrascrivibile con RTPLOTS_CACHE
+# Cache directory, overridable with RTPLOTS_CACHE
 CACHE_DIR = Path(os.environ.get("RTPLOTS_CACHE", str(PLOTS_ROOT / ".cache")))
 INDEX_PARQUET = CACHE_DIR / "run_index.parquet"
 INDEX_CSV = CACHE_DIR / "run_index.csv"
 CURVE_DIR = CACHE_DIR / "curves"
-# Selezione salvata dal selettore interattivo (plots/scripts/selector.py):
-# selection.json e' sempre l'ultima salvata, selections/ tiene lo storico per nome.
+# Selections saved by the interactive selector: selection.json is always the
+# most recent one, and selections/ keeps the earlier ones by name.
 SELECTION_JSON = CACHE_DIR / "selection.json"
 SELECTIONS_DIR = CACHE_DIR / "selections"
 
-# Output figure: sovrascrivibile con RTPLOTS_OUTPUT o --outdir
+# Where figures are written, overridable with RTPLOTS_OUTPUT or --outdir
 OUTPUT_DIR = Path(os.environ.get("RTPLOTS_OUTPUT", str(PLOTS_ROOT / "output")))
 
 WANDB_ENTITY = os.environ.get("RTPLOTS_WANDB_ENTITY", "andrea02polimi-politecnico-di-milano")
 
-# Progetti indicizzati di default. La convenzione di lettura
-# (rtplots/source.py) e' la stessa per tutti: vengono tutti dallo stesso entry
-# point (runner/train.py), quindi aggiungerne uno e' una riga qui.
+# Projects indexed by default. They are all read the same way, because they all
+# come from the same entry point, so adding one is a single line here.
 #
-#  - thesis-final                           : le run finali della tesi
-#                                             (runner/configs/),
-#                                             protocollo unico, gruppi th_*
-#  - tuning-thesis-budget-curves-completion : campagna di budget curves
-#  - thesis-grad-diagnostics                : schemi di fusione, ablation della
-#                                             normalizzazione, frozen probe
-#  - thesis                                 : ablation a sorgente singola
-#  - reward-learning                        : run esplorative precedenti
+#   thesis-final       the reference runs, one protocol, th_* groups
+#   tuning-*           the budget-curve campaign
+#   *-grad-diagnostics fusion schemes, normalization ablation, frozen probe
+#   thesis             single-source ablations
 #
-# Servono insieme perche' un confronto ibrido vs solo-preferenze vs
-# solo-dimostrazioni pesca da progetti diversi.
+# They are needed together: comparing hybrid against the single-channel
+# baselines means reading from more than one project.
 DEFAULT_PROJECTS = os.environ.get(
     "RTPLOTS_WANDB_PROJECTS",
     "thesis-final,thesis-grad-diagnostics,"
-    "tuning-thesis-budget-curves-completion,thesis,reward-learning",
+    "tuning-thesis-budget-curves-completion,thesis",
 ).split(",")
 
 

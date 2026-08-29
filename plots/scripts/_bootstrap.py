@@ -1,4 +1,5 @@
-"""Rende importabile il package rtplots quando gli script sono lanciati per path."""
+"""Make the rtplots package importable when a script is run by path.
+"""
 import sys
 from pathlib import Path
 

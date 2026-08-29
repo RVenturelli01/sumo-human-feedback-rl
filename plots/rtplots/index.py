@@ -1,13 +1,12 @@
-"""Indice dei run: metadati (una riga per run) letti da W&B e messi in cache.
+"""Run metadata from W&B, one row per run, cached on disk.
 
-La cache sta in `plots/.cache/` (override `RTPLOTS_CACHE`). L'aggiornamento e'
-incrementale: la lista dei run (id/nome/stato/tag) viene sempre riscaricata, la
-config completa solo per i run non ancora in cache o rimasti non finiti (la
-config di una run "running" puo' ancora cambiare). Le run cancellate da W&B
-escono dall'indice al primo aggiornamento.
+The cache lives in `plots/.cache/`. Updates are incremental: the run list is
+always refetched, the full config only for runs that are new or still running,
+since a running run can still change its config. Runs deleted from W&B leave
+the index at the next update.
 
-Come si legge una run sta in `rtplots/source.py`: qui ci si limita a scaricare,
-unire e mettere in cache.
+How a single run is read is in `source.py`; this module only downloads, merges
+and caches.
 """
 from __future__ import annotations
 
@@ -21,7 +20,7 @@ from .paths import DEFAULT_PROJECTS, INDEX_CSV, INDEX_PARQUET, ensure_dirs, wand
 
 def build_index(force: bool = False, workers: int = 8,
                 projects: list[str] | None = None, verbose: bool = True) -> pd.DataFrame:
-    """(Ri)costruisce l'indice dei run sui progetti indicati e lo salva in cache."""
+    """Rebuild the index over the given projects and cache it."""
     import wandb
 
     ensure_dirs()
@@ -40,7 +39,7 @@ def build_index(force: bool = False, workers: int = 8,
 
     known = set()
     if not cached.empty:
-        # I run non finiti vanno riletti: la config cambia fino alla fine.
+        # Unfinished runs must be reread: their config changes until the end.
         known = set(cached.loc[cached.state == "finished", "run_id"])
     todo = [t for t in runs if t[0].id not in known]
     if verbose:
@@ -49,11 +48,11 @@ def build_index(force: bool = False, workers: int = 8,
     def fetch(item):
         run, project = item
         try:
-            # Indispensabile: api.runs() restituisce run.config == {} finche' non
-            # si forza il caricamento della config completa.
+            # Required: api.runs() returns run.config == {} until the full
+            # config is loaded explicitly.
             run.load(force=True)
             return source.row(run, project)
-        except Exception as exc:  # run corrotto o rimosso: non blocca l'indice
+        except Exception as exc:  # a broken or deleted run must not stop the index
             return dict(run_id=run.id, name=run.name, state=run.state, project=project,
                         tags=",".join(run.tags or []), error=str(exc))
 
@@ -69,10 +68,9 @@ def build_index(force: bool = False, workers: int = 8,
     df = pd.concat([cached, new], ignore_index=True) if not cached.empty else new
     df = df.drop_duplicates(subset="run_id", keep="last")
 
-    # stato/tag sempre aggiornati dalla lista (economici, nessun load()). Il join
-    # a destra fa anche da pulizia: quello che non c'e' piu' su W&B esce
-    # dall'indice. Vale solo per i progetti appena riletti: gli altri restano in
-    # cache come sono, altrimenti --projects cancellerebbe il resto dell'indice.
+    # State and tags always come fresh from the list, which is cheap. The right
+    # join doubles as cleanup: what is gone from W&B leaves the index. Only for
+    # the projects just refetched, or --projects would wipe the rest.
     live = pd.DataFrame([{"run_id": r.id, "state": r.state,
                           "tags": ",".join(r.tags or [])} for r, _ in runs])
     other = df[~df.project.isin(projects)]
@@ -88,7 +86,7 @@ def build_index(force: bool = False, workers: int = 8,
 
 
 def load_index(auto_build: bool = True) -> pd.DataFrame:
-    """Carica l'indice dalla cache (costruendolo se manca)."""
+    """Load the index from the cache, building it if there is none."""
     if not INDEX_PARQUET.exists():
         if not auto_build:
             raise FileNotFoundError(

@@ -1,9 +1,9 @@
-"""Lettura di `plots/style.toml`: le regole scritte a mano che governano i grafici.
+"""Reads `plots/style.toml`, the hand-written rules that govern the figures.
 
-Un file solo, dichiarativo, riletto quando cambia (mtime): si salva e la figura
-successiva — anteprima o `.tex` — e' gia' quella nuova, senza riavviare niente.
+One declarative file, re-read whenever it changes on disk. Save it and the next
+figure already uses the new rules, with nothing to restart.
 
-Le regole `[[series]]` sono una lista ordinata: vince la prima che combacia.
+The `[[series]]` rules are an ordered list: the first match wins.
 """
 from __future__ import annotations
 
@@ -12,23 +12,22 @@ from pathlib import Path
 try:
     import tomllib  # Python 3.11+
 except ModuleNotFoundError:
-    import tomli as tomllib  # backport, questa repo gira anche su 3.10
+    import tomli as tomllib  # backport, this also runs on Python 3.10
 
 from .paths import PLOTS_ROOT
 
 RULES_FILE = PLOTS_ROOT / "style.toml"
 
-# Scorte: servono solo se una chiave sparisce dal .toml, che invece le elenca
-# tutte. Tenerle qui evita che una riga cancellata per sbaglio rompa la pagina.
+# Only needed if a key disappears from the .toml, which normally lists them
+# all. Keeping them here means a line deleted by mistake breaks nothing.
 FALLBACK = {
     "figure": {"panel_size": [3.4, 2.5],
                "xlabel": "Environment timesteps", "ylabel": "Mean return",
                "xscale": 1e6, "share": "row", "font_scale": 1.0},
     "lines": {"width": 1.4, "band_alpha": 0.18, "band": "se", "smooth": 5,
               "baseline_color": "#000000", "baseline_width": 1.6},
-    # "outside_right" di default: con 5-8 serie in un pannello solo (tutti gli
-    # arm sovrapposti) una legenda "best" dentro gli assi finisce quasi sempre
-    # sopra ai dati.
+    # "outside_right" by default: with five to eight series in one panel, a
+    # "best" legend inside the axes almost always lands on top of the data.
     "legend": {"where": "outside_right", "loc": "best", "ncol": 1, "frame": True,
                "font_size": 8.5},
     "palette": {"colors": ["#2a78d6", "#1baf7a", "#eda100", "#008300",
@@ -41,7 +40,7 @@ _stamp: tuple | None = None
 
 
 def load(force: bool = False) -> dict:
-    """Il file, riletto se e' cambiato sul disco."""
+    """The file, re-read if it changed on disk."""
     global _cache, _stamp
     try:
         stat = RULES_FILE.stat()
@@ -61,7 +60,7 @@ def load(force: bool = False) -> dict:
 
 
 def get(section: str, key: str, default=None):
-    """Un valore del file, con la scorta di FALLBACK se manca."""
+    """One value from the file, or the FALLBACK if it is missing."""
     value = (load().get(section) or {}).get(key)
     if value is not None:
         return value
@@ -75,7 +74,7 @@ def series_rules() -> list[dict]:
 
 
 def rule_for(row) -> dict:
-    """La prima regola `[[series]]` che combacia con la serie (o {})."""
+    """The first `[[series]]` rule matching this series, or {}."""
     for rule in series_rules():
         wanted = rule.get("match") or {}
         if not wanted:
@@ -86,7 +85,7 @@ def rule_for(row) -> dict:
 
 
 def _same(actual, wanted) -> bool:
-    """Confronto tollerante: nell'indice alcune colonne numeriche sono float."""
+    """A forgiving comparison: some numeric index columns are floats."""
     if actual is None:
         return False
     if isinstance(wanted, bool) or isinstance(actual, bool):
@@ -102,7 +101,7 @@ def palette() -> list[str]:
 
 
 def latex_macros_comment() -> str:
-    """Le macro dei nomi, come commento in cima ai .tex esportati."""
+    """The name macros, as a comment at the top of an exported .tex."""
     macros = get("latex", "macros") or []
     preamble = get("latex", "preamble") or ""
     lines = []

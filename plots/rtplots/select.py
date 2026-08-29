@@ -1,10 +1,10 @@
-"""Selezione e raggruppamento dei run a partire dall'indice.
+"""Selecting and grouping runs from the index.
 
-Sintassi dei filtri da riga di comando (uno per argomento):
-    arm=demo_1,demo_2       uno di questi
-    arm_family!=demo        diverso
-    query_budget>=5000      confronto numerico (>, >=, <, <=)
-    normalize_agent_reward=false   booleani
+Filter syntax, one per argument:
+    arm=demo_1,demo_2              any of these
+    arm_family!=demo               not this
+    query_budget>=5000             numeric comparison (>, >=, <, <=)
+    normalize_agent_reward=false   booleans
 """
 from __future__ import annotations
 
@@ -35,16 +35,16 @@ def parse_filter(expr: str):
             key, raw = expr.split(op, 1)
             values = [_cast(x) for x in raw.split(",")] if op in ("=", "!=") else _cast(raw)
             return key.strip(), op, values
-    raise ValueError(f"Filtro non valido: {expr!r} (usa key=value, key!=value, key>=value)")
+    raise ValueError(f"Invalid filter: {expr!r} (use key=value, key!=value, key>=value)")
 
 
 def apply_filters(df: pd.DataFrame, exprs) -> pd.DataFrame:
-    """Applica in AND tutti i filtri passati."""
+    """Apply every filter, all of them at once."""
     out = df
     for expr in exprs or []:
         key, op, values = parse_filter(expr)
         if key not in out.columns:
-            raise KeyError(f"Colonna sconosciuta: {key}. Disponibili: {sorted(out.columns)}")
+            raise KeyError(f"Unknown column: {key}. Available: {sorted(out.columns)}")
         col = out[key]
         if op == "=":
             mask = col.isin(values) if None not in values else (col.isin(values) | col.isna())
@@ -64,7 +64,7 @@ def apply_filters(df: pd.DataFrame, exprs) -> pd.DataFrame:
 
 def select_runs(df: pd.DataFrame, filters=None, state: str | None = "finished",
                 dropna_cols=()) -> pd.DataFrame:
-    """Filtra l'indice; per default tiene solo i run `finished`."""
+    """Filter the index, keeping only finished runs by default."""
     out = df
     if state and state != "any":
         out = out[out.state.isin(state.split(","))]
@@ -75,7 +75,7 @@ def select_runs(df: pd.DataFrame, filters=None, state: str | None = "finished",
 
 
 def coverage(df: pd.DataFrame, by) -> pd.DataFrame:
-    """Numero di seed per combinazione: utile per capire cosa e' disponibile."""
+    """How many seeds each combination has, to see what is available."""
     by = list(by)
     g = df.groupby(by, dropna=False).agg(
         n_seeds=("seed", "nunique"), n_runs=("run_id", "size"),

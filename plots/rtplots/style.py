@@ -1,16 +1,12 @@
-"""Stile dei grafici: applica le regole di `plots/style.toml` a matplotlib.
+"""Applies the rules in `plots/style.toml` to matplotlib.
 
-I valori non stanno qui ma nel `.toml`, che si modifica a mano (vedi
-`rules.py`): questo modulo li traduce in rcParams e in colori delle serie.
+The values live in the .toml, edited by hand; this module turns them into
+rcParams and series colours.
 
-Preferenze di partenza:
-  - palette per braccio, coerente con `scripts/_report_common.py:ARM_COLORS`
-    (cosi' i grafici di questo motore e le tabelle/figure gia' scritte per la
-    tesi usano sempre lo stesso colore per lo stesso braccio);
-  - font serif con mathtext, nomi degli algoritmi in monospace;
-  - pannelli con box completo (4 spine), tick verso l'esterno, niente griglia;
-  - curva di apprendimento = media sui seed, banda ombreggiata semitrasparente;
-  - curva di budget = errorbar su asse x logaritmico (vedi grid.py).
+Defaults: one colour per method, so the same method keeps its colour across
+every figure; serif font with mathtext and method names in monospace; panels
+with a full box, ticks pointing out, no grid; learning curves as the mean over
+seeds with a shaded band; budget curves as error bars on a log x axis.
 """
 from __future__ import annotations
 
@@ -22,9 +18,8 @@ import matplotlib.pyplot as plt
 
 from . import rules as R
 
-# Stessa palette di scripts/_report_common.py:ARM_COLORS, nell'ordine
-# scripts/_report_common.py:ARM_ORDER (+ una coppia in piu' per bracci non
-# ancora previsti li', come "ibarz").
+# One colour per method, in the order the methods are usually presented, with
+# a couple of spares for methods that are not part of the standard set.
 ARM_ORDER = [
     "#2a78d6",  # blu     pref_soft
     "#1baf7a",  # verde acqua  pref_bernoulli
@@ -54,7 +49,7 @@ def baseline_width() -> float:
 
 
 def color_cycle(n: int) -> list[str]:
-    """n colori distinti dalla palette del file, allungata se non bastano."""
+    """n distinct colours from the file palette, repeated if there are not enough."""
     palette = R.palette() or ARM_ORDER
     if n <= len(palette):
         return palette[:n]
@@ -63,10 +58,10 @@ def color_cycle(n: int) -> list[str]:
 
 
 def apply_style(scale: float | None = None) -> None:
-    """rcParams globali dalle regole. `scale` sovrascrive [figure].font_scale."""
+    """Global rcParams from the rules. `scale` overrides [figure].font_scale."""
     scale = float(R.get("figure", "font_scale") if scale is None else scale)
     mpl.rcParams.update({
-        # font
+        # fonts
         "font.family": "serif",
         "font.serif": ["DejaVu Serif", "Times New Roman", "STIX Two Text", "serif"],
         "font.monospace": ["DejaVu Sans Mono", "Courier New", "monospace"],
@@ -77,23 +72,23 @@ def apply_style(scale: float | None = None) -> None:
         "xtick.labelsize": 9 * scale,
         "ytick.labelsize": 9 * scale,
         "legend.fontsize": float(R.get("legend", "font_size")) * scale,
-        # assi: box completo, niente griglia
+        # axes: full box, no grid
         "axes.spines.top": True,
         "axes.spines.right": True,
         "axes.linewidth": 0.8,
         "axes.grid": False,
         "axes.axisbelow": True,
-        # tick verso l'esterno
+        # ticks pointing outwards
         "xtick.direction": "out",
         "ytick.direction": "out",
         "xtick.major.size": 3.0,
         "ytick.major.size": 3.0,
         "xtick.major.width": 0.8,
         "ytick.major.width": 0.8,
-        # linee
+        # lines
         "lines.linewidth": line_width(),
         "lines.solid_capstyle": "round",
-        # legenda con cornice
+        # framed legend
         "legend.frameon": bool(R.get("legend", "frame")),
         "legend.framealpha": 1.0,
         "legend.fancybox": False,
@@ -102,7 +97,7 @@ def apply_style(scale: float | None = None) -> None:
         "legend.labelspacing": 0.3,
         "legend.handlelength": 1.6,
         "legend.handletextpad": 0.5,
-        # figura
+        # figure
         "figure.dpi": 120,
         "savefig.dpi": 300,
         "savefig.bbox": "tight",
@@ -112,14 +107,13 @@ def apply_style(scale: float | None = None) -> None:
     })
 
 
-# "_" va escaped: in mathtext e' l'operatore di pedice anche dentro \mathtt{},
-# e i nomi degli arm ne sono pieni (hybrid_demo_1, pref_soft, ...).
+# "_" has to be escaped: in mathtext it is the subscript operator even inside
+# \mathtt{}, and the method names are full of them.
 _MATH_ESCAPE = {"-": r"\text{-}", " ": r"\ ", "_": r"\_"}
 
 
 def mathtt(text: str) -> str:
-    """Nome di un arm in monospace mathtext: 'hybrid_demo_1 (soft)' ->
-    '$\\mathtt{hybrid\\_demo\\_1\\ (soft)}$'."""
+    """A method name in monospace mathtext, with underscores escaped."""
     escaped = str(text)
     for ch, esc in _MATH_ESCAPE.items():
         escaped = escaped.replace(ch, esc)
@@ -128,7 +122,7 @@ def mathtt(text: str) -> str:
 
 def finalize_axes(ax, xmax=None, xlabel=True, ylabel=True,
                   xlabel_text=None, ylabel_text=None, logx: bool = False) -> None:
-    """Etichette e limiti coerenti con lo stile scelto."""
+    """Labels and limits, consistent with the chosen style."""
     xlabel_text = R.get("figure", "xlabel") if xlabel_text is None else xlabel_text
     ylabel_text = R.get("figure", "ylabel") if ylabel_text is None else ylabel_text
     if xlabel:
@@ -143,7 +137,7 @@ def finalize_axes(ax, xmax=None, xlabel=True, ylabel=True,
 
 
 def save(fig, outdir, name: str, formats=("png", "pdf")) -> list[str]:
-    """Salva la figura nei formati richiesti; restituisce i path scritti."""
+    """Save the figure in the requested formats; return the paths written."""
     from pathlib import Path
 
     outdir = Path(outdir)

@@ -1,9 +1,9 @@
-"""Handler del selettore: funzioni pure (indice + richiesta -> dizionario).
+"""The selector handlers: pure functions, index and request in, dict out.
 
-Nessuna di queste funzioni sa che esiste HTTP: si provano da sole, e il server
-(`server.py`) si limita a instradare. Il vocabolario delle dimensioni non e'
-ridefinito qui — viene da `schema.py`, lo stesso che scrive i titoli dei
-pannelli e le voci di legenda.
+None of them knows HTTP exists, so they can be tested on their own and the
+server only routes. The vocabulary of dimensions is not redefined here: it
+comes from `schema.py`, the same one that writes the panel titles and the
+legend entries.
 """
 from __future__ import annotations
 
@@ -25,14 +25,14 @@ from ..metrics import DEFAULT_CURVE_METRIC, DEFAULT_SUMMARY_METRIC, metric_info,
 from .. import formulas
 from ..paths import SELECTION_JSON
 
-# Metriche W&B: ogni run non in cache e' una richiesta di rete. Oltre la soglia
-# si preferisce dirlo invece di far aspettare minuti.
+# Every run not yet cached is a network request. Past this threshold it is
+# better to say so than to make the page wait for minutes.
 MAX_WANDB_RUNS = 120
 MAX_PREVIEW_RUNS = 800
 MAX_PANELS = 24
 
 
-# --- vocabolario delle dimensioni -------------------------------------------
+# --- vocabulary of the dimensions -------------------------------------------
 
 def dimension_values(df: pd.DataFrame) -> list[dict]:
     out = []
@@ -55,7 +55,7 @@ def dimension_values(df: pd.DataFrame) -> list[dict]:
     return out
 
 
-# --- filtri della UI --------------------------------------------------------
+# --- filters from the UI ----------------------------------------------------
 
 OPS = ("is", "is_not", "in", "not_in")
 NEGATIVE_OPS = ("is_not", "not_in")
@@ -71,7 +71,7 @@ def dim_filter(raw) -> tuple[str, list]:
 
 
 def apply_ui_filters(df: pd.DataFrame, sel: dict, exclusions: bool = True) -> pd.DataFrame:
-    """Filtri della UI: nessun valore scelto = dimensione non filtrata."""
+    """UI filters: no value chosen means the dimension is not filtered."""
     out = df
     for col, raw in (sel.get("dims") or {}).items():
         op, values = dim_filter(raw)
@@ -91,7 +91,7 @@ def apply_ui_filters(df: pd.DataFrame, sel: dict, exclusions: bool = True) -> pd
 
 
 def live_counts(df: pd.DataFrame, sel: dict) -> dict:
-    """Per ogni valore, quante run resterebbero scegliendolo (conteggio a faccette)."""
+    """For each value, how many runs would be left if it were chosen."""
     dims = sel.get("dims") or {}
     out = {}
     for col in schema.UI_DIMENSIONS:
@@ -121,7 +121,7 @@ def _clean(value) -> str:
 
 
 def filter_args(sel: dict, df: pd.DataFrame) -> list[str]:
-    """Filtri della UI tradotti nella sintassi --filter degli script."""
+    """The UI filters, written in the --filter syntax the scripts take."""
     args = []
     for col, raw in (sel.get("dims") or {}).items():
         op, values = dim_filter(raw)
@@ -142,7 +142,7 @@ def filter_args(sel: dict, df: pd.DataFrame) -> list[str]:
 
 
 def coverage_rows(sel_df: pd.DataFrame, excluded=(), limit: int = 300) -> dict:
-    """Tabella di copertura sulle sole dimensioni che variano nella selezione."""
+    """Coverage table over the dimensions that vary in the selection."""
     varying = [c for c in schema.GRID_FIELDS
                if c in sel_df.columns and sel_df[c].nunique(dropna=False) > 1]
     if not varying:
@@ -175,10 +175,10 @@ def coverage_rows(sel_df: pd.DataFrame, excluded=(), limit: int = 300) -> dict:
             "truncated": len(g) > limit}
 
 
-# --- dalla richiesta della pagina allo spec ---------------------------------
+# --- from a page request to a spec ------------------------------------------
 
 def spec_from_payload(payload: dict, sub: pd.DataFrame) -> F.FigureSpec:
-    """Impostazioni della pagina -> FigureSpec (lo stesso che usa la CLI)."""
+    """Page settings -> FigureSpec, the same one the CLI uses."""
     grid = dict(payload.get("grid") or {})
     kind = grid.pop("kind", None) or "curve"
     spec = F.FigureSpec.from_dict({
@@ -193,7 +193,7 @@ def spec_from_payload(payload: dict, sub: pd.DataFrame) -> F.FigureSpec:
 
 
 def wandb_cost_guard(sub: pd.DataFrame, kind: str, metric: str | None) -> str | None:
-    """Le metriche W&B costano una richiesta per run: oltre una soglia si ferma."""
+    """These metrics cost one request per run, so past a threshold it stops."""
     metric = metric or (DEFAULT_SUMMARY_METRIC if kind == "budget" else DEFAULT_CURVE_METRIC)
     if kind == "budget":
         projects = dict(zip(sub.run_id, sub.get("project", pd.Series(dtype=str))))
@@ -205,14 +205,14 @@ def wandb_cost_guard(sub: pd.DataFrame, kind: str, metric: str | None) -> str | 
     if len(todo) > MAX_WANDB_RUNS:
         info = metric_info(metric)
         return (f"«{info['label']}» va scaricata da W&B: {len(todo)} run non ancora in "
-                f"cache (massimo {MAX_WANDB_RUNS}). Restringi la selezione; dopo il primo "
+                f"cached (at most {MAX_WANDB_RUNS}). Narrow the selection; after the first "
                 f"scaricamento i dati restano in cache.")
     return None
 
 
 def render(index: pd.DataFrame, sub: pd.DataFrame, payload: dict,
           fmt: str = "png", dpi: int = 110, plot_lock=None) -> dict:
-    """Disegna la figura e la restituisce come byte grezzi."""
+    """Draw the figure and return it as raw bytes."""
     spec = spec_from_payload(payload, sub)
     try:
         series = F.prepare(index[index.run_id.isin(sub.run_id)], spec, verbose=False)
@@ -220,7 +220,7 @@ def render(index: pd.DataFrame, sub: pd.DataFrame, payload: dict,
         return {"error": str(exc)}
     panels = F.n_panels(series, spec)
     if panels > MAX_PANELS:
-        return {"error": f"Troppi pannelli ({panels}): restringi i filtri o le dimensioni."}
+        return {"error": f"Too many panels ({panels}): narrow the filters or the dimensions."}
 
     lock = plot_lock if plot_lock is not None else _NullLock()
     with lock:
@@ -246,7 +246,7 @@ def render(index: pd.DataFrame, sub: pd.DataFrame, payload: dict,
 
 
 def series_list(series: F.Series, spec: F.FigureSpec) -> list[dict]:
-    """Le serie della figura, con quello che serve alla pagina per ritoccarle."""
+    """The series of the figure, with what the page needs to touch them up."""
     overrides = spec.series_overrides or {}
     renamed = {(o.get("name") or "").strip() or k: k for k, o in overrides.items()}
     out = []
@@ -265,7 +265,7 @@ def series_list(series: F.Series, spec: F.FigureSpec) -> list[dict]:
 
 
 def rule_snippet(label: str, match: dict, style: dict) -> str:
-    """Il blocco `[[series]]` da incollare in style.toml per rendere fisso il ritocco."""
+    """The `[[series]]` block to paste into style.toml to keep a touch-up."""
     pairs = ", ".join(f"{col} = {_toml_value(v)}" for col, v in match.items()
                       if v is not None and v == v)
     lines = [f"match = {{ {pairs} }}"] if pairs else ["match = { }  # da completare"]
@@ -299,10 +299,10 @@ class _NullLock:
         return False
 
 
-# --- nomi e snippet ---------------------------------------------------------
+# --- names and snippets -----------------------------------------------------
 
 def figure_name(sel_df: pd.DataFrame, kind: str = "curve") -> str:
-    """Nome file a partire dalle dimensioni fissate nella selezione."""
+    """A file name built from the dimensions fixed in the selection."""
     bits = [kind]
     for col in ("arm_family", "demo_loss", "pref_labels"):
         if col not in sel_df.columns:
@@ -310,7 +310,7 @@ def figure_name(sel_df: pd.DataFrame, kind: str = "curve") -> str:
         vals = sel_df[col].dropna().unique()
         if len(vals) == 1:
             bits.append(_clean(vals[0]))
-    name = "_".join(bits) or "selezione"
+    name = "_".join(bits) or 'selection'
     return "".join(c for c in name if c.isalnum() or c in "_")[:60]
 
 
@@ -318,18 +318,18 @@ MAX_HPARAM_RUNS = 24
 
 
 def hparams(df: pd.DataFrame, payload: dict) -> dict:
-    """YAML degli iperparametri delle run di UNA riga della tabella di copertura.
+    """The hyperparameters of the runs in one coverage-table row, as YAML.
 
-    Costa una richiesta W&B per run non ancora in cache (la config completa
-    arriva solo con ``run.load``), quindi vale la stessa cautela delle metriche:
-    una riga sono tre seed, non trecento.
+    One W&B request per run not yet cached, since the full config only arrives
+    with ``run.load``. The same caution as the metrics applies: a row is three
+    seeds, not three hundred.
     """
     run_ids = [r for r in (payload.get("run_ids") or []) if r]
     if not run_ids:
-        return {"error": "Nessuna run in questa riga."}
+        return {"error": 'No run in this row.'}
     if len(run_ids) > MAX_HPARAM_RUNS:
-        return {"error": f"{len(run_ids)} run in questa riga (massimo "
-                         f"{MAX_HPARAM_RUNS}): restringi i filtri."}
+        return {"error": f"{len(run_ids)} runs in this row (at most "
+                         f"{MAX_HPARAM_RUNS}): narrow the filters."}
     known = df[df.run_id.isin(run_ids)]
     missing = sorted(set(run_ids) - set(known.run_id))
     if missing:
@@ -337,8 +337,8 @@ def hparams(df: pd.DataFrame, payload: dict) -> dict:
 
     records = known[[c for c in ("run_id", "project", "state", "name", "seed")
                      if c in known.columns]].to_dict("records")
-    # Ordine dell'elenco della riga, non quello del DataFrame: e' l'ordine in
-    # cui la pagina mostra i seed.
+    # The order of the row's own list, not of the DataFrame: it is the order
+    # the page shows the seeds in.
     by_id = {r["run_id"]: r for r in records}
     records = [by_id[r] for r in run_ids if r in by_id]
 
@@ -349,7 +349,7 @@ def hparams(df: pd.DataFrame, payload: dict) -> dict:
 
 
 def _hparams_name(sel_df: pd.DataFrame) -> str:
-    """Nome file: gruppo W&B se le run lo condividono, altrimenti il primo run_id."""
+    """File name: the W&B group if the runs share one, else the first run_id."""
     groups = sel_df.get("group")
     if groups is not None:
         vals = groups.dropna().unique()
@@ -362,7 +362,7 @@ def _hparams_name(sel_df: pd.DataFrame) -> str:
 def _caption(sel_df: pd.DataFrame, info: dict, band: str, kind: str) -> str:
     arms = ", ".join(sorted(sel_df.arm.dropna().unique())) or "?"
     band_txt = {"se": "errore standard", "std": "deviazione standard",
-                "ci95": "intervallo di confidenza al 95\\%", "minmax": "minimo--massimo",
+                "ci95": "intervallo di confidenza al 95\\%", "minmax": 'min--max',
                 "none": "nessuna banda"}.get(band, band)
     tipo = "budget" if kind == "budget" else "apprendimento"
     return (f"{info.get('metric', '')} — curva di {tipo}, {arms}. Media su "
@@ -371,7 +371,7 @@ def _caption(sel_df: pd.DataFrame, info: dict, band: str, kind: str) -> str:
 
 def tex_panels(index: pd.DataFrame, sub: pd.DataFrame, payload: dict,
               name: str, plot_lock=None) -> dict:
-    """Un sorgente pgfplots per pannello: {files: [(nome, codice)], latex: ...}."""
+    """One pgfplots source per panel: {files: [(name, code)], latex: ...}."""
     err = tikz.unavailable_reason()
     if err:
         return {"error": err}
@@ -382,7 +382,7 @@ def tex_panels(index: pd.DataFrame, sub: pd.DataFrame, payload: dict,
         return {"error": str(exc)}
     panels = F.split_panels(series, spec)
     if len(panels) > MAX_PANELS:
-        return {"error": f"Troppi pannelli ({len(panels)}): restringi i filtri."}
+        return {"error": f"Too many panels ({len(panels)}): narrow the filters."}
 
     lock = plot_lock if plot_lock is not None else _NullLock()
     files = []
@@ -409,7 +409,7 @@ def tex_panels(index: pd.DataFrame, sub: pd.DataFrame, payload: dict,
 
 
 def tex_snippet(name: str, panels, filenames: list[str], ncol: int, caption: str) -> str:
-    """Figura montata: un `\\input` per pannello, in subfigure se sono piu' di uno."""
+    """The assembled figure: one `\\input` per panel, in subfigures if several."""
     if len(filenames) == 1:
         body = f"  \\input{{figures/{filenames[0]}}}\n"
     else:
@@ -448,8 +448,8 @@ def latex_snippet(name: str, sel_df: pd.DataFrame, info: dict, band: str, kind: 
 # --- risposte agli endpoint -------------------------------------------------
 
 OP_LABELS = [
-    {"op": "is", "label": "è", "multi": False},
-    {"op": "is_not", "label": "non è", "multi": False},
+    {"op": "is", "label": 'is', "multi": False},
+    {"op": "is_not", "label": 'is not', "multi": False},
     {"op": "in", "label": "fra", "multi": True},
     {"op": "not_in", "label": "non fra", "multi": True},
 ]
@@ -495,7 +495,7 @@ def query(df: pd.DataFrame, payload: dict) -> dict:
 def preview(df: pd.DataFrame, payload: dict, plot_lock=None) -> dict:
     sub = apply_ui_filters(df, payload)
     if sub.empty:
-        return {"error": "Nessuna run selezionata."}
+        return {"error": 'No run selected.'}
     if len(sub) > MAX_PREVIEW_RUNS:
         return {"error": f"{len(sub)} run: troppe per l'anteprima."}
     grid = payload.get("grid") or {}
@@ -510,11 +510,11 @@ def preview(df: pd.DataFrame, payload: dict, plot_lock=None) -> dict:
 
 def compose_with_formula(figure_png: bytes, df: pd.DataFrame, payload: dict,
                          fmt: str = "png", dpi: int = 300) -> bytes:
-    """Figura e pannello delle definizioni affiancati in un'unica immagine.
+    """The figure and the definitions panel, side by side in one image.
 
-    Composizione raster invece di una figura matplotlib unica: le formule sono
-    gia' disegnate da `formulas`, e ridisegnarle dentro la griglia
-    significherebbe due sorgenti di verita' per lo stesso contenuto.
+    Composed as rasters rather than as a single matplotlib figure: `formulas`
+    already draws them, and redrawing them inside the grid would mean two
+    sources of truth for the same content.
     """
     from PIL import Image
 
@@ -523,8 +523,8 @@ def compose_with_formula(figure_png: bytes, df: pd.DataFrame, payload: dict,
         return figure_png
     left = Image.open(io.BytesIO(figure_png)).convert("RGB")
     right = Image.open(io.BytesIO(formulas.render_png(blocks, dpi=dpi))).convert("RGB")
-    # Le definizioni accompagnano la figura, non la dominano: al massimo meta'
-    # della sua larghezza, e scalate a parita' di altezza se sono piu' alte.
+    # The definitions accompany the figure, they do not dominate it: half its
+    # width at most, and scaled down if they are taller.
     max_w = left.width // 2
     if right.width > max_w:
         right = right.resize((max_w, max(1, right.height * max_w // right.width)))
@@ -542,7 +542,7 @@ def compose_with_formula(figure_png: bytes, df: pd.DataFrame, payload: dict,
 
 
 def _formula_blocks(df: pd.DataFrame, payload: dict) -> list:
-    """Blocchi da mostrare per la selezione corrente (metrica + fusioni)."""
+    """The blocks to show for the current selection: metric and fusions."""
     grid = payload.get("grid") or {}
     metric = grid.get("metric") or (
         DEFAULT_SUMMARY_METRIC if grid.get("kind") == "budget" else DEFAULT_CURVE_METRIC)
@@ -556,10 +556,10 @@ def _formula_blocks(df: pd.DataFrame, payload: dict) -> list:
 
 
 def formula(df: pd.DataFrame, payload: dict) -> dict:
-    """Definizioni matematiche della metrica scelta e delle fusioni in selezione.
+    """The formulas for the chosen metric and the selected fusions.
 
-    Reso lato server con mathtext di matplotlib: la pagina resta senza
-    dipendenze esterne (niente MathJax/KaTeX da CDN).
+    Rendered server side with matplotlib mathtext, so the page needs no external
+    dependencies.
     """
     blocks = _formula_blocks(df, payload)
     if not blocks:
@@ -570,7 +570,7 @@ def formula(df: pd.DataFrame, payload: dict) -> dict:
 def save(df: pd.DataFrame, payload: dict) -> dict:
     sub = apply_ui_filters(df, payload)
     name = (payload.get("name") or "").strip() or \
-        datetime.now().strftime("selezione %d/%m %H:%M:%S")
+        datetime.now().strftime('selection %d/%m %H:%M:%S')
     slug = selection.free_slug(selection.slugify(name), name)
     stored = selection.write({
         "version": F.SPEC_VERSION,

@@ -1,8 +1,8 @@
-"""Argomenti CLI condivisi, e come diventano uno `FigureSpec`.
+"""Shared CLI arguments, and how they become a `FigureSpec`.
 
-Gli script non preparano piu' i dati: costruiscono lo spec e lo passano a
-`rtplots.figure`, la stessa pipeline che usa il selettore. Cosi' «rifai da CLI
-la figura che vedo nella pagina» e' garantito, non sperato.
+The scripts do not prepare data any more: they build the spec and hand it to
+`rtplots.figure`, the same pipeline the selector uses. "Redraw from the command
+line the figure I see in the page" is then guaranteed rather than hoped for.
 """
 from __future__ import annotations
 
@@ -13,31 +13,31 @@ from rtplots.paths import OUTPUT_DIR, SELECTION_JSON
 
 
 def add_selection_args(p):
-    g = p.add_argument_group("selezione")
+    g = p.add_argument_group('selection')
     g.add_argument("--filter", nargs="*", default=[],
-                   help="filtri sull'indice, es. arm=demo_1,demo_2 query_budget>=5000")
+                   help='filters on the index, e.g. arm=demo_1,demo_2 query_budget>=5000')
     g.add_argument("--state", default=None, help="finished (default) | any | crashed")
     g.add_argument("--runs-file", nargs="?", const=str(SELECTION_JSON), default=None,
                    metavar="PATH",
-                   help="usa la selezione salvata dal selettore interattivo "
-                        f"(senza argomento: {SELECTION_JSON})")
+                   help="use the selection saved by the interactive selector "
+                        f"(with no argument: {SELECTION_JSON})")
     g.add_argument("--hue", nargs="*", default=None,
                    help="colonne che definiscono le serie colorate; per default sono "
-                        "automatiche (tutte le dimensioni che variano nella selezione, "
-                        "escluse quelle su righe/colonne)")
+                        "automatic (every dimension that varies in the selection, "
+                        "except those already on rows or columns)")
     g.add_argument("--hue-order", nargs="*", default=None)
     g.add_argument("--label-fields", nargs="*", default=None,
                    help="campi mostrati in legenda oltre all'arm (default: --hue)")
     g.add_argument("--min-seeds", type=int, default=1)
     g.add_argument("--compare-fusion", action="store_true", default=None,
                    help="curve di budget: separa anche per schema di fusione "
-                        "(senza, schemi diversi dello stesso arm sono mediati insieme)")
+                        "(without it, different schemes of one method are averaged)")
     g.add_argument("--compare-norm", action="store_true", default=None,
                    help="curve di budget: separa anche per normalize_agent_reward "
                         "(ON tratteggiata, OFF continua)")
     g.add_argument("--compare-smoothing", action="store_true", default=None,
                    help="curve di budget: separa anche per label_smoothing "
-                        "(con smoothing tratteggiata, senza continua)")
+                        "(with smoothing dashed, without it solid)")
     return p
 
 
@@ -51,8 +51,8 @@ def add_aggregation_args(p):
 
 def add_grid_args(p):
     g = p.add_argument_group("griglia e aspetto")
-    g.add_argument("--rows", default=None, help="colonna dell'indice per le righe")
-    g.add_argument("--cols", default=None, help="colonna dell'indice per le colonne")
+    g.add_argument("--rows", default=None, help='index column for the rows')
+    g.add_argument("--cols", default=None, help='index column for the columns')
     g.add_argument("--ylim", nargs=2, type=float, default=None)
     g.add_argument("--logy", action="store_true")
     g.add_argument("--share", default=None, choices=["none", "row", "col", "all"])
@@ -80,16 +80,16 @@ def add_output_args(p, default_name="figure"):
 
 
 def spec_from_args(args, kind: str, metric: str | None = None) -> FigureSpec:
-    """Argomenti (piu' l'eventuale selezione salvata) -> FigureSpec.
+    """Arguments, plus any saved selection, into a FigureSpec.
 
-    Ordine di precedenza: riga di comando > selezione salvata > default.
+    Precedence: the command line, then the saved selection, then the defaults.
     """
     spec = FigureSpec(kind=kind)
     runs_file = getattr(args, "runs_file", None)
     if runs_file:
         spec, data = SEL.spec_from(runs_file)
         spec.kind = kind
-        print(f"[plot] selezione del {data.get('saved_at')}: {data.get('n_runs')} run "
+        print(f"[plot] selection from {data.get('saved_at')}: {data.get('n_runs')} runs "
               f"({' '.join(data.get('filter_args') or []) or 'nessun filtro'})")
     else:
         spec.state = "finished"
@@ -126,5 +126,5 @@ def report(series, args, paths):
         csv = f"{args.outdir}/{args.name}.csv"
         series.agg.to_csv(csv, index=False)
         print(f"[plot] scritto {csv}")
-    print("[plot] seed per serie:\n"
+    print('[plot] seeds per series:\n'
           + series.agg.groupby("label")["n_seeds"].max().to_string())

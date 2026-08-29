@@ -1,29 +1,29 @@
-"""Export della figura in pgfplots (`.tex`) tramite tikzplotlib, un file per pannello.
+"""Export a figure to pgfplots (`.tex`) through tikzplotlib, one file per panel.
 
-Il `.tex` prodotto e' autonomo: `\\begin{tikzpicture}` con i `\\definecolor`, le
-bande come `\\path[fill=..., opacity=0.2]` e una `\\addplot` per serie — cioe' i
-dati veri dentro il sorgente, non un PDF incluso. Si compila con `pgfplots` e si
-ricolora/riscala da LaTeX senza rigenerare niente.
+The `.tex` stands on its own: a `tikzpicture` with its `\\definecolor`, the bands
+as filled paths and one `\\addplot` per series. The real data sits in the source
+rather than in an included PDF, so it can be recoloured or rescaled from LaTeX
+without regenerating anything.
 
-**Un pannello, un file.** Una griglia m×n non diventa un `.tex` con m×n assi: le
-figure di un paper si compongono in LaTeX (subfigure), non in matplotlib. Chi
-esporta i sorgenti vuole i singoli riquadri.
+One panel, one file. An m by n grid does not become a `.tex` with m by n axes:
+figures are composed in LaTeX, and whoever exports the source wants the single
+panels.
 
-tikzplotlib e' fermo alla 0.10.1 (2022) e non regge matplotlib 3.6+ ne' numpy 2:
-`_compat()` rimette i nomi che si aspetta. Sono alias, non rattoppi alla logica —
-se un giorno la libreria verra' sostituita, qui si toglie una funzione sola.
+tikzplotlib stopped at 0.10.1 and does not cope with recent matplotlib or numpy
+2, so `_compat()` puts back the names it expects. They are aliases, not patches
+to its logic: if the library is ever replaced, one function goes away.
 """
 from __future__ import annotations
 
 import re
 
-# amsmath serve per \text{} dentro le voci di legenda (ωPPO-BH e simili)
-PREAMBLE = (r"% Nel preambolo del documento: \usepackage{pgfplots,amsmath}"
+# amsmath is needed for \text{} inside legend entries
+PREAMBLE = (r"% In the document preamble: \usepackage{pgfplots,amsmath}"
             r" \pgfplotsset{compat=1.18}")
 
 
 def _compat() -> None:
-    """Alias dei nomi rimossi da matplotlib/numpy/webcolors che tikzplotlib usa ancora."""
+    """Put back the names tikzplotlib still uses and its dependencies removed."""
     import numpy as np
     import matplotlib.backends.backend_pgf as pgf
     from matplotlib.legend import Legend
@@ -36,28 +36,26 @@ def _compat() -> None:
         Legend.legendHandles = property(lambda self: self.legend_handles)
     if not hasattr(Legend, "_ncol"):                   # rinominata in mpl 3.6
         Legend._ncol = property(lambda self: self._ncols)
-    if not hasattr(Line2D, "_us_dashSeq"):             # accorpati in mpl 3.6
-        # I due attributi sono diventati la coppia _unscaled_dash_pattern
-        # = (offset, sequenza). _path.py li legge solo dentro un ramo protetto
-        # da is_dashed(), quindi il caso "linea continua" (sequenza None) non
-        # viene mai raggiunto. La sequenza resta una tuple come quella che
-        # _get_dash_pattern restituisce, cosi' il confronto col tratteggio di
-        # default non cambia esito e non compaiono "dash pattern" superflui.
+    if not hasattr(Line2D, "_us_dashSeq"):             # merged in mpl 3.6
+        # The two attributes became the pair _unscaled_dash_pattern =
+        # (offset, sequence). tikzplotlib reads them only inside a branch
+        # guarded by is_dashed(), so the solid case is never reached. The
+        # sequence stays the tuple _get_dash_pattern returns, so comparing
+        # against the default dash pattern still gives the same answer.
         Line2D._us_dashSeq = property(lambda self: self._unscaled_dash_pattern[1])
         Line2D._us_dashOffset = property(lambda self: self._unscaled_dash_pattern[0])
     for old, new in (("float_", "float64"), ("alltrue", "all"), ("bool8", "bool_")):
-        if not hasattr(np, old):                       # rimossi in numpy 2.0
+        if not hasattr(np, old):                       # removed in numpy 2.0
             setattr(np, old, getattr(np, new))
-    if not hasattr(webcolors, "CSS3_HEX_TO_NAMES"):    # rimossa in webcolors 24
-        # _color.py cerca il nome CSS3 piu' vicino iterando su hex -> nome e
-        # tiene il primo a distanza minima, quindi contano sia l'ordine sia
-        # quale nome sopravvive fra due sinonimi.
+    if not hasattr(webcolors, "CSS3_HEX_TO_NAMES"):    # removed in webcolors 24
+        # tikzplotlib looks for the nearest CSS3 name by walking hex -> name and
+        # keeping the first at minimum distance, so both the order and which of
+        # two synonyms survives matter.
         #
-        # Fra due sinonimi vince la grafia che xcolor conosce, che e' anche
-        # quella che teneva la 1.13: \color{gray}, \color{cyan} e
-        # \color{magenta} esistono, grey/aqua/fuchsia no, e un nome ignoto fa
-        # fallire la compilazione del .tex. In ordine alfabetico vince il primo
-        # (gray su grey), tranne per i due sinonimi aggiunti da CSS3.
+        # Between synonyms the spelling xcolor knows wins: \color{gray},
+        # \color{cyan} and \color{magenta} exist, grey, aqua and fuchsia do not,
+        # and an unknown name makes the .tex fail to compile. Alphabetical order
+        # picks the first, except for the two synonyms CSS3 added.
         PREFERITI = ("cyan", "magenta")
         mappa: dict[str, str] = {}
         for nome in sorted(webcolors.names(webcolors.CSS3)):
@@ -68,7 +66,7 @@ def _compat() -> None:
 
 
 def unavailable_reason() -> str | None:
-    """None se l'export .tex e' possibile, altrimenti perche' non lo e'."""
+    """None if the .tex export is possible, otherwise why it is not."""
     try:
         _compat()
         import tikzplotlib  # noqa: F401
@@ -106,12 +104,12 @@ def _use_latex_names(fig, styles: dict) -> dict:
 
 
 def _add_axis_options(code: str, options) -> str:
-    """Aggiunge righe dentro `\\begin{axis}[...]`, in coda: le ultime vincono."""
+    """Append lines inside `\\begin{axis}[...]`; the last ones win."""
     extra = [str(o).rstrip(",") for o in options if str(o).strip()]
     if not extra:
         return code
     # il blocco di opzioni e' quello che sta fra "\begin{axis}[" e la prima "]"
-    # a inizio riga: pgfplots non annida parentesi quadre a quel livello
+    # at the start of a line: pgfplots does not nest brackets at that level
     head, sep, rest = code.partition("\\begin{axis}[\n")
     if not sep:
         return code
@@ -122,10 +120,10 @@ def _add_axis_options(code: str, options) -> str:
 
 
 def figure_to_tex(fig, header: str = "", styles: dict | None = None) -> str:
-    """Codice tikzpicture della figura (che deve avere un solo asse).
+    """The tikzpicture code for a figure, which must have a single axis.
 
     `styles` e' la mappa etichetta -> stile prodotta da `figure.prepare`: da li'
-    arrivano i nomi LaTeX delle serie.
+    carries the LaTeX names of the series.
     """
     _compat()
     import tikzplotlib
@@ -138,7 +136,7 @@ def figure_to_tex(fig, header: str = "", styles: dict | None = None) -> str:
         code = code.replace(token, latex)
     code = _add_axis_options(code, R.get("latex", "axis_options") or [])
     # tikzplotlib scrive "\path [draw=...]": lo spazio dopo il comando e' legale
-    # ma sporca i diff quando si rigenera la stessa figura
+    # but makes the diff noisy when the same figure is regenerated
     code = re.sub(r"\\(path|addplot) \[", r"\\\1[", code)
     bits = [b for b in (header, R.latex_macros_comment()) if b]
     return "\n".join(bits + [code]) if bits else code

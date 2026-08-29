@@ -1,11 +1,11 @@
-"""Server locale del selettore: solo trasporto e instradamento.
+"""The selector's local server: transport and routing, nothing else.
 
-Nessuna logica di selezione o di disegno qui dentro — sta in `api.py`, che non
-sa nemmeno che esiste HTTP. Le rotte sono una tabella: aggiungerne una e' una
-riga, non un ramo in fondo a una catena di `if`.
+No selection or drawing logic lives here. That is in `api.py`, which does not
+know HTTP exists. The routes are a table, so adding one is a line rather than
+another branch at the end of a chain of ifs.
 
-Libreria standard soltanto: il selettore gira in locale, senza dipendenze web
-da installare.
+Standard library only: the selector runs locally, with no web dependencies to
+install.
 """
 from __future__ import annotations
 
@@ -53,10 +53,10 @@ def _remember_export(filename: str, mime: str, raw: bytes) -> str:
     return token
 
 
-# --- handler degli endpoint POST (df, payload) -> dict ----------------------
+# --- POST endpoint handlers, (df, payload) -> dict --------------------------
 
 def _export_tex(df, payload: dict, sub, name: str) -> dict:
-    """Sorgenti pgfplots: un `.tex` per pannello piu' la figura montata, in zip."""
+    """pgfplots sources: one `.tex` per panel plus the assembled figure, zipped."""
     res = api.tex_panels(df, sub, payload, name, plot_lock=_plot_lock)
     if "error" in res:
         return res
@@ -84,7 +84,7 @@ def _export_tex(df, payload: dict, sub, name: str) -> dict:
 def _export(df, payload: dict) -> dict:
     sub = api.apply_ui_filters(df, payload)
     if sub.empty:
-        return {"error": "Nessuna run selezionata."}
+        return {"error": 'No run selected.'}
     fmt = (payload.get("format") or "jpeg").lower()
     grid = payload.get("grid") or {}
     kind = grid.get("kind", "curve")
@@ -129,7 +129,7 @@ def _preview(df, payload: dict) -> dict:
 def _load_selection(df, payload: dict) -> dict:
     slug = payload.get("slug") or ""
     if not selection.path_for(slug).exists():
-        return {"error": "Selezione non trovata.", "_code": 404}
+        return {"error": "Selection not found.", "_code": 404}
     return selection.activate(slug)
 
 
@@ -137,7 +137,7 @@ def _rename(df, payload: dict) -> dict:
     slug = payload.get("slug") or ""
     name = (payload.get("name") or "").strip()
     if not selection.path_for(slug).exists():
-        return {"error": "Selezione non trovata.", "_code": 404}
+        return {"error": "Selection not found.", "_code": 404}
     if not name:
         return {"error": "Il nome non puo' essere vuoto."}
     data = selection.rename(slug, name)
@@ -213,14 +213,14 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length") or 0)
             payload = json.loads(self.rfile.read(n) or b"{}")
             return self._json(handler(load_index(), payload))
-        except Exception as exc:  # errore visibile nella pagina, server vivo
+        except Exception as exc:  # surfaced in the page, the server stays up
             import traceback
             traceback.print_exc()
             return self._json({"error": f"{type(exc).__name__}: {exc}"}, code=500)
 
 
 def serve(host: str = "127.0.0.1", port: int = 8770) -> None:
-    load_index()  # fallisce subito se l'indice non c'e'
+    load_index()  # fail now if there is no index
     try:
         srv = ThreadingHTTPServer((host, port), Handler)
     except OSError as exc:
@@ -232,7 +232,7 @@ def serve(host: str = "127.0.0.1", port: int = 8770) -> None:
             f"  altra porta: python plots/scripts/selector.py --port {port + 1}"
         )
     print(f"[selector] http://{host}:{port}  (Ctrl-C per fermare)")
-    print(f"[selector] selezione salvata in {SELECTION_JSON}")
+    print(f"[selector] selection saved to {SELECTION_JSON}")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

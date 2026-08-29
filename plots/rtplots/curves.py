@@ -1,11 +1,9 @@
-"""Caricamento e aggregazione delle curve di apprendimento.
+"""Loading and aggregating the learning curves.
 
-A differenza del progetto di ispirazione (file `.npz` locali + fallback W&B),
-qui la sola fonte e' la history W&B: i log locali (`metrics.jsonl`) vivono sul
-server dove giri il training, non sulla macchina da cui si analizza (vedi
-`docs/analysis-pipeline-guide.md`). Ogni run non ancora in cache costa quindi
-una richiesta di rete; i risultati restano in cache su disco (`plots/.cache/`)
-e in memoria per il processo del selettore, che ridisegna in continuazione.
+The only source is the W&B history: the local logs stay on the machine that ran
+the training, not on the one doing the analysis. Every run not yet cached costs
+a network request, so results are kept on disk and, for the selector process
+that redraws constantly, in memory as well.
 """
 from __future__ import annotations
 
@@ -18,8 +16,8 @@ import pandas as pd
 from .metrics import DEFAULT_CURVE_METRIC, metric_info
 from .paths import CURVE_DIR, ensure_dirs, wandb_path
 
-# Cache in memoria condivisa (serve al selettore, che ridisegna in continuazione).
-# La chiave include il progetto: il run_id e' unico solo al suo interno.
+# Shared in-memory cache, for the selector that redraws constantly. The key
+# includes the project: a run_id is only unique inside one.
 _MEM: OrderedDict[tuple, pd.DataFrame] = OrderedDict()
 MAX_MEM_CURVES = 4000
 
@@ -44,13 +42,12 @@ def _mem_put(key, df) -> None:
 def curve_from_wandb(run_id: str, project: str, metric: str = DEFAULT_CURVE_METRIC,
                      cache: bool = True, samples: int = 2000,
                      state: str = "") -> pd.DataFrame:
-    """Curva [step, ret] di una run, sul suo asse x naturale (vedi metrics.py).
+    """One run's curve, on its own x axis; see metrics.py.
 
-    Una run ancora in corso viene scaricata ma **non** salvata su disco: la sua
-    curva e' destinata ad allungarsi, e una cache parziale resterebbe li' per
-    sempre accorciando in silenzio ogni figura che la usa (`aggregate` fissa la
-    griglia comune sulla run piu' corta del gruppo). Stessa regola gia' adottata
-    da `budget.load_summary` per i summary.
+    A run still in progress is downloaded but not cached: its curve will grow,
+    and a partial cache would sit there forever, quietly shortening every figure
+    that uses it, because `aggregate` fits the common grid to the shortest run
+    in the group.
     """
     ensure_dirs()
     info = metric_info(metric)
@@ -90,7 +87,7 @@ def load_curve(run_id: str, metric: str = DEFAULT_CURVE_METRIC,
 
 def load_curves(index: pd.DataFrame, metric: str = DEFAULT_CURVE_METRIC,
                 verbose: bool = True, workers: int = 8) -> pd.DataFrame:
-    """Curve di tutti i run dell'indice, in formato tidy [run_id, step, ret]."""
+    """Curves for every run in the index, as [run_id, step, ret]."""
     run_ids = list(index.run_id)
     projects = dict(zip(index.run_id, index.project)) if "project" in index.columns else {}
     states = dict(zip(index.run_id, index.state)) if "state" in index.columns else {}
@@ -116,9 +113,9 @@ def load_curves(index: pd.DataFrame, metric: str = DEFAULT_CURVE_METRIC,
     return pd.concat(frames, ignore_index=True)
 
 
-# --- aggregazione sui seed --------------------------------------------------
+# --- aggregation over seeds -------------------------------------------------
 
-# Sotto questa frazione della run piu' lunga del gruppo il taglio va segnalato.
+# Below this fraction of the longest run in the group, the cut gets reported.
 TRUNCATION_RATIO = 0.9
 
 
@@ -131,26 +128,25 @@ def _smooth(y: np.ndarray, window: int) -> np.ndarray:
 def aggregate(curves: pd.DataFrame, meta: pd.DataFrame, group_cols,
               band: str = "se", smooth: int = 1, grid_points: int | None = None,
               xmax: float | None = None) -> pd.DataFrame:
-    """Media sui seed con banda di incertezza.
+    """Mean over seeds, with an uncertainty band.
 
-    Ogni run viene interpolato su una griglia comune al gruppo, poi lisciato con
-    media mobile. band: se | std | ci95 | iqr | minmax.
-    Ritorna [*group_cols, step, mean, lo, hi, n_seeds].
+    Every run is interpolated onto a grid shared by the group, then smoothed
+    with a moving average. band: se | std | ci95 | iqr | minmax.
+    Returns [*group_cols, step, mean, lo, hi, n_seeds].
     """
     group_cols = list(group_cols)
     df = curves.merge(meta[["run_id", *group_cols]], on="run_id", how="inner")
     out = []
-    # Una run piu' corta delle sorelle accorcia tutta la serie, e finora lo
-    # faceva in silenzio: chi guarda la figura vede una curva interrotta senza
-    # sapere perche'.
+    # One run shorter than its siblings shortens the whole series, and used to
+    # do it silently: the figure showed a curve cut off with no reason given.
     truncated = []
-    # Una metrica che nasce a meta' run (alpha/* prima che le preferenze
-    # bastino a stimarne la dispersione) esiste solo da un certo step in poi.
-    # La griglia deve partire da li': `np.interp` FUORI dall'intervallo dei dati
-    # non estrapola, replica il primo valore, quindi una griglia che parte da 0
-    # disegnava un tratto piatto lungo quanto il buco, indistinguibile da una
-    # misura vera. Il bordo destro prendeva gia' l'intersezione fra i seed; ora
-    # anche il sinistro.
+    # A metric that starts mid-run, like alpha/* before there are enough
+    # comparisons to estimate its dispersion, only exists from some step on.
+    # The grid has to start there: outside the data range `np.interp` does not
+    # extrapolate, it repeats the first value, so a grid starting at 0 drew a
+    # flat stretch as long as the gap, indistinguishable from a real
+    # measurement. The right edge already took the intersection over seeds;
+    # now the left one does too.
     late_start = []
     for key, g in df.groupby(group_cols, dropna=False):
         key = key if isinstance(key, tuple) else (key,)
@@ -169,7 +165,7 @@ def aggregate(curves: pd.DataFrame, meta: pd.DataFrame, group_cols,
         if xmax is not None:
             t_end = min(t_end, xmax)
         if not t_end > t_start:
-            # Nessun intervallo comune ai seed: una serie di un punto solo
+            # No interval shared by the seeds: a one-point series
             # ingannerebbe piu' di quanto informi.
             continue
         n_pts = grid_points or int(np.median([len(r) for _, r in runs]))

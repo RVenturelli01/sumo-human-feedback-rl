@@ -1,26 +1,24 @@
 #!/usr/bin/env python
-"""Curve di apprendimento (metrica vs environment timesteps) su griglia di pannelli.
+"""Learning curves: a metric against environment timesteps, on a panel grid.
 
-E' lo script generico: si sceglie cosa filtrare, cosa plottare (--metric), cosa
-mettere sulle righe, sulle colonne e cosa distinguere con il colore. Le run vanno
-prese dalla history W&B (niente file locali raggiungibili da qui, vedi
-`docs/analysis-pipeline-guide.md`): la prima volta ogni run costa una richiesta,
-poi resta in cache in `plots/.cache/curves/`.
+The general script: choose what to filter, what to plot, what goes on rows and
+columns, and what the colour separates. Curves come from the W&B history, so the
+first time each run costs a request; after that it is cached.
 
-L'elenco completo delle metriche disponibili:
     python plots/scripts/plot_curves.py --list-metrics
 
-Con --runs-file la figura e' esattamente quella dell'anteprima del selettore.
+With --runs-file the figure is exactly the one previewed in the selector.
 
-Esempi:
-    # Una serie per arm, colore automatico (tutti gli arm della campagna)
+Examples:
+
+    # one series per method, colours chosen automatically
     python plots/scripts/plot_curves.py --name learning_all
 
-    # Solo i due hybrid, colonne = etichette di preferenza
+    # the two hybrids, columns by preference label
     python plots/scripts/plot_curves.py --filter arm_family=hybrid \
         --cols pref_labels --hue demo_loss --name hybrid_learning
 
-    # Una diagnostica del reward model invece del return
+    # a reward-model diagnostic instead of the return
     python plots/scripts/plot_curves.py --metric reward/loss_pref_val \
         --filter arm_family=pref --name pref_reward_loss
 """
@@ -28,7 +26,7 @@ import argparse
 
 import matplotlib
 
-matplotlib.use("Agg")  # niente display su questa macchina: mai un backend interattivo
+matplotlib.use("Agg")  # no display here: never an interactive backend
 
 import _bootstrap  # noqa: F401,E402
 from _common import (add_aggregation_args, add_grid_args, add_output_args,  # noqa: E402
@@ -59,7 +57,7 @@ def main():
     add_selection_args(p)
     add_aggregation_args(p)
     p.add_argument("--smooth", type=int, default=None,
-                   help="finestra della media mobile sui seed (default 5)")
+                   help='moving-average window over seeds (default 5)')
     p.add_argument("--grid-points", type=int, default=None)
     p.add_argument("--xmax", type=float, default=None, help="in timestep, es. 1e6")
     add_grid_args(p)

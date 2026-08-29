@@ -1,289 +1,241 @@
-# plots/ — motore di grafici interattivo per la campagna di budget curves
+# plots/ — an interactive plotting engine for the W&B runs
 
-Toolkit per esplorare e graficare le run W&B della tesi. Indicizza tre
-progetti insieme — `thesis-grad-diagnostics` (schemi di fusione, ablation della
-normalizzazione, frozen probe), `tuning-thesis-budget-curves-completion`
-(campagna di budget curves) e `thesis` (ablation a sorgente singola) — perché un
-confronto ibrido vs solo-preferenze vs solo-dimostrazioni pesca da progetti
-diversi. La colonna `project` è un filtro, quindi si isola una campagna alla
-volta con una pillola. Ispirato nell'architettura a un
-toolkit di plotting per un altro progetto (griglia di pannelli guidata da
-filtri, selettore web, export LaTeX), riscritto da zero sullo schema dati di
-**questa** repo: bracci (arm), budget di query/traiettorie, curve di
-apprendimento e curve di budget.
+A toolkit for exploring and plotting the runs recorded on Weights & Biases. It
+indexes several projects together, because comparing hybrid against
+preference-only and demonstration-only means reading from more than one. The
+`project` column is a filter, so one campaign can be isolated with a click.
 
-## Cos'è un "arm" qui
+## What an "arm" is here
 
-Non esiste un campo "algoritmo" nella config — si deriva da quattro chiavi,
-esattamente come fa `scripts/tune_hybrid_sac.py`:
+There is no "algorithm" field in the config. It is derived from two keys, the
+same rule the launcher uses to decide what it is running:
 
-* `algo.kwargs.total_queries > 0` → usa le preferenze
-* `algo.kwargs.demo_weight > 0` → usa le dimostrazioni
-* entrambe vere → **hybrid**, solo la prima → **pref**, solo la seconda → **demo**
+* `algo.kwargs.total_queries > 0` → uses preferences
+* `algo.kwargs.demo_weight  > 0` → uses demonstrations
 
-Otto valori possibili di `arm`: `demo_1`, `demo_2`, `pref_soft`,
-`pref_bernoulli`, `hybrid_demo_1_soft`, `hybrid_demo_1_bernoulli`,
-`hybrid_demo_2_soft`, `hybrid_demo_2_bernoulli`.
+Both true is **hybrid**, the first alone is **pref**, the second alone is
+**demo**.
 
-**`arm` non basta per grad-diagnostics.** Lì i bracci differiscono per *come*
-combinano i due gradienti, non per quali sorgenti usano: baseline, prova 1,
-prova 2 e le altre varianti hanno tutte `arm = hybrid_demo_2_soft`. Serve la
-colonna **`fusion`** (da `algo.kwargs.gcl_fusion`, `norm_balance` quando la
-chiave manca perché è il default del costruttore), che sta apposta fuori da
-`arm`: `arm` risponde a "quali sorgenti", `fusion` a "come le mette insieme", e
-tenerle separate lascia `arm` confrontabile fra i tre progetti. Derivarlo dalla config (non
-dal nome del gruppo W&B) è deliberato: durante la campagna sono comparsi nomi
-di gruppo non previsti da `scripts/report_budget_curves.py`
-(`budget_demo_2_no_norm_*`, `budget_hybrid_demo_2_bern_hom_*`, `..._trmatch_*`)
-che quello script colassa silenziosamente nell'arm base — qui restano
-classificati correttamente perché si legge cosa la run ha davvero fatto, non
-come si chiama.
+**`arm` is not enough for the gradient diagnostics.** There the methods differ
+in *how* they combine the two gradients, not in which sources they use, so they
+all share one `arm`. That is what the **`fusion`** column is for, taken from
+`algo.kwargs.gcl_fusion` and defaulting to `norm_balance` when the key is
+absent, because that is the constructor default. It sits outside `arm` on
+purpose: `arm` answers "which sources", `fusion` answers "how are they
+combined", and keeping them apart leaves `arm` comparable across projects.
 
-## Due tipi di grafico, due pipeline dati
+Deriving all of this from the config rather than from the W&B group name is
+deliberate. Group names picked up unplanned suffixes over the campaigns, and a
+name-based rule collapses those into the base method; reading the config says
+what the run actually did.
 
-### Esclusioni della copertura
+## Two kinds of figure, two data pipelines
 
-Le caselle nella tabella di **Copertura** tolgono singole run dalla figura, e le
-esclusioni **sopravvivono al cambio dei filtri**: sono memorizzate per `run_id`,
-quindi restano identificabili qualunque filtro si applichi. Le run che entrano
-allargando un filtro arrivano selezionate; quelle che avevi tolto restano tolte.
-Il badge *«escluse: N»* accanto al conteggio dice quante sono, e il pulsante
-*«includi tutte»* le azzera.
-
-### Le formule accanto al grafico
-
-Il selettore mostra a destra dell'anteprima un pannello **Definizioni** con la
-formula della metrica scelta e le equazioni degli schemi di fusione presenti
-nella selezione (comprese quelle di α e degli update di Adam `u_p`, `u_d`).
-Si mostra e si nasconde con la casella **formule** nella barra dell'Anteprima.
-La stessa casella decide se l'immagine esportata contenga o meno il pannello:
-figura e definizioni finiscono affiancate in un unico file, con i nomi di serie
-eventualmente rinominati a mano. L'export `.tex` le lascia sempre fuori — la'
-le formule hanno senso come macro, non come immagine.
-
-Le definizioni stanno in **[`rtplots/formulas.py`](rtplots/formulas.py)**,
-trascritte da `gradient_statistics.py` e da
-`hybrid_algorithm.py:_alpha_weight/_fusion_components`: se una formula e il
-codice divergono, è la formula qui a essere sbagliata. Un test verifica che
-ogni metrica dei gruppi *Gradienti* e *Normalizzazione* e ogni fusione ancora
-implementata abbiano la loro voce.
-
-Il rendering passa da **mathtext di matplotlib**, non da MathJax/KaTeX: la
-pagina resta senza dipendenze esterne. Mathtext copre un sottoinsieme di LaTeX
-(niente `align`, niente `\text{}`), quindi ogni riga è una formula a sé.
-
-### `--compare-fusion` e `--compare-norm` (solo curve di budget)
-
-Nelle curve di budget la serie di default è **un arm = una curva**, per un motivo
-deliberato: a ogni livello di budget gira il best-config *di quel livello*, quindi
-quasi ogni iperparametro covaria col livello e `auto_hue` lo terrebbe per una
-dimensione vera. Ma `fusion` non è un proxy del livello: senza dirlo, i sei-otto
-schemi dello stesso arm finiscono **mediati nella stessa curva**.
-
-Lo stesso vale per `normalize_agent_reward`: ON e OFF dello stesso braccio
-finirebbero nella stessa curva.
-
-`--compare-fusion` e `--compare-norm` (checkbox *«confronta gli schemi di
-fusione»* e *«confronta normalizzazione on/off»* nel selettore, visibili solo in
-modalità budget) aggiungono quelle colonne all'identità della serie. Disattivate
-— il default — tutto resta come prima, ma se una delle due sta per essere
-mediata viene stampato l'avviso con il flag che la separa.
-
-### Serie che finirebbero identiche
-
-Le regole di `style.toml` applicano la **prima che combacia**, quindi non possono
-esprimere «colore dal braccio, tratto dall'ablation»: confrontando due
-configurazioni dello stesso braccio (normalizzazione on/off, schemi di fusione,
-…) la regola per `arm` le colorerebbe entrambe uguali e le curve sarebbero
-indistinguibili.
-
-`figure.py:_decollide` interviene dopo: il **colore** resta quello della regola,
-il **tratto** separa le serie che altrimenti coinciderebbero. Vale in tutte le
-modalità e per qualunque dimensione, non solo per la normalizzazione — è nato
-proprio perché il problema si era già presentato con `fusion`.
-
-Dentro un gruppo che collide, le configurazioni «di base» prendono il tratto
-continuo: fra due valori booleani va per prima la condizione **disattivata**,
-così l'ablation è sempre la tratteggiata e la convenzione non cambia da una
-figura all'altra. (La legenda invece elenca i booleani con `sì` per primo: sono
-due ordinamenti diversi, di proposito.)
-
-Le **curve di apprendimento** non hanno bisogno del flag: lì `auto_hue` separa già
-per `fusion` da solo.
-
-| | curva di apprendimento | curva di budget |
+| | learning curve | budget curve |
 |---|---|---|
 | script | `plot_curves.py` | `plot_budget.py` |
-| un run vale | una serie storica (return vs timestep) | un solo numero (eval finale) |
-| fonte | history W&B (`agent/rewards/ep_fast_return`, ...) | `run.summary` (`sweep/*`) |
-| asse x | tempo (timestep o iterazione) | livello di budget, **scala log** |
-| aggregazione | media + banda sui seed, interpolata su una griglia comune | media + errorbar sui seed, un punto per livello |
-| modulo | `rtplots/curves.py` | `rtplots/budget.py` |
+| one run is worth | a time series | a single number |
+| source | the W&B history | `run.summary` (`sweep/*`) |
+| x axis | time, timesteps or iterations | budget level, **log scale** |
+| aggregation | mean and band over seeds, on a shared grid | mean and error bars, one point per level |
+| module | `rtplots/curves.py` | `rtplots/budget.py` |
 
-Tutto qui passa da W&B: niente file locali raggiungibili (`metrics.jsonl`,
-`evaluations.npz` vivono sul server dove giri il training, non sulla macchina
-da cui analizzi, vedi `docs/analysis-pipeline-guide.md`). Ogni run non ancora
-in cache costa una richiesta di rete; i risultati restano in
-`plots/.cache/` (curve) e in cache per run (summary), quindi solo la prima
-volta è lenta.
+Everything comes from W&B: the files written during training stay on the machine
+that ran it. Each run not yet cached costs one network request, and results are
+kept in `plots/.cache/`, so only the first time is slow.
 
-## Struttura
+### Coverage exclusions
+
+The checkboxes in the **Coverage** table remove single runs from the figure, and
+the exclusions **survive a change of filters**: they are stored by `run_id`, so
+they stay identifiable whatever filter is applied. Runs that appear when a
+filter is widened arrive selected; the ones you removed stay removed. The
+*"excluded: N"* badge says how many, and *"include all"* clears them.
+
+### Formulas beside the figure
+
+To the right of the preview the selector shows a **Definitions** panel with the
+formula for the chosen metric and the equations of the fusion schemes present in
+the selection. The **formulas** checkbox shows and hides it, and decides whether
+the exported image carries the panel: figure and definitions land side by side
+in one file. The `.tex` export always leaves them out, since there formulas
+belong as macros rather than as an image.
+
+The definitions live in [`rtplots/formulas.py`](rtplots/formulas.py). The alpha
+formulas are transcribed from the algorithm's `alpha_estimation.py`: if a
+formula and the code disagree, the formula here is the wrong one. The
+frozen-probe metrics come from an earlier diagnostic branch that is no longer
+part of the package; the runs that logged them are still on W&B, and this is
+what their axes mean. A test checks that every metric in those groups, and every
+fusion still implemented, has an entry.
+
+Rendering goes through **matplotlib mathtext**, not MathJax, so the page needs no
+external dependencies. Mathtext covers a subset of LaTeX, with no environments
+and no `\text{}`, so each line is a formula on its own.
+
+### `--compare-fusion` and `--compare-norm`, budget curves only
+
+In budget curves the default is **one method, one curve**, deliberately: each
+budget level runs with the best config for that level, so almost every
+hyperparameter covaries with the level and `auto_hue` would keep it as a real
+dimension. But `fusion` is not a proxy for the level: left unsaid, several
+schemes of one method end up **averaged into the same curve**. The same goes for
+`normalize_agent_reward`, where ON and OFF would share a curve.
+
+The two flags, and the matching checkboxes in the selector, add those columns to
+the series identity. With them off — the default — nothing changes, but if one
+of the two is about to be averaged a warning names the flag that separates it.
+
+Learning curves need no flag: `auto_hue` splits on `fusion` by itself.
+
+### Series that would come out identical
+
+A `style.toml` rule applies the **first match**, so it cannot express "colour by
+method, dash by ablation". Comparing two configurations of one method would
+colour both the same and the curves would be indistinguishable.
+
+`figure.py:_decollide` steps in afterwards: the **colour** stays what the rule
+says, and the **line style** separates the series that would otherwise coincide.
+It applies in every mode and to any dimension.
+
+Inside a colliding group the baseline configuration keeps the solid line:
+between two booleans the **disabled** one comes first, so the ablation is always
+the dashed curve and the convention does not move between figures. The legend
+instead lists booleans with `yes` first — two different orderings, on purpose.
+
+## Layout
 
 ```
 plots/
-├── rtplots/             libreria
-│   ├── schema.py        i campi dell'indice: titoli, filtri, ruolo nelle figure
-│   ├── source.py        una run W&B -> riga dell'indice (deriva l'arm dalla config)
-│   ├── index.py         indice dei run: metadati -> parquet in cache
-│   ├── metrics.py        catalogo delle metriche (curva vs eval finale, con l'asse x giusto)
-│   ├── curves.py         curve di apprendimento (history W&B) + aggregazione sui seed
-│   ├── budget.py         eval finale (summary) aggregata per livello di budget + regola del 90%
-│   ├── select.py         filtri e conteggi di copertura
-│   ├── figure.py         FigureSpec + pipeline unica: selezione -> figura (curve o budget)
-│   ├── grid.py            disegno della griglia di pannelli (banda o errorbar, lineare o log-x)
-│   ├── tikz.py            export .tex (pgfplots), un file per pannello
-│   ├── selection.py       selezioni salvate (lettura, scrittura)
-│   ├── labels.py          nomi delle serie (nome dell'arm + budget/seed in legenda)
-│   ├── rules.py           legge style.toml (le regole scritte a mano)
-│   ├── style.py           traduce le regole in rcParams e colori
-│   └── webui/            selettore: api.py (logica) + server.py (HTTP)
-├── scripts/              eseguibili
-│   ├── build_index.py    costruisce/aggiorna la cache dei metadati
-│   ├── selector.py       selettore interattivo delle run (server locale)
-│   ├── list_runs.py      che run/seed esistono per una data combinazione
-│   ├── plot_curves.py    curve di apprendimento (metrica vs timestep/iterazione)
-│   ├── plot_budget.py    curve di budget (eval finale vs livello di budget)
-│   └── prefetch_curves.py  scarica in blocco curve/summary prima di aprire il selettore
-├── style.toml            regole dei grafici: palette per arm, si modifica a mano
-├── selector/             pagina del selettore (html/css/js, nessuna dipendenza)
-├── tests/                test senza rete (`.venv/bin/python -m pytest plots/tests -q`)
-├── requirements.txt      dipendenze in piu' rispetto al resto della repo
-└── output/               figure generate (ignorata da git)
+├── rtplots/             the library
+│   ├── schema.py        index fields: titles, filters, role in a figure
+│   ├── source.py        one W&B run -> one index row
+│   ├── index.py         run metadata, cached as parquet
+│   ├── metrics.py       the metric catalogue, each with its x axis
+│   ├── curves.py        learning curves, aggregated over seeds
+│   ├── budget.py        final evaluation per budget level, and the 90% rule
+│   ├── select.py        filters and coverage counts
+│   ├── figure.py        FigureSpec, and the one pipeline: selection -> figure
+│   ├── grid.py          drawing the panel grid
+│   ├── tikz.py          .tex export (pgfplots), one file per panel
+│   ├── selection.py     saved selections
+│   ├── labels.py        series names
+│   ├── rules.py         reads style.toml
+│   ├── style.py         turns the rules into rcParams and colours
+│   └── webui/           the selector: api.py the logic, server.py the transport
+├── scripts/             the executables
+│   ├── build_index.py   build or refresh the metadata cache
+│   ├── selector.py      the interactive selector, on a local server
+│   ├── list_runs.py     which runs and seeds exist per combination
+│   ├── plot_curves.py   learning curves
+│   ├── plot_budget.py   budget curves
+│   └── prefetch_curves.py  fill the cache before opening the selector
+├── style.toml           the plotting rules, edited by hand
+├── selector/            the selector page: html, css, js, no dependencies
+├── tests/               tests that need no network
+├── requirements.txt     what this needs beyond the rest of the repository
+└── output/              generated figures (git ignores it)
 ```
 
-**Una sola pipeline.** Riga di comando e selettore costruiscono lo stesso
-oggetto — `FigureSpec` (con `kind="curve"` o `kind="budget"`) — e lo passano a
-`rtplots.figure`: la stessa selezione dà la stessa figura da tutte e due le
-strade.
+**One pipeline.** The command line and the selector build the same object,
+`FigureSpec`, and hand it to `rtplots.figure`. The same selection gives the same
+figure either way.
 
-## Uso rapido
+## Getting started
 
 ```bash
-# prima volta (o dopo una nuova campata di run)
-.venv/bin/python plots/scripts/build_index.py
-
-# selettore interattivo
-.venv/bin/python plots/scripts/selector.py     # http://127.0.0.1:8770
+pip install -r plots/requirements.txt
+python plots/scripts/build_index.py      # first time, or after new runs
+python plots/scripts/selector.py         # http://127.0.0.1:8770
 ```
 
-Filtri per ogni dimensione (algoritmo, budget, ...), un pulsante per il tipo di
-grafico (curva di apprendimento / curva di budget), tendina "cosa plottare"
-(diversa nei due modi: la prima elenca le metriche-curva, la seconda le
-`sweep/*`), righe/colonne/colori, anteprima in tempo reale, tabella di
-copertura (quanti seed per combinazione), selezioni salvabili con un nome,
-export JPEG o LaTeX (`.tex` pgfplots, un file per pannello + lo snippet
-`\begin{figure}` già montato).
+The page offers a filter per dimension, a switch between learning and budget
+curves, a "what to plot" dropdown, rows, columns and colours, a live preview, a
+coverage table, selections you can name and save, and export to JPEG or LaTeX.
 
-## Filtri disponibili
+## Filters
 
-Ogni script accetta `--filter chiave=valore …` (in AND), stessa sintassi delle
-pillole del selettore (`arm!=demo_1,demo_2`, `query_budget>=5000`, ...):
+Every script takes `--filter key=value …`, all applied together, with the same
+syntax as the selector chips (`arm!=demo_1,demo_2`, `query_budget>=5000`).
 
-| colonna | cosa filtra |
+| column | what it filters |
 |---|---|
-| `arm` | i 4 bracci baseline + le 4 combinazioni di hybrid (demo_loss × pref_labels) |
+| `arm` | the single-source methods plus the hybrid combinations |
 | `arm_family` | `demo` \| `pref` \| `hybrid` |
-| `demo_loss` | `demo_1` \| `demo_2` (per demo-only e hybrid) |
-| `pref_labels` | `soft` \| `bernoulli` (per pref-only e hybrid) |
-| `demo_mode` | `gcl` \| `preferences` (baseline Ibarz, se/quando comparirà) |
+| `demo_loss` | `demo_1` \| `demo_2` |
+| `pref_labels` | `soft` \| `bernoulli` |
+| `demo_mode` | `gcl` \| `preferences` |
 | `query_budget` | `algo.kwargs.total_queries` |
-| `demo_budget` | `run.n_expert_trajectories` (mancante = dataset intero, non un valore ignoto) |
-| `fusion` | schema di fusione dei due gradienti (solo hybrid): `norm_balance`, `alpha_norm_single_adam` (prova 1), `dual_adam_alpha` (prova 2), `dual_adam_sum`, `dual_adam_alpha_unit`, `dual_adam_alpha_unit_nobudget`, più due schemi storici poi rimossi |
-| `budget_level` | il numero finale del nome gruppo, in entrambe le sintassi: `budget_<...>_<N>` (budget-curves) e `gd_<...>_B<N>` (grad-diagnostics). Robusto per qualunque arm, anche quando query_budget e demo_budget variano insieme |
-| `normalize_agent_reward`, `initial_queries`, `demo_weight`, `query_schedule`, `fragmenter_type`, `pref_temperature`, `reward_net_arch`, `demo_subsample_seed`, `total_timesteps` | iperparametri della run |
-| `state`, `project`, `group_tag` | stato W&B, progetto, e l'etichetta libera fra `budget_` e il livello (distingue varianti come `_no_norm`, `_bern_hom`, `_soft_trmatch` non ancora modellate come colonne proprie) |
+| `demo_budget` | `run.n_expert_trajectories`; missing means the whole dataset, not an unknown value |
+| `fusion` | how the two gradients are combined, hybrid only |
+| `budget_level` | the trailing number of the group name, in either syntax. Robust for any method, even when query and demonstration budgets vary together |
+| `normalize_agent_reward`, `initial_queries`, `demo_weight`, `query_schedule`, `fragmenter_type`, `pref_temperature`, `reward_net_arch`, `demo_subsample_seed`, `total_timesteps` | run hyperparameters |
+| `state`, `project`, `group_tag` | W&B state, project, and the free label inside the group name |
 
-Per default vengono usati solo i run `finished` (`--state any` per includere
-gli altri).
+Only `finished` runs are used by default; `--state any` includes the rest.
 
-## Esempi
+## Examples
 
 ```bash
-# tutti gli arm, una serie ciascuno, curva di apprendimento
-.venv/bin/python plots/scripts/plot_curves.py --name learning_all
+# every method, one series each, learning curve
+python plots/scripts/plot_curves.py --name learning_all
 
-# solo le combinazioni hybrid, una colonna per tipo di etichette
-.venv/bin/python plots/scripts/plot_curves.py --filter arm_family=hybrid \
+# the hybrid combinations, one column per label type
+python plots/scripts/plot_curves.py --filter arm_family=hybrid \
     --cols pref_labels --hue demo_loss --name hybrid_learning
 
-# curve di budget dei bracci pref (query, return finale) + regola del 90%
-.venv/bin/python plots/scripts/plot_budget.py --filter arm_family=pref --name budget_pref
+# budget curves for the preference methods, with the 90% rule
+python plots/scripts/plot_budget.py --filter arm_family=pref --name budget_pref
 
-# gli schemi di fusione a confronto, normalizzazione off
-.venv/bin/python plots/scripts/plot_budget.py --compare-fusion --name fusioni \
-    --filter project=thesis-grad-diagnostics arm_family=hybrid \
-             pref_labels=soft normalize_agent_reward=False
+# the fusion schemes compared, normalization off
+python plots/scripts/plot_budget.py --compare-fusion --name fusions \
+    --filter arm_family=hybrid pref_labels=soft normalize_agent_reward=False
 
-# ablation della normalizzazione: una colonna per stato del flag
-.venv/bin/python plots/scripts/plot_curves.py --cols normalize_agent_reward \
-    --hue fusion --metric reward/grad_probe_dir_var_demo --name ablation_norm \
-    --filter project=thesis-grad-diagnostics arm_family=hybrid pref_labels=soft
+# budget curves for the demonstration-only methods, x axis in trajectories
+python plots/scripts/plot_budget.py --filter arm_family=demo \
+    --metric sweep/success_rate --budget-x demo_budget --name budget_demo
 
-# curve di budget dei demo-only sul success rate, asse x = traiettorie
-.venv/bin/python plots/scripts/plot_budget.py --filter arm_family=demo \
-    --metric sweep/success_rate --budget-x demo_budget --name budget_demo_success
-
-# cosa c'è a disposizione
-.venv/bin/python plots/scripts/list_runs.py --by arm
-.venv/bin/python plots/scripts/list_runs.py --filter arm_family=hybrid --by arm demo_loss pref_labels
+# what is available
+python plots/scripts/list_runs.py --by arm
 ```
 
-`--list-metrics` su entrambi gli script stampa il catalogo delle metriche
-disponibili (qualsiasi altra chiave loggata su W&B è comunque accettata: l'asse
-x si indovina dal prefisso, `agent/*` → timestep, il resto → iterazione).
+`--list-metrics` on either script prints the catalogue. Any other key logged on
+W&B is accepted too: the x axis is guessed from the prefix, `agent/*` meaning
+timesteps and everything else iterations.
 
-## Stile
+## Style
 
-Le regole stanno in **[`style.toml`](style.toml)**: palette per arm (stessa di
-`scripts/_report_common.py:ARM_COLORS`, così un braccio ha sempre lo stesso
-colore in tutte le figure della tesi), spessori, banda, legenda, nomi delle
-serie e macro LaTeX. Le otto combinazioni di hybrid condividono il colore del
-loro `demo_loss` e si distinguono per tratteggio (soft = continuo, bernoulli =
-tratteggiato). Vale sia per l'anteprima sia per l'export `.tex`, riletto a ogni
-figura (si salva e si ridisegna senza riavviare il selettore).
+The rules live in [`style.toml`](style.toml): one colour per method, so a method
+keeps its colour across every figure, plus widths, bands, legends, series names
+and LaTeX macros. The hybrid combinations share the colour of their `demo_loss`
+and are told apart by dashes. It applies to the preview and to the `.tex`
+export, and is reread for every figure, so saving the file is enough.
 
-## Note
+## Notes
 
-* Cache in `plots/.cache/` (override con `RTPLOTS_CACHE`), mai nella repo su
-  git (vedi `plots/.gitignore`). **Solo le run `finished` finiscono su disco**:
-  la curva di una run ancora in corso e' destinata ad allungarsi, e una cache
-  parziale resterebbe li' per sempre accorciando in silenzio ogni figura che la
-  usa — `curves.aggregate` fissa la griglia comune sulla run *piu' corta* del
-  gruppo. Per ripulire cache scritte prima di questa regola:
+* The cache lives in `plots/.cache/`, overridable with `RTPLOTS_CACHE`, and git
+  ignores it. **Only finished runs reach the disk**: the curve of a running run
+  will grow, and a partial cache would sit there forever, quietly shortening
+  every figure that uses it, because `curves.aggregate` fits the shared grid to
+  the shortest run in the group. To clean caches written before that rule:
 
   ```bash
-  .venv/bin/python plots/scripts/clean_curve_cache.py          # elenca
-  .venv/bin/python plots/scripts/clean_curve_cache.py --apply  # cancella
+  python plots/scripts/clean_curve_cache.py          # list
+  python plots/scripts/clean_curve_cache.py --apply  # delete
   ```
 
-  Riconosce i file sospetti confrontando ogni run con le sorelle dello stesso
-  gruppo sulla stessa metrica, quindi funziona su entrambi gli assi x senza
-  doverli distinguere. Quando una serie viene comunque accorciata, l'anteprima
-  e la riga di comando lo dicono invece di lasciarti indovinare.
-* `RTPLOTS_WANDB_PROJECTS` (lista separata da virgole) sceglie quali progetti
-  indicizzare; di default tutti e tre. Aggiungerne uno è una riga in
-  `rtplots/paths.py`, non un modulo nuovo: la convenzione di lettura
-  (`rtplots/source.py`) è la stessa per ogni progetto generato da
-  `runner/train.py`. Un gruppo con una sintassi di livello nuova
-  invece va aggiunto a `parse_group`, altrimenti `budget_level` resta vuoto e
-  le curve di budget di quel progetto non escono.
-* Le regole di colore in `style.toml` per `fusion` stanno **prima** di quelle
-  per `arm`: vince la prima che combacia, e senza quell'ordine gli otto schemi
-  uscirebbero tutti del colore di `hybrid_demo_2`.
-* Le run di tuning (`tune_*`, livello trial Optuna) restano a
-  `scripts/report_tuning.py`: non hanno una nozione di "seed" allo stesso modo
-  delle run finali, e la loro analisi (fANOVA, pruning) non si incastra nel
-  modello a griglia di questo motore.
-* `tikzplotlib` (0.10.1, fermo al 2022) non regge matplotlib 3.6+/numpy
-  2/webcolors 24+ senza gli alias applicati in `rtplots/tikz.py:_compat()`:
-  vedi `plots/requirements.txt` per le versioni compatibili.
+  It spots suspect files by comparing each run with its siblings in the same
+  group on the same metric, so it works on both x axes without telling them
+  apart. When a series does get shortened, the preview and the command line say
+  so rather than leaving you to guess.
+* `RTPLOTS_WANDB_PROJECTS`, a comma-separated list, chooses which projects to
+  index. Adding one is a line in `rtplots/paths.py`, not a new module, because
+  every project written by the same entry point is read the same way. A group
+  with a new level syntax does need adding to `parse_group`, or `budget_level`
+  stays empty and that project's budget curves come out blank.
+* In `style.toml` the colour rules for `fusion` come **before** those for `arm`:
+  the first match wins, and without that order every scheme would share one
+  colour.
+* `tikzplotlib` stopped at 0.10.1 and does not cope with recent matplotlib,
+  numpy or webcolors without the aliases in `rtplots/tikz.py:_compat()`. See
+  `plots/requirements.txt` for the compatible versions.

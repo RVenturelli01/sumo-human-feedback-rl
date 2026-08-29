@@ -1,6 +1,6 @@
 :root {
-  /* i menu a tendina sono disegnati dal browser: senza color-scheme il popup
-     resta chiaro e il testo del tema scuro ci finisce sopra illeggibile */
+  /* dropdown menus are drawn by the browser: without color-scheme the popup
+     stays light and the dark-theme text on it becomes unreadable */
   color-scheme: light;
   --bg: #f6f7f9;
   --panel: #ffffff;
@@ -36,7 +36,7 @@ code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; 
 #sidebar header { margin-bottom: 14px; }
 .dim { margin-bottom: 16px; }
 .dim h2 { margin-bottom: 0; }
-/* titolo della dimensione + operatore (è / non è / fra / non fra) */
+/* the dimension title plus its operator (is / is not / in / not in) */
 .dim-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 .dim-head select.op {
   font: inherit; font-size: 11px; color: var(--ink); background: var(--bg);
@@ -117,11 +117,10 @@ button:disabled { opacity: .5; cursor: default; }
 .head-actions .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
 .check { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
 
-/* barra dei controlli del grafico: due righe, ognuna sempre su una riga sola
-   (non va a capo: se la finestra e' stretta scorre in orizzontale piuttosto
-   che spezzarsi in modo imprevedibile). La prima riga (cosa plottare -> smooth)
-   e' quella che si usa piu' spesso; legenda e dimensione pannello stanno nella
-   seconda perche' si toccano di rado. */
+/* the figure toolbar: two rows, each always kept on a single line
+   (no wrapping: a narrow window scrolls sideways rather than breaking in
+   unpredictable ways). The first row holds what is used most often; legend and
+   panel size sit in the second, since they are rarely touched. */
 .toolbar {
   display: flex; flex-direction: column; gap: 12px;
   background: var(--bg); border: 1px solid var(--line); border-radius: 9px;
@@ -172,14 +171,14 @@ button:disabled { opacity: .5; cursor: default; }
   border-radius: 999px; white-space: nowrap; }
 .placeholder { color: var(--muted); font-size: 13px; padding: 24px 0; margin: 0; }
 .error { color: var(--magenta); font-size: 13px; padding: 14px 0; margin: 0; }
-/* avviso sotto l'anteprima: dimensioni che variano ma non separano le curve */
+/* warning under the preview: dimensions that vary without splitting curves */
 .merged-warning { padding: 0 0 10px; }
 .spinner { color: var(--muted); font-size: 13px; padding: 24px 0; margin: 0; }
 
 .download-box { margin: 8px 0 0; text-align: center; }
 .download-box a { color: var(--blue); }
 
-/* elenco delle serie disegnate: click = seleziona, poi nome e colore */
+/* the list of drawn series: click to select, then name and colour */
 #series-box { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 8px; }
 #series-box h3 { font-size: 13px; margin: 0; }
 #series-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
@@ -194,8 +193,8 @@ button:disabled { opacity: .5; cursor: default; }
 .badge.tweak { font-size: 10px; opacity: .7; }
 #series-edit { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap;
                margin: 4px 0 8px; }
-/* i nomi delle serie sono lunghi (mathtext, ω, setting): il campo si prende
-   tutto lo spazio che avanza fra le etichette e i pulsanti */
+/* series names are long, so the field takes
+   whatever space is left between the labels and the buttons */
 #series-edit .field.wide { flex: 1 1 340px; }
 #series-name { width: 100%; }
 #series-edit .head-actions { margin-left: auto; }
@@ -221,8 +220,8 @@ input[type=text] {
 #sel-card.closed #selections { display: none; }
 #sel-card.closed .card-head { margin-bottom: 0; }
 
-/* Sei voci a vista (52px + 6px di margine l'una), poi scorre: la card sta in
-   cima alla pagina e una lista lunga spingerebbe l'anteprima fuori schermo. */
+/* Six entries visible, then it scrolls: the card sits at the top of the page
+   and a long list would push the preview off screen. */
 #selections { max-height: 350px; overflow-y: auto; padding-right: 4px; }
 #selections::-webkit-scrollbar { width: 8px; }
 #selections::-webkit-scrollbar-thumb { background: #d2d6dc; border-radius: 4px; }
@@ -251,10 +250,10 @@ th { color: var(--muted); font-weight: 500; font-size: 11.5px; text-transform: u
 td.num { font-variant-numeric: tabular-nums; }
 tr.partial td.num.seeds-missing { color: var(--orange); font-weight: 600; }
 
-/* copertura: righe escluse dal grafico, ma sempre visibili per riattivarle */
+/* coverage: rows excluded from the figure, still visible to bring them back */
 th.pick, td.pick { width: 1.8rem; text-align: center; padding-right: 0; }
-/* Una riga esclusa dal grafico ha comunque iperparametri validi: il bottone
-   resta leggibile e cliccabile come la casella di selezione. */
+/* A row excluded from the figure still has valid hyperparameters: the button
+   stays readable and clickable, like the selection box. */
 tr.off td:not(.pick):not(.dl) { opacity: 0.38; text-decoration: line-through; }
 th.dl, td.dl { width: 2.4rem; text-align: center; padding-right: 0; }
 td.dl button { padding: 1px 6px; line-height: 1.4; min-width: 1.9rem; }

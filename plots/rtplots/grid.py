@@ -1,12 +1,10 @@
-"""Disegno della griglia di pannelli (condiviso da plot_curves.py/plot_budget.py
-e dal selettore).
+"""Draws the panel grid, shared by the scripts and the selector.
 
-Riceve un DataFrame gia' aggregato con colonne [step, mean, lo, hi, n_seeds, label]
-piu' le colonne usate per righe/colonne, e produce la figura. Due stili di
-disegno (`GridOptions.style`):
-  - "band"      curva + banda ombreggiata (curve di apprendimento, step = tempo);
-  - "errorbar"  punti + barre d'errore, pensato per l'asse x logaritmico delle
-                curve di budget (pochi livelli discreti, non una serie continua).
+Takes a DataFrame already aggregated into [step, mean, lo, hi, n_seeds, label]
+plus the columns that split rows and columns, and returns the figure. Two
+styles: "band" is a curve with a shaded band, for learning curves; "errorbar"
+is points with error bars, for the log x axis of the budget curves, where the
+levels are few and discrete rather than a continuous series.
 """
 from __future__ import annotations
 
@@ -20,7 +18,7 @@ from . import rules as R
 from . import style as S
 
 LETTERS = "abcdefghijklmnopqrstuvwxyz"
-# posizioni disponibili per `GridOptions.legend`
+# positions allowed for GridOptions.legend
 LEGEND_CHOICES = ("panel", "first", "figure", "outside_right", "outside_bottom", "none")
 
 
@@ -57,11 +55,11 @@ def panel_values(df, col):
 
 
 def _legend_handles(order, styles, opts: GridOptions):
-    """Handle sintetiche per l'intera legenda (una per etichetta, nell'ordine
-    scelto), invece di leggerle da un pannello a caso: un pannello preso a caso
-    (es. axes[0][0]) potrebbe non contenere tutte le serie, se righe/colonne
-    dividono i dati — la legenda "figure"/"outside" deve elencarle comunque
-    tutte."""
+    """Build the legend handles rather than read them off a panel.
+
+    Any single panel may be missing series, when rows and columns split the
+    data, and a figure-wide legend has to list them all.
+    """
     handles = []
     for lab in order:
         st = styles.get(lab, {})
@@ -77,7 +75,7 @@ def _legend_handles(order, styles, opts: GridOptions):
 
 
 def draw_grid(agg, order, styles, opts: GridOptions):
-    """`styles`: etichetta -> {color, width, style, band_alpha} (vedi figure.py)."""
+    """`styles` maps a label to {color, width, style, band_alpha}; see figure.py."""
     row_vals = panel_values(agg, opts.rows)
     col_vals = panel_values(agg, opts.cols)
     nrow, ncol = len(row_vals), len(col_vals)
@@ -141,13 +139,11 @@ def draw_grid(agg, order, styles, opts: GridOptions):
     if opts.suptitle:
         fig.suptitle(opts.suptitle)
 
-    # Il layout si calcola SOLO sui pannelli, prima di aggiungere una legenda
-    # fuori dagli assi: tight_layout() prova a "farle posto" se esiste gia',
-    # e finisce per schiacciare gli assi molto piu' del necessario. La legenda
-    # esterna si attacca DOPO, in coordinate relative agli assi ormai definitivi
-    # — non serve rilanciare il layout, e bbox_inches="tight" al salvataggio
-    # (rcParam globale, vedi style.py) allarga da solo il canvas per farcela
-    # stare.
+    # Lay out the panels alone, before adding a legend outside the axes. If the
+    # legend already exists, tight_layout() tries to make room for it and
+    # squashes the axes far more than it needs to. The outside legend is
+    # attached afterwards, against axes that are now final, and
+    # bbox_inches="tight" widens the canvas at save time to fit it.
     fig.tight_layout()
 
     if opts.legend == "figure":

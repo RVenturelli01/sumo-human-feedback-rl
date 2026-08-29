@@ -1,9 +1,8 @@
 #!/usr/bin/env python
-"""Interroga l'indice: quante run/seed esistono per ogni combinazione.
+"""Ask the index how many runs and seeds exist per combination.
 
-Esempi:
     python plots/scripts/list_runs.py --by arm
-    python plots/scripts/list_runs.py --filter arm_family=hybrid --by arm demo_loss pref_labels
+    python plots/scripts/list_runs.py --filter arm_family=hybrid --by arm demo_loss
     python plots/scripts/list_runs.py --filter arm=pref_soft --by query_budget --state any
 """
 import argparse
@@ -21,7 +20,7 @@ def main():
     p.add_argument("--filter", nargs="*", default=[], help="es. arm=demo_1,demo_2 seed>=1")
     p.add_argument("--by", nargs="*", default=["arm", "budget_level"])
     p.add_argument("--state", default="finished", help="finished | any | crashed,running")
-    p.add_argument("--full", action="store_true", help="stampa una riga per run")
+    p.add_argument("--full", action="store_true", help='print one line per run')
     args = p.parse_args()
 
     df = load_index()
