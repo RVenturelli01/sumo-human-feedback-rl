@@ -139,6 +139,17 @@ built from ten.
 Evaluation seeds are `base + i` from a fixed base, so every method faces the same
 200 scenarios whatever its training seed.
 
+Training can also do the 200 episodes itself, which saves the first command:
+
+```bash
+python runner/train.py arm=hybrid_soft budget=1000 run.seed=3 eval.n_episodes=200
+```
+
+It writes the same numbers to `final_eval.json`. Checked on the whole grid: the
+policy evaluated in memory at the end of training and the same policy reloaded
+from `agent_final.zip` agree on every value. The aggregate step still reads
+`final_eval_200.json`, so that route needs `evaluate.py` either way.
+
 ## Figures
 
 ```bash
