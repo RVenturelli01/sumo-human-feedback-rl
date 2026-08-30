@@ -8,6 +8,6 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-for percorso in (REPO, REPO / "runner"):
-    if str(percorso) not in sys.path:
-        sys.path.insert(0, str(percorso))
+for path in (REPO, REPO / "runner"):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))

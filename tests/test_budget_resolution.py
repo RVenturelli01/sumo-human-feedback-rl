@@ -15,12 +15,12 @@ CONFIGS = REPO / "runner" / "configs"
 
 # Shares taken from the arm files themselves, so the table below is a statement
 # about the reference runs and not a copy of the implementation.
-QUOTE = {"demo_only": 0.0, "pref_soft": 0.05, "pref_bern": 0.20,
+SHARES = {"demo_only": 0.0, "pref_soft": 0.05, "pref_bern": 0.20,
          "hybrid_soft": 0.10, "hybrid_bern": 0.10, "unw_soft": 0.10, "unw_bern": 0.10}
 
 # What the reference campaigns collected, budget by budget, at floor 1. The
 # per-arm floor is checked separately.
-ATTESI = {
+EXPECTED = {
     "demo_only":   (0, 0, 0),
     "pref_soft":   (1, 5, 50),
     "pref_bern":   (2, 20, 200),
@@ -31,73 +31,73 @@ ATTESI = {
 }
 
 
-def _foglie(percorso: Path) -> set[str]:
+def _leaf_keys(path: Path) -> set[str]:
     """Dotted leaf keys of a config file, ignoring the `defaults` list."""
-    cfg = OmegaConf.load(percorso)
+    cfg = OmegaConf.load(path)
     out: set[str] = set()
 
-    def scendi(nodo, pre=""):
-        for k, v in nodo.items():
+    def descend(node, prefix=""):
+        for k, v in node.items():
             if k == "defaults":
                 continue
-            chiave = f"{pre}{k}"
+            key = f"{prefix}{k}"
             if hasattr(v, "items"):
-                scendi(v, chiave + ".")
+                descend(v, key + ".")
             else:
-                out.add(chiave)
+                out.add(key)
 
-    scendi(cfg)
+    descend(cfg)
     return out
 
 
-@pytest.mark.parametrize("arm,attesi", ATTESI.items())
-def test_le_quote_riproducono_le_query_iniziali_di_riferimento(arm, attesi):
-    usa_pref = arm != "demo_only"
-    ottenuti = tuple(
-        initial_queries(usa_pref, QUOTE[arm], b, floor=1) for b in (10, 100, 1000)
+@pytest.mark.parametrize("arm,expected", EXPECTED.items())
+def test_shares_reproduce_the_reference_initial_queries(arm, expected):
+    uses_prefs = arm != "demo_only"
+    obtained = tuple(
+        initial_queries(uses_prefs, SHARES[arm], b, floor=1) for b in (10, 100, 1000)
     )
-    assert ottenuti == attesi
+    assert obtained == expected
 
 
-def test_i_canali_spenti_azzerano_il_budget():
+def test_a_channel_that_is_off_gets_no_budget():
     assert total_queries(False, 1000) == 0
     assert initial_queries(False, 0.10, 1000, floor=5) == 0
     assert demo_budget(False, 1000) is None
     assert demo_budget(True, 1000) == 1000
 
 
-PAVIMENTI = {"demo_only": 1, "pref_soft": 1, "pref_bern": 1,
+FLOORS = {"demo_only": 1, "pref_soft": 1, "pref_bern": 1,
              "hybrid_soft": 5, "hybrid_bern": 5, "unw_soft": 5, "unw_bern": 5}
 
 
-@pytest.mark.parametrize("arm,atteso", PAVIMENTI.items())
-def test_il_pavimento_e_dichiarato_dal_braccio(arm, atteso):
-    """Cinque solo dove il peso di affidabilita' va stimato; uno altrove."""
+@pytest.mark.parametrize("arm,expected", FLOORS.items())
+def test_the_floor_is_declared_by_the_arm(arm, expected):
+    """Five only where the reliability weight has to be estimated; one elsewhere."""
     cfg = OmegaConf.load(CONFIGS / "arm" / f"{arm}.yaml")
-    assert cfg.initial_queries_min == atteso
+    assert cfg.initial_queries_min == expected
 
 
-def test_a_budget_dieci_il_pavimento_decide_solo_dove_serve():
-    assert initial_queries(True, 0.10, 10, floor=ALPHA_MIN_PREFS) == 5   # due canali
-    assert initial_queries(True, 0.05, 10, floor=1) == 1                 # solo preferenze
-    # Ai budget maggiori la quota supera il pavimento e lo rende ininfluente.
+def test_at_budget_ten_the_floor_binds_only_where_it_is_needed():
+    assert initial_queries(True, 0.10, 10, floor=ALPHA_MIN_PREFS) == 5   # two channels
+    assert initial_queries(True, 0.05, 10, floor=1) == 1                 # preferences only
+    # At larger budgets the share clears the floor, which then does nothing.
     assert initial_queries(True, 0.10, 100, floor=ALPHA_MIN_PREFS) == 10
 
 
-def test_bracci_e_protocolli_non_definiscono_la_stessa_chiave():
-    """Entrambi i gruppi contengono chiavi `algo.*`: il vincolo e' sulla foglia.
+def test_arms_and_protocol_never_define_the_same_key():
+    """Both groups write `algo.*` keys: the constraint is on the leaf.
 
-    Il protocollo fissa loss_type, query_schedule, n_ensembles e altre otto;
-    i bracci fissano lr_rew, net_arch e il resto. Se una foglia comparisse in
-    entrambi, l'ordine di composizione deciderebbe in silenzio quale vince.
+    The protocol fixes loss_type, query_schedule, n_ensembles and eight more;
+    the arms fix lr_rew, net_arch and the rest. If a leaf appeared in both, the
+    composition order alone would silently decide which value wins.
     """
-    protocollo = _foglie(CONFIGS / "protocol" / "standard.yaml")
-    for arm in sorted(QUOTE):
-        sovrapposte = protocollo & _foglie(CONFIGS / "arm" / f"{arm}.yaml")
-        assert not sovrapposte, f"{arm} ridefinisce chiavi del protocollo: {sorted(sovrapposte)}"
+    protocol = _leaf_keys(CONFIGS / "protocol" / "standard.yaml")
+    for arm in sorted(SHARES):
+        overlap = protocol & _leaf_keys(CONFIGS / "arm" / f"{arm}.yaml")
+        assert not overlap, f"{arm} redefines protocol keys: {sorted(overlap)}"
 
 
-def test_il_protocollo_tocca_davvero_chiavi_algo():
-    """Se un giorno smettesse, il test sopra diventerebbe vacuo senza accorgersene."""
-    algo = {k for k in _foglie(CONFIGS / "protocol" / "standard.yaml") if k.startswith("algo.")}
-    assert len(algo) >= 10, f"attese >=10 chiavi algo.* nel protocollo, trovate {len(algo)}"
+def test_the_protocol_really_does_touch_algo_keys():
+    """If it ever stopped, the test above would go vacuous without saying so."""
+    algo = {k for k in _leaf_keys(CONFIGS / "protocol" / "standard.yaml") if k.startswith("algo.")}
+    assert len(algo) >= 10, f"expected >=10 algo.* keys in the protocol, found {len(algo)}"

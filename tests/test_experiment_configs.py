@@ -19,58 +19,58 @@ REPO = Path(__file__).resolve().parents[1]
 CONFIGS = REPO / "runner" / "configs"
 FIXTURES = REPO / "tests" / "fixtures" / "reference_configs"
 
-PREFISSI = ("algo.", "env.", "agent.", "train.", "eval.")
-ESATTE = {"run.n_expert_trajectories", "run.n_expert_transitions", "run.demo_subsample_seed"}
+PREFIXES = ("algo.", "env.", "agent.", "train.", "eval.")
+EXACT = {"run.n_expert_trajectories", "run.n_expert_transitions", "run.demo_subsample_seed"}
 
-CELLE = sorted(p.stem for p in FIXTURES.glob("*.json"))
+CELLS = sorted(p.stem for p in FIXTURES.glob("*.json"))
 
 
-def _piatto(cfg, pre=""):
+def _flat(cfg, prefix=""):
     out = {}
     for k, v in cfg.items():
-        key = f"{pre}{k}"
+        key = f"{prefix}{k}"
         if hasattr(v, "items"):
-            out.update(_piatto(v, key + "."))
+            out.update(_flat(v, key + "."))
         else:
             out[key] = v
     return out
 
 
-def _semantico(d):
+def _semantic(d):
     """Only the keys that define the experiment.
 
     Run name, seed, output directory and W&B metadata are deliberately out: they
     differ between two runs of the same cell without changing what is run.
     """
-    return {k: v for k, v in d.items() if k.startswith(PREFISSI) or k in ESATTE}
+    return {k: v for k, v in d.items() if k.startswith(PREFIXES) or k in EXACT}
 
 
-def _componi(arm: str, budget: int):
+def _compose(arm: str, budget: int):
     register_resolvers()
     with initialize_config_dir(version_base=None, config_dir=str(CONFIGS)):
         cfg = compose("train", overrides=[
             f"arm={arm}", f"budget={budget}", "run.seed=1",
         ])
-    return _semantico(_piatto(OmegaConf.to_container(cfg, resolve=True)))
+    return _semantic(_flat(OmegaConf.to_container(cfg, resolve=True)))
 
 
-def test_ci_sono_ventuno_fixture():
-    assert len(CELLE) == 21, f"attese 21 celle (7 bracci x 3 budget), trovate {len(CELLE)}"
+def test_there_are_twenty_one_fixtures():
+    assert len(CELLS) == 21, f"expected 21 cells (7 arms x 3 budgets), found {len(CELLS)}"
 
 
-@pytest.mark.parametrize("cella", CELLE)
-def test_la_config_composta_coincide_con_il_riferimento(cella):
-    arm, budget = cella.rsplit("_B", 1)
-    atteso = json.loads((FIXTURES / f"{cella}.json").read_text())
-    ottenuto = _componi(arm, int(budget))
+@pytest.mark.parametrize("cell", CELLS)
+def test_the_composed_config_matches_the_reference(cell):
+    arm, budget = cell.rsplit("_B", 1)
+    expected = json.loads((FIXTURES / f"{cell}.json").read_text())
+    obtained = _compose(arm, int(budget))
 
-    mancanti = sorted(set(atteso) - set(ottenuto))
-    aggiunte = sorted(set(ottenuto) - set(atteso))
-    assert not mancanti, f"{cella}: chiavi perse dalla config: {mancanti}"
-    assert not aggiunte, f"{cella}: chiavi comparse dal nulla: {aggiunte}"
+    missing = sorted(set(expected) - set(obtained))
+    added = sorted(set(obtained) - set(expected))
+    assert not missing, f"{cell}: keys lost from the config: {missing}"
+    assert not added, f"{cell}: keys appeared from nowhere: {added}"
 
-    diverse = {k: (atteso[k], ottenuto[k]) for k in atteso if atteso[k] != ottenuto[k]}
-    assert not diverse, f"{cella}: valori diversi (riferimento, ora): {diverse}"
+    differing = {k: (expected[k], obtained[k]) for k in expected if expected[k] != obtained[k]}
+    assert not differing, f"{cell}: differing values (reference, now): {differing}"
 
 
 # --- run identity ------------------------------------------------------------
@@ -78,7 +78,7 @@ def test_la_config_composta_coincide_con_il_riferimento(cella):
 # paths without differing as experiments. But these decide which W&B group a run
 # lands in and where evaluate.py will look for it.
 
-IDENTITA = [
+IDENTITY = [
     ("hybrid_soft", 1000, 3),
     ("hybrid_soft",   10, 1),
     ("unw_bern",      10, 9),
@@ -87,48 +87,48 @@ IDENTITA = [
 ]
 
 
-def _config_intera(arm: str, budget: int, seed: int, campagna: str = "main"):
+def _whole_config(arm: str, budget: int, seed: int, campaign: str = "main"):
     register_resolvers()
     with initialize_config_dir(version_base=None, config_dir=str(CONFIGS)):
         cfg = compose("train", overrides=[
-            f"arm={arm}", f"budget={budget}", f"run.seed={seed}", f"campaign={campagna}",
+            f"arm={arm}", f"budget={budget}", f"run.seed={seed}", f"campaign={campaign}",
         ])
     return OmegaConf.to_container(cfg, resolve=True)
 
 
-@pytest.mark.parametrize("arm,budget,seed", IDENTITA)
-def test_l_identita_si_deriva_da_cio_che_identifica_la_run(arm, budget, seed):
-    cfg = _config_intera(arm, budget, seed)
-    gruppo = f"main_{arm}_B{budget}"
-    nome = f"{gruppo}-seed{seed}"
-    assert cfg["run"]["group"] == gruppo
-    assert cfg["run"]["name"] == nome
-    # make_run_dir aggiunge il nome della run, quindi qui c'e' solo il gruppo.
-    assert cfg["run"]["output_dir"] == f"outputs/runs/{gruppo}"
+@pytest.mark.parametrize("arm,budget,seed", IDENTITY)
+def test_identity_follows_from_what_identifies_the_run(arm, budget, seed):
+    cfg = _whole_config(arm, budget, seed)
+    group = f"main_{arm}_B{budget}"
+    name = f"{group}-seed{seed}"
+    assert cfg["run"]["group"] == group
+    assert cfg["run"]["name"] == name
+    # make_run_dir appends the run name, so this is just the group.
+    assert cfg["run"]["output_dir"] == f"outputs/runs/{group}"
 
 
-@pytest.mark.parametrize("arm,budget,seed", IDENTITA)
-def test_l_identita_non_resta_mai_nulla(arm, budget, seed):
-    """Il difetto che questo test esiste per impedire: con `null` la run parte
-    nel gruppo di ripiego, o non parte affatto.
+@pytest.mark.parametrize("arm,budget,seed", IDENTITY)
+def test_identity_is_never_left_null(arm, budget, seed):
+    """The defect this test exists to prevent: with `null` the run starts in the
+    fallback group, or does not start at all.
 
-    `wandb.entity` fa eccezione: nullo significa "l'account di chi lancia", che e'
-    il default giusto per chiunque non sia il proprietario del progetto originale.
+    `wandb.entity` is the exception: null means "whoever is launching", which is
+    the right default for anyone who is not the owner of the original project.
     """
-    cfg = _config_intera(arm, budget, seed)
-    for chiave in ("group", "name", "output_dir"):
-        assert cfg["run"][chiave], f"run.{chiave} e' vuoto"
-    for chiave in ("project", "tags"):
-        assert cfg["wandb"][chiave], f"wandb.{chiave} e' vuoto"
+    cfg = _whole_config(arm, budget, seed)
+    for key in ("group", "name", "output_dir"):
+        assert cfg["run"][key], f"run.{key} is empty"
+    for key in ("project", "tags"):
+        assert cfg["wandb"][key], f"wandb.{key} is empty"
 
 
-def test_l_etichetta_di_campagna_separa_le_run():
-    """Due campagne nello stesso progetto W&B non devono mescolare i seed."""
-    a = _config_intera("hybrid_soft", 10, 1, campagna="main")["run"]["group"]
-    b = _config_intera("hybrid_soft", 10, 1, campagna="retune")["run"]["group"]
+def test_the_campaign_label_keeps_runs_apart():
+    """Two campaigns in the same W&B project must not mix their seeds."""
+    a = _whole_config("hybrid_soft", 10, 1, campaign="main")["run"]["group"]
+    b = _whole_config("hybrid_soft", 10, 1, campaign="retune")["run"]["group"]
     assert a != b and a.endswith("_hybrid_soft_B10") and b.endswith("_hybrid_soft_B10")
 
 
-def test_i_tag_wandb_descrivono_la_cella():
-    cfg = _config_intera("hybrid_soft", 10, 1)
+def test_the_wandb_tags_describe_the_cell():
+    cfg = _whole_config("hybrid_soft", 10, 1)
     assert cfg["wandb"]["tags"] == ["main", "hybrid_soft", "B10"]
