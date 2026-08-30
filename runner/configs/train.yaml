@@ -1,9 +1,11 @@
-# Defaults. Composition order:
+# The base of the composition:
 #
 #     this file  <  protocol/  <  arm/  <  command line
 #
-# The protocol and the arm are required to touch disjoint keys, so neither can
-# silently override the other; a test enforces it.
+# It holds what identifies a run and how Hydra should behave. The experimental
+# protocol lives in protocol/, the tuned hyperparameters in arm/, and the two
+# are required to touch disjoint keys so neither can silently override the
+# other; a test enforces it.
 #
 #     python runner/train.py arm=hybrid_soft budget=1000 run.seed=3
 defaults:
@@ -12,7 +14,7 @@ defaults:
   - arm: ???
 
 # Feedback budget. Comparisons, initial comparisons and demonstrations are all
-# derived from it below, using the arm's own share.
+# derived from it below, each using the arm's own share.
 budget: ???
 
 run:
@@ -23,23 +25,18 @@ run:
   name: ${run.group}-seed${run.seed}
   # make_run_dir appends the run name, so this is just the group.
   output_dir: outputs/runs/${run.group}
-  # Demo budget: null = full dataset. Subsampling keeps the prefix of one
-  # seeded permutation, so smaller budgets are nested inside larger ones.
+  # null = the whole dataset. Subsampling keeps the prefix of one seeded
+  # permutation, so smaller budgets are nested inside larger ones.
   n_expert_trajectories: ${hfrl.demo_budget:${uses_demonstrations},${budget}}
-  # Alternative demo budget, counted in TRANSITIONS instead of trajectories:
-  # whole trajectories are taken from the same seeded permutation while the
-  # cumulative length stays within the cap. One expert trajectory is ~175
-  # transitions, so "500 preferences + 500 trajectories" actually gives the
-  # demo channel ~175x more data than the preference one; this makes the two
-  # channels comparable per transition. Mutually exclusive with
-  # n_expert_trajectories.
+  # The same budget counted in transitions instead of trajectories. One expert
+  # trajectory is about 175 transitions, so a budget of 500 gives the
+  # demonstration channel far more data than the preference one; this makes them
+  # comparable per transition. Mutually exclusive with n_expert_trajectories.
   n_expert_transitions: null
-  # Seed of the demonstration subsample. Deliberately INDEPENDENT of run.seed:
-  # the demo-only and hybrid arms must read the same demonstrations at the same
-  # budget, otherwise a budget curve compares algorithms and demo sets at once.
-  # null falls back to the same shared constant (human_feedback_rl.common
-  # .demo_subsampling.DEMO_SUBSAMPLE_SEED). Override only for an ablation that
-  # deliberately varies which demonstrations are drawn.
+  # Deliberately independent of run.seed: every arm must read the same
+  # demonstrations at the same budget, or a budget curve compares algorithms and
+  # demonstration sets at once. Override only for an ablation that varies them
+  # on purpose.
   demo_subsample_seed: 1000
 
 wandb:
@@ -50,109 +47,37 @@ wandb:
 
 env:
   id: "HighwayEgo-v0"
-  n_envs: 4
-  # false: the trajectories the oracle judges come from a dedicated environment
-  # with a disjoint seed. Twice the environment interaction, but they are samples
-  # of ONE policy, because the rollout runs at frozen weights.
-  # true (what the reference runs used): the training environment is reused. The
-  # transitions the agent produces while learning become the pool the oracle
-  # draws from. Half the interaction, but the trajectories are a mixture of
-  # policies, because the weights move during learn().
-  shared_rollout_env: false
-  kwargs:
-    ego: "continuous"
-    reward: "fast"
 
 agent:
   kwargs:
     policy: "MlpPolicy"
-    buffer_size: 100000
-    learning_starts: 2000
-    batch_size: 256
-    learning_rate: 0.0003
-    gamma: 0.997
-    tau: 0.005
-    ent_coef: "auto"
-    train_freq: 8
-    gradient_steps: 64
-    policy_kwargs:
-      net_arch: [64, 64]
-    device: "cpu"
 
 algo:
   kwargs:
-    # How demonstrations enter the reward model:
-    #   gcl         -> demo IRL loss + BT preference loss on the shared net
-    #   preferences -> demos become expert>agent preference pairs (Ibarz 2018 baseline)
-    demo_mode: "gcl"
-    # Demo side: demo_1 (difference of means) | demo_2 (MaxEnt surrogate).
-    loss_type: demo_2
-    # Preference side.
+    # Read by demo_only, which does not set them: it has no preference channel,
+    # but the oracle is built either way. Every other arm overrides both.
     labels_type: "soft"
-    # Oracle label softness. 20 is the validated Christiano recipe.
     pref_temperature: 20.0
-    fragmenter_type: "active"
-    preference_fragment_length: 1
-    batch_size_pref: 128
-    comparison_queue_size: 1000000
+
     total_queries: ${hfrl.total_queries:${uses_preferences},${budget}}
     initial_queries: ${hfrl.initial_queries:${uses_preferences},${initial_queries_frac},${budget},${initial_queries_min}}
-    query_schedule: "constant"
-    # Gradient balancing: effective demo gradient ~= demo_weight * BT gradient.
-    demo_weight: 1.0
+
+    # Constants no arm and no protocol changes.
+    comparison_queue_size: 1000000
     max_balance_scale: 100.0
     balance_eps: 1e-8
-    # Come i due gradienti diventano un update.
-    #   norm_balance            somma bilanciata di norma (ricetta storica)
-    #   alpha_norm_single_adam  direzioni unitarie pesate da alpha, un solo Adam
-    gcl_fusion: norm_balance
-    # Pavimento numerico di CV^2 = S / ||g_medio||^2.
-    alpha_eps: 1e-8
-    # Sposta le etichette verso 1/2. Applicato SOLO alle etichette
-    # Bernoulli labels only: soft ones already have a finite optimum.
-    label_smoothing: 0.0
-    bootstrap_comparisons: null   # null = decide n_ensembles
-    # demos-as-preferences baseline (demo_mode=preferences only).
+    alpha_eps: 1e-8            # numerical floor of CV^2 = S / ||g_mean||^2
+    exploration_eps: 0.5
+    reward_model_kwargs:
+      alpha: 1
+    # Only read when demo_mode=preferences, the Ibarz-style baseline.
     demo_pref_pairs_per_iteration: 64
     demo_pref_batch_fraction: 0.5
-    # Shared reward model / SAC reward handling.
-    relabel_rewards: false
-    normalize_agent_reward: false
-    lr_rew: 0.0003
-    gradient_steps_rew: 300
-    batch_size_expert: 64
-    batch_size_model: 64
-    # DO NOT raise back to 0.01: Adam weight decay at 1e-2 is ~2x the BT
-    # gradient and collapses the reward net (pref branch dies, BT loss pinned
-    # at ln2, pred<->true corr ~0). Diagnosed and validated on 2026-07-05.
-    l2_rew: 0.0001
-    initial_agent_timesteps: 10000
-    exploration_frac: 0.0
-    exploration_eps: 0.5
-    agent_log_timestep_interval: 10000
-    reward_model_kwargs:
-      n_ensembles: 3
-      net_arch: [128, 128]
-      activation_fn: tanh
-      alpha: 1
 
-# Final held-out evaluation: deterministic episodes on a fresh env, same
-# convention as train_sac_baseline (seed 1000 is disjoint from training seeds).
+# Deterministic episodes on a fresh environment. Seed 1000 is disjoint from the
+# training seeds, so evaluation scenarios never coincide with training ones.
 eval:
-  n_episodes: 20
   seed: 1000
-
-train:
-  kwargs:
-    total_timesteps: 2000000
-    timesteps_per_iteration: 10000
-    log_interval: 100
-    checkpoint_interval: 10
-    scatter_interval: null
-    # NOTE: the query budget does NOT live here. It sits among the algorithm's
-    # kwargs (algo.kwargs.total_queries), next to initial_queries and
-    # query_schedule. Having it in two places meant train()'s copy silently won,
-    # and nobody noticed they had set only the other one.
 
 hydra:
   job:
