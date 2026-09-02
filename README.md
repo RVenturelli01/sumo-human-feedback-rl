@@ -90,6 +90,35 @@ python runner/train.py --multirun \
 original campaigns wrapped a single-run command in `taskset -c <core>`, one core
 per run.
 
+### The fusion ablations
+
+Two further arms combine both channels without estimating the weight. They are
+not part of the reference grid above; `evaluate.py` recognises them and reports
+them, but never asks for them.
+
+```bash
+python runner/train.py --multirun arm=unwh_soft,unwh_bern \
+  budget=10,100,1000 run.seed=1,2,3,4,5,6,7,8,9,10 eval.n_episodes=200
+```
+
+`unwh_*` pins the weight at one half instead of estimating it. The other control
+needs no arm of its own, only the weight decay switched off:
+
+```bash
+python runner/train.py --multirun arm=unw_soft,unw_bern \
+  budget=10,100,1000 run.seed=1,2,3,4,5,6,7,8,9,10 \
+  algo.kwargs.l2_rew=0 campaign=nowd eval.n_episodes=200
+```
+
+Give that one its own `campaign`, as above, and keep its output directory apart
+from the reference runs. Its directory names still parse as `unw_soft` and
+`unw_bern`, so an aggregate over a directory holding both would read them as
+twenty seeds of one cell instead of two sets of ten.
+
+`eval.n_episodes=200` evaluates at the end of training, which saves the
+`evaluate.py` pass: the two routes were checked against each other on the whole
+reference grid and agree on every value.
+
 ### Initial comparisons
 
 Each arm collects a share of its budget before the regular schedule starts: none

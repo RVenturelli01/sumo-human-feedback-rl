@@ -92,9 +92,11 @@ def test_arms_and_protocol_never_define_the_same_key():
     composition order alone would silently decide which value wins.
     """
     protocol = _leaf_keys(CONFIGS / "protocol" / "standard.yaml")
-    for arm in sorted(SHARES):
-        overlap = protocol & _leaf_keys(CONFIGS / "arm" / f"{arm}.yaml")
-        assert not overlap, f"{arm} redefines protocol keys: {sorted(overlap)}"
+    arm_files = sorted((CONFIGS / "arm").glob("*.yaml"))
+    assert arm_files, "no arm configurations found"
+    for path in arm_files:
+        overlap = protocol & _leaf_keys(path)
+        assert not overlap, f"{path.stem} redefines protocol keys: {sorted(overlap)}"
 
 
 def test_the_protocol_really_does_touch_algo_keys():

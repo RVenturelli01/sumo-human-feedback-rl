@@ -44,8 +44,18 @@ METHOD_NAMES = {
     "demo_only": "Demo-only", "pref_soft": "Pref-soft", "pref_bern": "Pref-Bernoulli",
     "hybrid_soft": "Hybrid-soft", "hybrid_bern": "Hybrid-Bernoulli",
     "unw_soft": "NB-soft", "unw_bern": "NB-Bernoulli",
+    "unwh_soft": "Fixed-weight-soft", "unwh_bern": "Fixed-weight-Bernoulli",
 }
-METHOD_ORDER = list(METHOD_NAMES.values())
+#: The seven arms that make up the reference grid. The fixed-weight ablations are
+#: recognised and evaluated like any other run, but they are not part of that
+#: grid: check_grid neither asks for them nor complains that they are extra.
+REFERENCE_METHODS = [
+    METHOD_NAMES[a] for a in
+    ("demo_only", "pref_soft", "pref_bern", "hybrid_soft", "hybrid_bern",
+     "unw_soft", "unw_bern")
+]
+ABLATION_METHODS = [m for m in METHOD_NAMES.values() if m not in REFERENCE_METHODS]
+METHOD_ORDER = REFERENCE_METHODS + ABLATION_METHODS
 #: <campaign>_<arm>_B<budget>-seed<n>, with the `_NN` that make_run_dir appends
 #: when the directory already exists. Those repeats are matched on purpose: a
 #: re-run is a second copy of a cell, and check_grid should say so rather than
@@ -137,7 +147,7 @@ EXPECTED_SEEDS = frozenset(range(1, 11))
 
 
 def check_grid(rows: list[dict]) -> list[str]:
-    """Complaints about a grid that is not the full 7 x 3 x 10.
+    """Complaints about a reference grid that is not the full 7 x 3 x 10.
 
     Aggregating a partial grid is not an error in itself, but doing it silently
     is: a cell built from nine seeds looks exactly like one built from ten, and
@@ -148,10 +158,14 @@ def check_grid(rows: list[dict]) -> list[str]:
     for r in rows:
         seen[(r["method"], r["budget"])].append(r["seed"])
 
-    expected_cells = {(m, b) for m in METHOD_ORDER for b in EXPECTED_BUDGETS}
+    expected_cells = {(m, b) for m in REFERENCE_METHODS for b in EXPECTED_BUDGETS}
     for cell in sorted(expected_cells - set(seen)):
         problems.append(f"{cell[0]} B={cell[1]}: missing entirely")
     for cell in sorted(set(seen) - expected_cells):
+        # An ablation arm is a legitimate extra: it is reported in the tables but
+        # never required, so only a reference arm at an unexpected budget is odd.
+        if cell[0] in ABLATION_METHODS:
+            continue
         problems.append(f"{cell[0]} B={cell[1]}: not part of the grid")
 
     for cell, seeds in sorted(seen.items()):
